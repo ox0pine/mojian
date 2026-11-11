@@ -45,9 +45,11 @@ func TestParseStartup(t *testing.T) {
 		t.Fatalf("relative file: %+v %v", s, err)
 	}
 
-	// A quoted ~ reaches the binary before the shell expands it.
+	// A quoted ~ reaches the binary before the shell expands it. Windows
+	// reads USERPROFILE where the other systems read HOME.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	proj := filepath.Join(home, "abc")
 	if err := os.MkdirAll(proj, 0o755); err != nil {
 		t.Fatal(err)
