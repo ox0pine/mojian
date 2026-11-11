@@ -81,8 +81,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 - A forced appearance must reach the native side, which frame colors cannot do: `themeSource`
   maps the preference to `mygo.ThemeSource` and `applyAppearanceSource` calls
   `mygo.Theme.SetSource`, both at window creation (before `mygo.NewWindow`) and on every change.
-  A window's own `BackgroundColor` comes from `(*app).windowBackground`, a `light-dark()` pair of
+- A window's own `BackgroundColor` comes from `(*app).windowBackground`, a `light-dark()` pair of
   the open theme, so the strip behind the traffic lights matches without a flash.
+- A hidden title bar still has a caption band: both windows pass `TitleBarHeight: titleH`, the
+  same 44 the views draw, so on Windows the minimize, maximize and close buttons fill that band
+  and their glyphs center on the same line as the title bar's own buttons. With MyGo's 32
+  default they sat half a row higher. The page keeps clear of them with `c.TitleBar().Right`.
 - `internal/app/theme_bridge.go` is the only file in `internal/app` that names `internal/theme`
   (besides `settings_host.go`); `archtest` enforces it.
 

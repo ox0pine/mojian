@@ -100,8 +100,12 @@ func (a *app) createWindow(stateKey string) *mygo.Window {
 		StateKey:             stateKey,
 		TitleBarStyle:        mygo.TitleBarHidden,
 		TrafficLightPosition: &mygo.Point{X: 16, Y: 15},
-		BackgroundColor:      a.windowBackground(),
-		Content:              ui.View(a.view),
+		// The page draws titleH itself, so the caption buttons fill the
+		// same band: on Windows they would otherwise sit in a 32 tall
+		// strip at the top, their glyphs half a row above our icons.
+		TitleBarHeight:  titleH,
+		BackgroundColor: a.windowBackground(),
+		Content:         ui.View(a.view),
 	})
 	a.win = win
 	win.OnFocus(func() {
@@ -176,6 +180,7 @@ func (a *app) openSettingsWindow() {
 		StateKey:             "settings",
 		TitleBarStyle:        mygo.TitleBarHidden,
 		TrafficLightPosition: &mygo.Point{X: 16, Y: 15},
+		TitleBarHeight:       titleH,
 		BackgroundColor:      a.windowBackground(),
 		Content:              ui.View(a.settingsWindowView),
 	})

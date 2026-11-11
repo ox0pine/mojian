@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+- On Windows the minimize, maximize and close buttons now line up with the
+  icons at the right of the title bar: the caption band is as tall as the
+  title bar Mojian draws, where the system's 32 point default left the
+  buttons half a row higher. The Settings window gets the same band.
+
 ## 0.3.3
 
 - `mojian path` while Mojian is running now opens in the window that is
