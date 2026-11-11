@@ -1,36 +1,72 @@
 package app
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestOpenStartupFile(t *testing.T) {
-	a := newProjectApp(t)
-	want := a.store.ByRelPath(filepath.Join("scripts", "tasks.py"))
-	if want == nil {
-		t.Fatal("the fixture has no scripts/tasks.py")
+func TestParseStartup(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "proj")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	a.startup = Startup{File: filepath.Join(a.store.Dir, "scripts", "tasks.py")}
-	a.openStartupFile()
-	if got := a.currentNote(); got != want {
-		t.Fatalf("the startup file was not focused: %+v", got)
+	file := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(file, []byte("# hi\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	tab := a.tab()
-	if tab == nil || tab.Focus == nil || !tab.contains(tab.Focus) {
-		t.Fatalf("focus is not a pane of the tab: %+v", tab)
-	}
-	if tab.Focus.Note != want {
-		t.Fatalf("focus is not the startup file: %+v", tab.Focus.Note)
-	}
-}
 
-func TestOpenStartupFileOutsideProject(t *testing.T) {
-	a := newProjectApp(t)
-	before := a.currentNote()
-	a.startup = Startup{File: filepath.Join(a.store.Dir, "..", "elsewhere.md")}
-	a.openStartupFile()
-	if got := a.currentNote(); got != before {
-		t.Fatalf("a file outside the project replaced the note: %+v", got)
+	if s, err := ParseStartup(nil, ""); err != nil || s.Dir != "" || s.File != "" {
+		t.Fatalf("no path: %+v %v", s, err)
+	}
+	s, err := ParseStartup([]string{"-psn_0_1234"}, "")
+	if err != nil || s.Dir != "" {
+		t.Fatalf("LaunchServices argument: %+v %v", s, err)
+	}
+	s, err = ParseStartup([]string{dir}, "")
+	if err != nil || s.Dir != dir || s.File != "" {
+		t.Fatalf("folder: %+v %v", s, err)
+	}
+	s, err = ParseStartup([]string{file}, "")
+	if err != nil || s.Dir != dir || s.File != file {
+		t.Fatalf("file: %+v %v", s, err)
+	}
+
+	// A handed-over launch keeps the directory it ran in, which is how a
+	// relative path from another shell still resolves.
+	s, err = ParseStartup([]string{"proj"}, root)
+	if err != nil || s.Dir != dir {
+		t.Fatalf("relative folder: %+v %v", s, err)
+	}
+	s, err = ParseStartup([]string{filepath.Join("proj", "note.md")}, root)
+	if err != nil || s.Dir != dir || s.File != file {
+		t.Fatalf("relative file: %+v %v", s, err)
+	}
+
+	// A quoted ~ reaches the binary before the shell expands it.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	proj := filepath.Join(home, "abc")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, err = ParseStartup([]string{"~/abc"}, "")
+	if err != nil || s.Dir != proj {
+		t.Fatalf("tilde: %+v %v", s, err)
+	}
+
+	if _, err := ParseStartup([]string{"-x"}, ""); err == nil {
+		t.Fatal("an unknown option was accepted")
+	}
+	if _, err := ParseStartup([]string{dir, dir}, ""); err == nil {
+		t.Fatal("two paths were accepted")
+	}
+	if _, err := ParseStartup([]string{filepath.Join(root, "missing")}, ""); err == nil {
+		t.Fatal("a missing path was accepted")
+	}
+	if _, err := ParseStartup([]string{"-h"}, ""); !errors.Is(err, ErrHelp) {
+		t.Fatalf("help: %v", err)
 	}
 }

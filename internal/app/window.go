@@ -45,7 +45,7 @@ func (a *app) installTray() {
 	}
 	menu := mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "Show Mojian", Click: func(*mygo.MenuItem, *mygo.Window) {
-			a.showFromTray()
+			a.showMainWindow()
 		}},
 		{Label: "Settings…", Click: func(*mygo.MenuItem, *mygo.Window) {
 			a.openSettingsWindow()
@@ -69,8 +69,8 @@ func (a *app) installTray() {
 	a.tray = tray
 }
 
-// showFromTray brings the main window back, opening it if it was closed.
-func (a *app) showFromTray() {
+// showMainWindow brings the main window back, opening it if it was closed.
+func (a *app) showMainWindow() {
 	if a.quitting {
 		return
 	}

@@ -178,6 +178,11 @@ func Run(startup Startup) {
 		Prefs:     prefs.Default(),
 		startup:   startup,
 	}
+	if !a.takeSingleInstance() {
+		// Another Mojian is running: it received this launch's command
+		// line and opens it, so this process is done.
+		return
+	}
 	go warmSessionServer()
 	update.UseGitHub()
 	mygo.App.SetMenu(a.menu())

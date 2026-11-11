@@ -8,7 +8,10 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 
 ## Source of truth
 
-- [`main.go`](../../main.go) — the command line, `detachFromTerminal`, and the `app.Run` entry.
+- [`main.go`](../../main.go) — the command line and the `app.Run` entry;
+  [`internal/app/startup.go`](../../internal/app/startup.go) parses the path a launch names, and
+  [`internal/app/second_instance.go`](../../internal/app/second_instance.go) hands a later
+  launch's command line to the window that is already open.
 - [`internal/app/app.go`](../../internal/app/app.go) — `app`, `Run`, `open`, `initialStore`,
   `later`, `runPending`, `changed`, `scheduleLayoutSave`, `persistLayout`, `fail`.
 - [`internal/app/view.go`](../../internal/app/view.go) — `(*app).view`, the window root:
@@ -30,11 +33,15 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 
 ## Runtime path
 
-1. `main` validates the command line and, when standard input is a terminal, `detachFromTerminal`
-   re-runs the binary in its own session and exits the parent: the shell returns at once, and
-   closing the terminal or pressing Ctrl+C does not end the window. A launch without a terminal
-   (Finder, LaunchServices) stays in place, `mygo dev` keeps its child attached, and the detached
-   copy appends stdout and stderr to `app.log` under `session.Dir()`.
+1. `main` validates the command line with `app.ParseStartup` and, when standard input is a
+   terminal, `detachFromTerminal` re-runs the binary in its own session and exits the parent: the
+   shell returns at once, and closing the terminal or pressing Ctrl+C does not end the window. A
+   launch without a terminal (Finder, LaunchServices) stays in place, `mygo dev` keeps its child
+   attached, and the detached copy appends stdout and stderr to `app.log` under `session.Dir()`.
+   `app.Run` then takes the single-instance lock before anything else: a second `mojian path`
+   finds the socket MyGo publishes for the app, sends its arguments and working directory, and
+   exits 0. The running window parses them against the launch's own directory, brings its window
+   forward, opens the project, and shows the named file, so a launch never opens a second app.
 2. MyGo delivers input, `Window.Update` or `Invalidate`, and calls `(*app).view` again. The view
    builds a new element tree every frame from the fields on `*app`; nothing is cached between
    frames.

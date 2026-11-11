@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3
+
+- `mojian path` while Mojian is running now opens in the window that is
+  already open instead of starting a second app. The launch hands its
+  command line and working directory to the running instance, which
+  switches to the project, shows the named file, and comes to the front;
+  a launch that names nothing, such as the Dock icon, only brings the
+  window forward.
+
 ## 0.3.2
 
 - The Git page no longer stalls when Git prints a file as text that is
