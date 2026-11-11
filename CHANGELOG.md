@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- Switching focus between panes with Option+Command and the arrows no
+  longer makes the workspace blink. The focus command ended a zoom on
+  every press, and that path replayed every pane's entrance fade even
+  when no pane was zoomed; closing a pane and adding a terminal took the
+  same path. A tab without a zoom now keeps its cards as they are.
+
 ## 0.3.0
 
 - Mojian now runs on Windows as a local-only client. Local projects use
