@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - MyGo moves to v0.9.0. A focused element now scrolls into view (with
   `FocusOptions.PreventScroll` where a jump would be wrong), scroll bars
