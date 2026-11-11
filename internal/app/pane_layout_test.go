@@ -88,6 +88,30 @@ func TestPaneFocusShortcutsMoveInAllDirections(t *testing.T) {
 	}
 }
 
+// A focus switch must leave the cards' entrance fades alone. unzoom
+// used to mark every pane to fade in even when nothing was zoomed,
+// which blinked the whole workspace on each Option+Cmd+arrow.
+func TestPaneFocusDoesNotReplayEntrance(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	first := a.tab().Focus
+	a.splitWith(a.store.ByRelPath("Reading notes.md"))
+	a.harness = true
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	tt.Frame()
+	tt.Key(ui.Cmd|ui.Alt, ui.KeyLeft)
+	tt.Frame()
+	if a.tab().Focus != first {
+		t.Fatal("Cmd+Option+Left did not move the focus")
+	}
+	for _, p := range a.tab().panes() {
+		if p.enter {
+			t.Fatalf("pane %s replays its entrance fade after a focus switch", p.ID)
+		}
+	}
+}
+
 func TestPaneSplitShortcutsSplitRightAndDown(t *testing.T) {
 	for _, accel := range []string{cmdSplitRight.Default(), cmdSplitDown.Default()} {
 		mods, key, ok := parseAccel(accel)

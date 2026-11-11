@@ -478,6 +478,12 @@ func (a *app) zoom(t *tab, p *pane) {
 // they showed.
 func (a *app) unzoom(t *tab) {
 	zoomed := t.Zoom
+	if zoomed == nil {
+		// Nothing was hidden, so the cards must stay as they are.
+		// Marking them would replay their fade on every focus switch,
+		// which reads as the whole workspace blinking.
+		return
+	}
 	a.dropHiddenOverlays(t)
 	t.Zoom = nil
 	for _, p := range t.panes() {
