@@ -14,8 +14,11 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// updateRepo is the GitHub repository releases are published from.
-const updateRepo = "ox0pine/mojian"
+// Repo is the GitHub repository releases are published from.
+const Repo = "ox0pine/mojian"
+
+// RepoURL is Repo's page, linked from Settings › About.
+const RepoURL = "https://github.com/" + Repo
 
 // githubUpdates reads update manifests from the latest GitHub release and
 // downloads their files from the release's asset URLs. Going through
@@ -51,7 +54,7 @@ func (g githubUpdates) Open(ctx context.Context, raw string) (io.ReadCloser, err
 func (g githubUpdates) url(path string) string {
 	base := g.base
 	if base == "" {
-		base = "https://github.com/" + updateRepo
+		base = "https://github.com/" + Repo
 	}
 	return base + path
 }

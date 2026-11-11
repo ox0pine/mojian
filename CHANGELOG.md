@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+- MyGo moves to v0.9.0. A focused element now scrolls into view (with
+  `FocusOptions.PreventScroll` where a jump would be wrong), scroll bars
+  follow VS Code's styling and each axis can hide its indicators, and the
+  updater offers a release published while the settings window is open.
+  The session protocol and the libghostty library are unchanged; the
+  embedded Linux servers are rebuilt so remote hosts get the new build on
+  their next setup.
+- Terminal panes take the upstream fixes: Control+I, Control+M and
+  Control+[ send Tab, Enter and Esc, a URL stops at the first non-ASCII
+  character, pasting prefers UTF-8 text, and a temporary read error no
+  longer ends the program.
+- Settings › About can notify you about a new release. Mojian checks
+  GitHub once at launch, shows a system notification, and opens About
+  when the notification is clicked; the same version is announced once,
+  and the switch turns the launch check off. The page also links to
+  `github.com/ox0pine/mojian`.
+
+- The Explorer tree, the title-bar actions, and the Explorer and pane headers
+  now use MyGo's native tree and toolbar widgets. The tree is one Tab stop
+  with arrow keys and type-ahead; each toolbar moves with Left/Right and
+  folds items that do not fit into an overflow menu. The Explorer, SSH
+  picker and empty-pane filters are native search fields, so Escape clears
+  them.
+
 ## 0.3.4
 
 - On Windows the minimize, maximize and close buttons now line up with the

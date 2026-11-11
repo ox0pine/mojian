@@ -10,6 +10,77 @@ import (
 	"github.com/egoist/mygo"
 )
 
+// updateNotificationID names the launch notification about a release, so a
+// click reaches the About page.
+const updateNotificationID = "mojian.update"
+
+// afterOpen runs once a launch, or a window reopened from the Dock, has a
+// window: it opens the About page a notification click asked for, and
+// starts the quiet update check the preference allows.
+func (a *app) afterOpen() {
+	if a.win == nil {
+		return
+	}
+	if a.pendingAbout {
+		a.pendingAbout = false
+		a.openSettingsWindow()
+	}
+	a.autoCheckUpdates()
+}
+
+// showAbout shows Settings on the About page, or waits for the window a
+// launch is about to create.
+func (a *app) showAbout() {
+	a.settings.Cat = settingsAbout
+	if a.win == nil {
+		a.pendingAbout = true
+		return
+	}
+	a.openSettingsWindow()
+}
+
+// autoCheckUpdates asks GitHub once a launch when the user asked to be
+// told, and notifies about a release this machine has not seen yet. A
+// failed check stays quiet: a launch must not accuse the network, and
+// About checks on demand.
+func (a *app) autoCheckUpdates() {
+	if a.updateAutoTried || a.harness || a.win == nil || a.NoUpdateNotifications {
+		return
+	}
+	a.updateAutoTried = true
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		up, err := update.Check(ctx)
+		if err != nil || up == nil {
+			return
+		}
+		a.onUpdateUI(func() {
+			a.pendingUpdate = up
+			if up.Version != "" && a.notifiedUpdate != up.Version {
+				a.notifiedUpdate = up.Version
+				a.saveSettings()
+				_ = mygo.NewNotification(mygo.NotificationOptions{
+					ID:    updateNotificationID,
+					Title: "Mojian " + up.Version + " is available",
+					Body:  "Open Settings › About to install it.",
+				}).Show()
+			}
+			a.invalidate()
+		})
+	}()
+}
+
+// markUpdateSeen records a release the Settings window already showed, so
+// the next launch does not notify about it again.
+func (a *app) markUpdateSeen(up *update.Release) {
+	if up == nil || up.Version == "" || a.notifiedUpdate == up.Version {
+		return
+	}
+	a.notifiedUpdate = up.Version
+	a.saveSettings()
+}
+
 // checkForUpdates checks the feed in the background, so the settings window
 // never waits on the network. The buttons and the state change on the UI
 // thread.
@@ -29,6 +100,7 @@ func (a *app) checkForUpdates() {
 		up, err := update.Check(ctx)
 		a.onUpdateUI(func() {
 			a.applyUpdateCheck(up, err)
+			a.markUpdateSeen(up)
 			a.invalidate()
 		})
 	}()

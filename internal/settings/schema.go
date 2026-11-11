@@ -187,6 +187,9 @@ var Rows = []Row{
 		Words: "reset defaults restore settings preferences", Kind: Custom},
 
 	// About (custom controls; rows feed search)
+	{ID: "notify-update", Cat: About, Section: "SOFTWARE UPDATE", Title: "Notify me about updates",
+		Detail: "Check GitHub at launch and notify you when a newer release exists.", Words: "updates notify notification launch background check release",
+		Kind: Custom, Pref: "NoUpdateNotifications", Invert: true},
 	{ID: "software-update", Cat: About, Section: "SOFTWARE UPDATE", Title: "Software Update",
 		Detail: "Check GitHub for a newer signed release.", Words: "updates check release download github", Kind: Custom},
 	{ID: "install-update", Cat: About, Section: "SOFTWARE UPDATE", Title: "Install",
@@ -199,4 +202,6 @@ var Rows = []Row{
 		Words: "about project folder path", Kind: Custom},
 	{ID: "about-fonts", Cat: About, Section: "SYSTEM", Title: "Fonts",
 		Words: "about fonts installed families", Kind: Custom},
+	{ID: "about-github", Cat: About, Section: "LINKS", Title: "GitHub",
+		Detail: "Source code, releases and issues.", Words: "about github source code repository issues link", Kind: Custom},
 }

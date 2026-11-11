@@ -32,7 +32,10 @@ type Prefs struct {
 	TerminalScrollback  int     `json:"terminalScrollback,omitempty"`
 	NoRestoreLayout     bool    `json:"noRestoreLayout,omitempty"`
 	NoGitAutoRefresh    bool    `json:"noGitAutoRefresh,omitempty"`
-	ShellCommand        string  `json:"shellCommand,omitempty"`
+	// NoUpdateNotifications keeps the launch check quiet; the About page
+	// still checks on demand.
+	NoUpdateNotifications bool   `json:"noUpdateNotifications,omitempty"`
+	ShellCommand          string `json:"shellCommand,omitempty"`
 }
 
 // defaults is the settings of a new install. Default and the effective

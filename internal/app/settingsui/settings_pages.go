@@ -7,6 +7,7 @@ import (
 	"mojian/internal/icons"
 	"mojian/internal/prefs"
 	"mojian/internal/session"
+	"mojian/internal/update"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -116,6 +117,15 @@ func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
 		})
 	})
 	u.settingsSection(c, k, "SOFTWARE UPDATE", func() {
+		u.settingsSwitchRow(c, k, "Notify me about updates",
+			"Check GitHub at launch and notify you when a newer release exists.",
+			func() bool { return !u.NoUpdateNotifications },
+			func(on bool) {
+				u.NoUpdateNotifications = !on
+				if on {
+					u.checkForUpdates()
+				}
+			})
 		u.settingRow(c, k, "Software Update", "Check GitHub for a newer signed release.", func() {
 			busy := u.updateChecking() || u.updateInstalling()
 			check := ui.Button(c, "Check for Updates").Disabled(busy || u.updateReady())
@@ -154,6 +164,11 @@ func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
 		u.settingsInfoRow(c, k, "Project", project)
 		u.settingsInfoRow(c, k, "Fonts",
 			fmt.Sprintf("%d installed families", len(u.installedFonts())))
+	})
+	u.settingsSection(c, k, "LINKS", func() {
+		u.settingRow(c, k, "GitHub", "Source code, releases and issues.", func() {
+			ui.Link(c, "github.com/"+update.Repo, update.RepoURL).FontSize(12)
+		})
 	})
 }
 

@@ -287,11 +287,11 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 	ui.Column(c).Fill().Padding(14, 16).Gap(8).Children(func() {
 		ui.Text(c, "Open a file in this pane").FontSize(12.5).
 			FontWeight(600).TextColor(k.Text)
-		ui.Row(c).Height(34).Padding(0, 9).Gap(7).Radius(radius).
-			Background(k.Hover).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, icons.Icon("search")).Size(14, 14).TextColor(k.TextFaint)
-			in := ui.TextInputBase(c, &p.emptyQuery).Grow(1).FontSize(13).
-				Placeholder("Type a file name…")
+		ui.Row(c).Children(func() {
+			in := ui.SearchField(c.Key("empty-pane-search:"+p.ID), &p.emptyQuery).Grow(1).
+				Height(34).Padding(0, 9).Gap(7).Radius(radius).Background(k.Hover).
+				Border(0, ui.Transparent).FontSize(13).Placeholder("Type a file name…").
+				Label("Search files")
 			if t.Focus == p {
 				in.AutoFocus()
 			}
@@ -474,13 +474,7 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				a.changed()
 			}
 		}
-		actions := ui.Row(c).Gap(1).AlignItems(ui.Center).Shrink(0)
-		if overlay {
-			// Keep the buttons visible while the copy fades, but let no
-			// click reach them.
-			actions.Disabled(true)
-		}
-		actions.Children(func() {
+		actions := ui.Toolbar(c, func() {
 			if iconButton(c, k, "columns-2", "Split Right"+suffix, btn, isize).
 				Tooltip(a.tip("Split Right", cmdSplitRight)).Clicked() {
 				a.later(func() {
@@ -507,7 +501,12 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				Tooltip(a.tip("Close Pane", cmdClosePane)).Clicked() {
 				a.laterPane(p)
 			}
-		})
+		}).Label("Pane actions").Padding(0).Gap(1).Shrink(0)
+		if overlay {
+			// Keep the buttons visible while the copy fades, but let no
+			// click reach them.
+			actions.Disabled(true)
+		}
 	})
 }
 

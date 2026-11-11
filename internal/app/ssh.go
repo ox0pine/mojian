@@ -74,9 +74,9 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 				}
 			})
 			ui.Row(c).Padding(9, 13).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, icons.Icon("search")).Size(14, 14).TextColor(k.TextFaint)
-				in := ui.TextInputBase(c, &a.sshQuery).Grow(1).FontSize(13).
-					Placeholder("Search hosts…").AutoFocus()
+				in := ui.SearchField(c.Key("ssh-search"), &a.sshQuery).Grow(1).
+					Padding(0).Gap(8).Background(ui.Transparent).Border(0, ui.Transparent).
+					FontSize(13).Placeholder("Search hosts…").Label("Search hosts").AutoFocus()
 				if listNav(in, &a.sshSel, len(filtered), &reveal) {
 					connected = filtered[a.sshSel].Address
 				}

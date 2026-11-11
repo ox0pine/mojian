@@ -106,6 +106,9 @@ type app struct {
 	updateChecked    bool
 	pendingUpdate    *update.Release
 	updateErr        string
+	updateAutoTried  bool
+	notifiedUpdate   string
+	pendingAbout     bool
 
 	shellStarter       func() (*termTab, error) // tests replace this
 	sessionClient      *session.Client
@@ -187,6 +190,11 @@ func Run(startup Startup) {
 	update.UseGitHub()
 	mygo.App.SetMenu(a.menu())
 	mygo.App.WhenReady(a.open)
+	mygo.App.OnNotificationClick(func(id string) {
+		if id == updateNotificationID {
+			a.showAbout()
+		}
+	})
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows && a.win == nil {
 			a.open()
@@ -230,6 +238,7 @@ func Run(startup Startup) {
 func (a *app) open() {
 	a.setDockIcon()
 	a.installTray()
+	defer a.afterOpen()
 	if !a.loaded {
 		a.loaded = true
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {

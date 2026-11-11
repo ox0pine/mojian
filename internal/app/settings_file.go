@@ -16,6 +16,7 @@ type settingsFile struct {
 	Shortcuts      map[string]string `json:"shortcuts,omitempty"`
 	Project        string            `json:"project,omitempty"`
 	Projects       []string          `json:"projects,omitempty"`
+	NotifiedUpdate string            `json:"notifiedUpdate,omitempty"`
 	Server         string            `json:"server,omitempty"`
 	RemotePath     string            `json:"remotePath,omitempty"`
 	RemoteProjects []remoteProject   `json:"remoteProjects,omitempty"`
@@ -50,6 +51,7 @@ func (a *app) loadSettings() {
 	a.settings.IndexDirty = true
 	a.project = s.Project
 	a.projects = s.Projects
+	a.notifiedUpdate = s.NotifiedUpdate
 	a.serverAlias = s.Server
 	a.remotePath = s.RemotePath
 	a.hostService().SetProjects(s.RemoteProjects)
@@ -96,6 +98,7 @@ func (a *app) saveSettings() {
 		Shortcuts:      a.shortcutKeys,
 		Project:        project,
 		Projects:       a.projects,
+		NotifiedUpdate: a.notifiedUpdate,
 		Server:         server,
 		RemotePath:     remotePath,
 		RemoteProjects: remoteProjects,

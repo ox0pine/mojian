@@ -133,7 +133,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// The title bar between the tabs and the buttons drags the
 		// window, and a double click on it zooms the window.
 		ui.Box(c).Grow(1).MinWidth(24)
-		ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
+		ui.Toolbar(c, func() {
 			if iconButton(c, k, "command", "Command Palette", 30, 17).
 				Tooltip(a.tip("Command Palette", cmdPalette)).Clicked() {
 				a.openPalette()
@@ -152,7 +152,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 				Tooltip(a.tip("Settings", cmdSettings)).Clicked() {
 				a.later(func() { a.openSettingsWindow() })
 			}
-		})
+		}).Label("View").Padding(0).Gap(2).Shrink(0)
 	})
 }
 

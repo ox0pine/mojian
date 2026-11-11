@@ -33,7 +33,42 @@ func (u *UI) Sidebar(c *ui.Context, k *colors) {
 				u.searchResults(c, k)
 				return
 			}
-			u.treeChildren(c, k, u.store().Tree, 0)
+			tree := ui.TreeBase(c)
+			tree.Root.Children(func() {
+				var walk func(n *fileNode, depth int)
+				walk = func(n *fileNode, depth int) {
+					if n == nil {
+						return
+					}
+					if d := u.TreeDraft(); d != nil && d.Kind != DraftRename && d.Parent == n.Rel {
+						u.treeDraftRow(c, k, depth, n.Dir)
+					}
+					for _, child := range n.Children {
+						if child.Dir {
+							open := u.dirOpen(child.Rel)
+							c.Key("dir:" + child.Rel)
+							item := tree.Item(&open)
+							if open != u.dirOpen(child.Rel) {
+								u.toggleDir(child.Rel)
+							}
+							d := u.TreeDraft()
+							renaming := d != nil && d.Kind == DraftRename && d.Target == child.Rel
+							u.treeFolderRow(c, k, child, depth, item.Row, renaming)
+							item.Group(func() { walk(child, depth+1) })
+							continue
+						}
+						if child.Note == nil && child.Asset == nil {
+							continue
+						}
+						c.Key("file:" + child.Rel)
+						item := tree.Item(nil)
+						d := u.TreeDraft()
+						renaming := d != nil && d.Kind == DraftRename && d.Target == child.Rel
+						u.treeFileRow(c, k, child, depth, item.Row, renaming)
+					}
+				}
+				walk(u.store().Tree, 0)
+			})
 		})
 	})
 	if u.TreeReveal() != "" {
@@ -57,130 +92,90 @@ func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
 		ui.Icon(c, icons.FolderIcon()).Size(16, 16).TextColor(k.TextMuted)
 		ui.Text(c, "Explorer").FontSize(12.5).FontWeight(600).TextColor(k.Text)
 		ui.Spacer(c)
-		if iconButton(c, k, "file-plus", "New File", 24, 14).
-			Tooltip(u.tip("New File", "new-file")).Clicked() {
-			u.later(func() { u.StartNewFile() })
-		}
-		if iconButton(c, k, "folder-plus", "New Folder", 24, 14).
-			Tooltip(u.tip("New Folder", "new-folder")).Clicked() {
-			u.later(func() { u.StartNewFolder() })
-		}
-		if u.refreshing() {
-			ui.Spinner(c).Size(14, 14).Label("Refreshing project")
-		} else if iconButton(c, k, "refresh-cw", "Refresh Project", 24, 14).
-			Tooltip("Refresh Project").Clicked() {
-			u.later(func() { u.RefreshProject() })
-		}
+		ui.Toolbar(c, func() {
+			if iconButton(c, k, "file-plus", "New File", 24, 14).
+				Tooltip(u.tip("New File", "new-file")).Clicked() {
+				u.later(func() { u.StartNewFile() })
+			}
+			if iconButton(c, k, "folder-plus", "New Folder", 24, 14).
+				Tooltip(u.tip("New Folder", "new-folder")).Clicked() {
+				u.later(func() { u.StartNewFolder() })
+			}
+			if u.refreshing() {
+				ui.Spinner(c).Size(14, 14).Label("Refreshing project")
+			} else if iconButton(c, k, "refresh-cw", "Refresh Project", 24, 14).
+				Tooltip("Refresh Project").Clicked() {
+				u.later(func() { u.RefreshProject() })
+			}
+		}).Label("Explorer actions").Padding(0).Gap(1)
 	})
 }
 
 func (u *UI) sidebarSearch(c *ui.Context, k *colors) {
-	field := ui.Row(c).Height(30).Margin(0, 9, 6, 9).Padding(5, 8).Gap(6).Radius(radius).
-		Background(k.Hover).AlignItems(ui.Center)
-	field.Children(func() {
-		ui.Icon(c, icons.Icon("search")).Size(14, 14).TextColor(k.TextFaint)
-		in := ui.TextInputBase(c, u.TreeQueryPtr()).Grow(1).FontSize(12.5).
-			Placeholder("Search files…").Label("Search files").Bind(u.TreeSearch())
-		if in.Submitted() {
-			if notes := u.filteredNotes(); len(notes) > 0 {
-				u.SetTreeSel(notes[0].Rel)
-				u.openNote(notes[0])
-			}
+	field := ui.SearchField(c.Key("tree-search"), u.TreeQueryPtr()).
+		Height(30).Margin(0, 9, 6, 9).Padding(5, 8).Gap(6).Radius(radius).
+		Background(k.Hover).Border(0, ui.Transparent).FontSize(12.5).
+		Placeholder("Search files…").Label("Search files").Bind(u.TreeSearch())
+	if field.Submitted() {
+		if notes := u.filteredNotes(); len(notes) > 0 {
+			u.SetTreeSel(notes[0].Rel)
+			u.openNote(notes[0])
 		}
-		if u.TreeQuery() != "" {
-			if iconButton(c, k, "x", "Clear Search", 20, 11).Clicked() {
-				u.SetTreeQuery("")
-				u.later(func() { u.TreeSearch().Focus() })
-			}
+	}
+}
+
+// treeFolderRow styles the native tree item of a folder and gives it its
+// contents, or the field renaming it.
+func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row ui.Element, renaming bool) {
+	row.Height(rowH).PaddingStart(5 + float32(depth)*13).PaddingEnd(6).Gap(5).Radius(radius).
+		AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(n.Name).ClipX().
+		PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, n.Rel, true) }).
+		Transition(motion.Row)
+	if renaming {
+		row.Background(k.PanelSel)
+		u.treeRenameInput(c, k, true)
+		return
+	}
+	if n.Rel == u.TreeSel() {
+		row.Background(k.PanelSel)
+	} else if row.Hovered() {
+		row.Background(k.Hover)
+	}
+	if row.Clicked() {
+		u.toggleDir(n.Rel)
+	}
+	u.treeRowKeys(row, n.Rel)
+	row.Children(func() {
+		arrow := "chevron-right"
+		if u.dirOpen(n.Rel) {
+			arrow = "chevron-down"
 		}
+		ui.Icon(c, icons.Icon(arrow)).Size(12, 12).TextColor(k.TextFaint)
+		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
+		ui.Text(c, n.Name).FontSize(12.5).FontWeight(550).TextColor(k.Text).
+			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	})
 }
 
-// treeChildren draws the children of n, and a draft that goes in it.
-func (u *UI) treeChildren(c *ui.Context, k *colors, n *fileNode, depth int) {
-	if n == nil {
-		return
-	}
-	if d := u.TreeDraft(); d != nil && d.Kind != DraftRename && d.Parent == n.Rel {
-		u.treeDraftRow(c, k, depth, n.Dir)
-	}
-	for _, child := range n.Children {
-		if child.Dir {
-			u.treeFolder(c, k, child, depth)
-		} else {
-			u.treeFile(c, k, child, depth)
-		}
-	}
-}
-
-// treeFolder draws a folder and, when open, its children.
-func (u *UI) treeFolder(c *ui.Context, k *colors, n *fileNode, depth int) {
-	if n == nil {
-		return
-	}
-	open := u.dirOpen(n.Rel)
-	if d := u.TreeDraft(); d != nil && d.Kind == DraftRename && d.Target == n.Rel {
-		u.treeDraftRow(c, k, depth, true)
-	} else {
-		row := ui.Row(c.Key("dir:" + n.Rel)).Height(rowH).
-			PaddingStart(5 + float32(depth)*13).PaddingEnd(6).Gap(5).Radius(radius).
-			AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleTreeItem).
-			Focusable().FocusRing(false).Label(n.Name).ClipX().
-			PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, n.Rel, true) }).
-			Transition(motion.Row)
-		if n.Rel == u.TreeSel() {
-			row.Background(k.PanelSel)
-		} else if row.Hovered() {
-			row.Background(k.Hover)
-		}
-		if row.Clicked() {
-			u.toggleDir(n.Rel)
-		}
-		if row.Shortcut(0, ui.KeyEnter) || row.Shortcut(0, ui.KeySpace) {
-			u.toggleDir(n.Rel)
-		}
-		u.treeRowKeys(row, n.Rel)
-		row.Children(func() {
-			arrow := "chevron-right"
-			if open {
-				arrow = "chevron-down"
-			}
-			ui.Icon(c, icons.Icon(arrow)).Size(12, 12).TextColor(k.TextFaint)
-			ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-			ui.Text(c, n.Name).FontSize(12.5).FontWeight(550).TextColor(k.Text).
-				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		})
-	}
-	if !open {
-		return
-	}
-	ui.Column(c.Key("kids:" + n.Rel)).Transition(motion.Tree(c.Preferences().ReduceMotion)).Children(func() {
-		u.treeChildren(c, k, n, depth+1)
-	})
-}
-
-// treeFile draws one text file in the tree.
-func (u *UI) treeFile(c *ui.Context, k *colors, n *fileNode, depth int) {
-	if n.Note == nil && n.Asset == nil {
-		return
-	}
+// treeFileRow styles the native tree item of one text file, or the field
+// renaming it.
+func (u *UI) treeFileRow(c *ui.Context, k *colors, n *fileNode, depth int, row ui.Element, renaming bool) {
 	path, title := n.Name, n.Name
 	if n.Note != nil {
 		path, title = n.Note.Path, n.Note.Title
 	} else {
 		path = n.Asset.Path
 	}
-	if d := u.TreeDraft(); d != nil && d.Kind == DraftRename && d.Target == n.Rel {
-		u.treeDraftRow(c, k, depth, false)
-		return
-	}
-	row := ui.Row(c.Key("file:" + n.Rel)).Height(rowH).
-		PaddingStart(5 + float32(depth)*13).PaddingEnd(6).Gap(5).Radius(radius).
-		AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleTreeItem).
-		Focusable().FocusRing(false).Label(title).
+	row.Height(rowH).PaddingStart(5 + float32(depth)*13).PaddingEnd(6).Gap(5).Radius(radius).
+		AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(title).
 		Tooltip(title + " — " + n.Rel).ClipX().
 		PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, n.Rel, false) }).
 		Transition(motion.Row)
+	if renaming {
+		row.Background(k.PanelSel)
+		u.treeRenameInput(c, k, false)
+		return
+	}
 	if n.Rel == u.TreeSel() {
 		row.Background(k.PanelSel)
 	} else if n.Note != nil && u.currentNote() == n.Note {
@@ -191,10 +186,6 @@ func (u *UI) treeFile(c *ui.Context, k *colors, n *fileNode, depth int) {
 	if row.Clicked() {
 		u.SetTreeSel(n.Rel)
 		u.SetTreeDraft(nil)
-		u.openRel(n.Rel)
-	}
-	if row.Shortcut(0, ui.KeyEnter) || row.Shortcut(0, ui.KeySpace) {
-		u.SetTreeSel(n.Rel)
 		u.openRel(n.Rel)
 	}
 	u.treeRowKeys(row, n.Rel)
@@ -211,6 +202,21 @@ func (u *UI) treeFile(c *ui.Context, k *colors, n *fileNode, depth int) {
 			ui.Box(c).Size(6, 6).Radius(3).Background(k.Attention).Shrink(0)
 		}
 	})
+}
+
+// treeRenameInput fills a tree item with the field renaming its entry.
+func (u *UI) treeRenameInput(c *ui.Context, k *colors, dir bool) {
+	d := u.TreeDraft()
+	if d == nil {
+		return
+	}
+	ui.Box(c).Size(12, 12).Shrink(0)
+	ic := icons.FileIcon(d.Name)
+	if dir {
+		ic = icons.FolderIcon()
+	}
+	ui.Icon(c, ic).Size(15, 15).TextColor(k.TextMuted)
+	u.treeDraftInput(c, d, "New name")
 }
 
 // treeRowKeys gives a focused row the keyboard commands of the Explorer.
@@ -256,24 +262,30 @@ func (u *UI) treeDraftRow(c *ui.Context, k *colors, depth int, dir bool) {
 		case DraftRename:
 			placeholder = "New name"
 		}
-		in := ui.TextInputBase(c, &d.Name).Grow(1).MinWidth(0).FontSize(12.5).
-			Placeholder(placeholder).AutoFocus()
-		if in.Focused() {
-			d.Focused = true
-		}
-		switch {
-		case in.Shortcut(0, ui.KeyEscape):
-			u.CancelTreeDraft()
-		case in.Submitted():
-			u.later(func() { u.SubmitTreeDraft() })
-		case d.Focused && !in.Focused():
-			if d.Kind == DraftRename {
-				u.later(func() { u.SubmitTreeDraft() })
-			} else {
-				u.CancelTreeDraft()
-			}
-		}
+		u.treeDraftInput(c, d, placeholder)
 	})
+}
+
+// treeDraftInput is the field naming a draft entry, shared by a new file
+// or folder row and the row renaming an entry.
+func (u *UI) treeDraftInput(c *ui.Context, d *Draft, placeholder string) {
+	in := ui.TextInputBase(c, &d.Name).Grow(1).MinWidth(0).FontSize(12.5).
+		Placeholder(placeholder).AutoFocus()
+	if in.Focused() {
+		d.Focused = true
+	}
+	switch {
+	case in.Shortcut(0, ui.KeyEscape):
+		u.CancelTreeDraft()
+	case in.Submitted():
+		u.later(func() { u.SubmitTreeDraft() })
+	case d.Focused && !in.Focused():
+		if d.Kind == DraftRename {
+			u.later(func() { u.SubmitTreeDraft() })
+		} else {
+			u.CancelTreeDraft()
+		}
+	}
 }
 
 // emptyTree is shown for a project or folder with no text files yet. It
