@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2
+
+- The Git page no longer stalls when Git prints a file as text that is
+  really binary, such as an archive. Git sent it as a single line of
+  megabytes and shaping that line took seconds to minutes; a diff line is
+  now cut at 2,000 characters, with `…` marking the cut.
+- A diff line wider than the pane now wraps instead of being clipped at
+  the edge, so long lines and unbroken tokens read in full without
+  scrolling sideways. The line numbers stay on the first line and the
+  added or removed tint covers every wrapped line.
+
 ## 0.3.1
 
 - Switching focus between panes with Option+Command and the arrows no

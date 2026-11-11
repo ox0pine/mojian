@@ -291,18 +291,18 @@ func (p *Page) diffLines(c *ui.Context, k *theme.Colors, lines []gitDiffLine) {
 		for _, line := range lines {
 			switch line.kind {
 			case '@':
-				ui.Row(c).Height(24).FillWidth().Padding(0, 10).AlignItems(ui.Center).
+				ui.Row(c).FillWidth().Padding(3, 10).AlignItems(ui.Start).
 					Background(k.DiffHunk.Alpha(0.08)).Children(func() {
 					ui.Text(c, diffLineText(line.text)).Font(theme.NoteFont.Family).FontSize(11).
-						TextColor(k.DiffHunk).SingleLine()
+						TextColor(k.DiffHunk).LineHeight(1.5).Shrink(1).MinWidth(0)
 				})
 			case 'm', '\\':
-				ui.Row(c).Height(18).FillWidth().Padding(0, 10).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).FillWidth().Padding(1, 10).AlignItems(ui.Start).Children(func() {
 					ui.Text(c, diffLineText(line.text)).Font(theme.NoteFont.Family).FontSize(11).
-						TextColor(k.TextFaint).SingleLine()
+						TextColor(k.TextFaint).LineHeight(1.5).Shrink(1).MinWidth(0)
 				})
 			default:
-				row := ui.Row(c).Height(18).FillWidth().ClipX().AlignItems(ui.Center)
+				row := ui.Row(c).FillWidth().ClipX().AlignItems(ui.Start)
 				switch line.kind {
 				case '+':
 					row.Background(k.DiffAdd.Alpha(0.10))
@@ -313,8 +313,8 @@ func (p *Page) diffLines(c *ui.Context, k *theme.Colors, lines []gitDiffLine) {
 					gitGutter(c, k, line.old)
 					gitGutter(c, k, line.new)
 					ui.Text(c, diffLineText(line.text)).Font(theme.NoteFont.Family).FontSize(11.5).
-						TextColor(diffLineKindColor(line.kind, k)).SingleLine().Ellipsis("…").
-						Shrink(1).MinWidth(0).Padding(0, 0, 0, 8)
+						TextColor(diffLineKindColor(line.kind, k)).LineHeight(1.5).
+						Shrink(1).MinWidth(0).Padding(1, 0, 1, 8)
 				})
 			}
 		}
@@ -344,13 +344,35 @@ func diffLineKindColor(kind byte, k *theme.Colors) ui.Color {
 	}
 }
 
+// diffLineRunes bounds one drawn diff line. A file Git reads as text but
+// is really binary, such as an archive or a packed blob whose first
+// kilobytes held no NUL, arrives as one line of megabytes; shaping it
+// costs the square of its length, which stalled the window for seconds.
+// A row wraps, so it draws the line up to this many characters and marks
+// the cut.
+const diffLineRunes = 2000
+
 func diffLineText(line string) string {
+	line = clipRunes(line, diffLineRunes)
 	line = strings.ReplaceAll(line, "\t", "    ")
-	line = strings.ReplaceAll(line, " ", "\u00a0")
-	if line == "" {
+	if strings.TrimSpace(line) == "" {
+		// A blank row still takes a line of height, which shaping an empty
+		// string does not.
 		return "\u00a0"
 	}
 	return line
+}
+
+// clipRunes keeps at most max runes of s, ending the cut with an ellipsis.
+func clipRunes(s string, max int) string {
+	n := 0
+	for i := range s {
+		if n == max {
+			return s[:i] + "…"
+		}
+		n++
+	}
+	return s
 }
 
 // hasProject reports whether the host has a project on disk.

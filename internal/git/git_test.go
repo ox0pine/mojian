@@ -1,6 +1,10 @@
 package git
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
 
 func TestParseDiff(t *testing.T) {
 	diff := `diff --git a/x.py b/x.py
@@ -81,5 +85,27 @@ func TestParseStatusKeepsRenameSource(t *testing.T) {
 	}
 	if changes[1].Path != "other.go" || changes[1].OldPath != "" {
 		t.Fatalf("edit: %+v", changes[1])
+	}
+}
+
+func TestDiffLineTextCapsABinaryLine(t *testing.T) {
+	// A binary file Git prints as text arrives as one line of megabytes.
+	// Passing it on whole made the layout of one frame take minutes.
+	long := strings.Repeat("\xff", 1<<20)
+	got := diffLineText(long)
+	if n := utf8.RuneCountInString(got); n > diffLineRunes+1 {
+		t.Fatalf("rendered line has %d runes", n)
+	}
+	if !strings.HasPrefix(got, strings.Repeat("\xff", 32)) {
+		t.Fatal("the cut line lost its start")
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("the cut line has no ellipsis: %q", got[max(0, len(got)-8):])
+	}
+	if tabbed := diffLineText("+a\tb"); tabbed != "+a    b" {
+		t.Fatalf("tab: %q", tabbed)
+	}
+	if blank := diffLineText("  "); blank != "\u00a0" {
+		t.Fatalf("blank row: %q", blank)
 	}
 }

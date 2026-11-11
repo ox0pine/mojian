@@ -1,7 +1,7 @@
 {
   "name": "Mojian",
   "identifier": "dev.mojian.app",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "copyright": "Mojian, a quiet text editor built with MyGo",
   "out": "build",
   "icon": "resources/icon.png",

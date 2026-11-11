@@ -43,6 +43,13 @@ server).
   process cannot change what the page reads.
 - Failures render inside the page (`Page.Err`, `Page.DiffErr`) instead of the app's error banner; a
   stale result is dropped, never shown over a newer one.
+- `diffLineText` draws at most `diffLineRunes` characters of one line and marks the cut with `…`. A
+  binary file Git reads as text is a single line of megabytes, and MyGo shapes a line in time
+  quadratic to its length, so the whole line stalled the frame for minutes.
+- A diff row wraps at the pane's width and has no horizontal scroll: `LineHeight(1.5)` with
+  `AlignItems(ui.Start)` so the line numbers sit on the first visual line, and the row's background
+  covers every wrapped line. `diffLineText` keeps ordinary spaces, since a no-break space would stop
+  the line from wrapping at all.
 
 ## Verification
 
