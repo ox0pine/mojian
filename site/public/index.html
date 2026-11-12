@@ -394,7 +394,7 @@ async function loadRelease() {
   setDownload("mac-amd64", pickAsset(assets, /-amd64\.dmg$/));
   setDownload("linux-amd64", pickAsset(assets, /_amd64\.deb$/) || pickAsset(assets, /-linux-amd64\.tar\.gz$/));
   setDownload("linux-arm64", pickAsset(assets, /_arm64\.deb$/) || pickAsset(assets, /-linux-arm64\.tar\.gz$/));
-  setDownload("linux-amd64-rpm", pickAsset(assets, /-1\.x86_64\.rpm$/));
+  setDownload("linux-amd64-rpm", pickAsset(assets, /\.x86_64\.rpm$/));
   setDownload("windows-amd64", pickAsset(assets, /-setup-.*-amd64\.exe$/));
   setDownload("windows-arm64", pickAsset(assets, /-setup-.*-arm64\.exe$/));
 

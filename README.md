@@ -45,7 +45,7 @@ Install the Debian or RPM package:
 
 ```sh
 sudo apt install ./mojian_<version>_<arch>.deb        # Debian, Ubuntu
-sudo dnf install ./mojian-<version>-1.<rpm-arch>.rpm  # Fedora, RHEL
+sudo dnf install ./mojian-<version>-<rpm-arch>.rpm  # Fedora, RHEL
 ```
 
 `<arch>` is `amd64` or `arm64`; `<rpm-arch>` is `x86_64` or `aarch64`.

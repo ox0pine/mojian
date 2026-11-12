@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- RPM file names now match the other artifacts, without the package
+  release number: `mojian-<version>-x86_64.rpm` and
+  `mojian-<version>-aarch64.rpm`. The RPM metadata keeps its release.
+
 ## 0.4.1
 
 - Releases now publish RPM packages for Fedora and RHEL alongside the

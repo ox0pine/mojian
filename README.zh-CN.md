@@ -45,7 +45,7 @@
 
 ```sh
 sudo apt install ./mojian_<版本>_<架构>.deb        # Debian、Ubuntu
-sudo dnf install ./mojian-<版本>-1.<rpm 架构>.rpm  # Fedora、RHEL
+sudo dnf install ./mojian-<版本>-<rpm 架构>.rpm  # Fedora、RHEL
 ```
 
 `<架构>` 为 `amd64` 或 `arm64`；`<rpm 架构>` 为 `x86_64` 或 `aarch64`。
