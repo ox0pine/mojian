@@ -11,6 +11,7 @@ its source links; `AGENTS.md` is the short index that points here.
 | Session server and remote hosts | [session-and-remote.md](session-and-remote.md) |
 | Git page | [git-page.md](git-page.md) |
 | Persistence, settings and layout | [persistence-and-layout.md](persistence-and-layout.md) |
+| Colors and themes | [theme.md](theme.md) |
 
 ## Maintaining a reference
 
