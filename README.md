@@ -41,11 +41,14 @@ Open the disk image and drag Mojian into Applications. Release builds are ad-hoc
 
 Mojian requires GTK 3 and a desktop session.
 
-Install the Debian package:
+Install the Debian or RPM package:
 
 ```sh
-sudo apt install ./mojian_<version>_<arch>.deb
+sudo apt install ./mojian_<version>_<arch>.deb        # Debian, Ubuntu
+sudo dnf install ./mojian-<version>-1.<rpm-arch>.rpm  # Fedora, RHEL
 ```
+
+`<arch>` is `amd64` or `arm64`; `<rpm-arch>` is `x86_64` or `aarch64`.
 
 For a per-user installation without root, put `install.sh` and `mojian-<version>-linux-<arch>.tar.gz` in the same folder, then run:
 
@@ -160,7 +163,7 @@ Open **Settings › Updates** to check the latest signed GitHub release:
 - **Install Update** downloads it and verifies its signature.
 - **Restart to Update** applies a staged update and relaunches Mojian.
 
-Self-updates require a writable installation, such as the macOS app bundle, the per-user Linux archive, or the Windows installer. A `.deb` installed in `/opt` is updated by its package manager instead.
+Self-updates require a writable installation, such as the macOS app bundle, the per-user Linux archive, or the Windows installer. A `.deb` or `.rpm` installed in `/opt` is updated by its package manager instead.
 
 ## Keyboard shortcuts
 
@@ -234,7 +237,7 @@ go tool mygo build -platform linux/amd64,linux/arm64
 go tool mygo build -platform windows/amd64,windows/arm64
 ```
 
-Build output lives under `build/<os>-<arch>/`. macOS produces `.app` and `.dmg`; Linux produces `.tar.gz` and `.deb`; Windows produces the app and `mojian-setup-<version>-<arch>.exe`.
+Build output lives under `build/<os>-<arch>/`. macOS produces `.app` and `.dmg`; Linux produces `.tar.gz`, `.deb` and `.rpm`; Windows produces the app and `mojian-setup-<version>-<arch>.exe`.
 
 After changing the session protocol or `cmd/mojian-server`, rebuild the embedded remote binaries:
 
@@ -249,7 +252,7 @@ Push a `vX.Y.Z` tag to run [`.github/workflows/release.yml`](.github/workflows/r
 Each release contains:
 
 - macOS: `mojian-<version>-arm64.dmg` and `mojian-<version>-amd64.dmg`
-- Linux: `mojian-<version>-linux-{amd64,arm64}.tar.gz`, matching `.deb` packages, and `install.sh`
+- Linux: `mojian-<version>-linux-{amd64,arm64}.tar.gz`, matching `.deb` and `.rpm` packages, and `install.sh`
 - Windows: `mojian-setup-<version>-{amd64,arm64}.exe`, `install.ps1`, and `mojian-<version>-windows-{amd64,arm64}.tar.gz`
 - Signed update archives (`*-darwin-*.tar.gz`, `*-linux-*.tar.gz`, `*-windows-*.tar.gz`) and `update-<target>.json` manifests
 - `SHA256SUMS`

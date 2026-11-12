@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Releases now publish RPM packages for Fedora and RHEL alongside the
+  `.deb` packages: `mojian-<version>-1.x86_64.rpm` and
+  `mojian-<version>-1.aarch64.rpm` install with `dnf install`.
+
 ## 0.4.0
 
 - MyGo moves to v0.9.0. A focused element now scrolls into view (with

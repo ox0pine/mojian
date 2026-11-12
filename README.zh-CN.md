@@ -41,11 +41,14 @@
 
 墨间需要 GTK 3 和桌面会话。
 
-安装 Debian 包：
+安装 Debian 或 RPM 包：
 
 ```sh
-sudo apt install ./mojian_<版本>_<架构>.deb
+sudo apt install ./mojian_<版本>_<架构>.deb        # Debian、Ubuntu
+sudo dnf install ./mojian-<版本>-1.<rpm 架构>.rpm  # Fedora、RHEL
 ```
+
+`<架构>` 为 `amd64` 或 `arm64`；`<rpm 架构>` 为 `x86_64` 或 `aarch64`。
 
 如果想安装到用户目录、不需要 root：把 `install.sh` 和
 `mojian-<版本>-linux-<架构>.tar.gz` 放在同一目录，然后运行：
@@ -159,7 +162,7 @@ Markdown 窗格可在标题栏切换源码与预览。**设置 › 编辑器** �
 - **安装更新** 下载并校验签名。
 - **重启更新** 应用已暂存的更新并重新启动墨间。
 
-自动更新要求安装位置可写，例如 macOS 应用包、Linux 用户目录安装或 Windows 安装器。安装在 `/opt` 的 `.deb` 由包管理器负责更新。
+自动更新要求安装位置可写，例如 macOS 应用包、Linux 用户目录安装或 Windows 安装器。安装在 `/opt` 的 `.deb` 或 `.rpm` 由包管理器负责更新。
 
 ## 快捷键
 
@@ -228,7 +231,7 @@ go tool mygo build -platform linux/amd64,linux/arm64
 go tool mygo build -platform windows/amd64,windows/arm64
 ```
 
-产物位于 `build/<系统>-<架构>/`。macOS 生成 `.app` 与 `.dmg`；Linux 生成 `.tar.gz` 与 `.deb`；Windows 生成应用与 `mojian-setup-<版本>-<架构>.exe`。
+产物位于 `build/<系统>-<架构>/`。macOS 生成 `.app` 与 `.dmg`；Linux 生成 `.tar.gz`、`.deb` 与 `.rpm`；Windows 生成应用与 `mojian-setup-<版本>-<架构>.exe`。
 
 修改会话协议或 `cmd/mojian-server` 后，重新生成嵌入的远程二进制：
 
@@ -243,7 +246,7 @@ go generate ./internal/remotebin
 每次发布包含：
 
 - macOS：`mojian-<版本>-arm64.dmg` 和 `mojian-<版本>-amd64.dmg`
-- Linux：`mojian-<版本>-linux-{amd64,arm64}.tar.gz`、对应的 `.deb` 包和 `install.sh`
+- Linux：`mojian-<版本>-linux-{amd64,arm64}.tar.gz`、对应的 `.deb` 与 `.rpm` 包和 `install.sh`
 - Windows：`mojian-setup-<版本>-{amd64,arm64}.exe`、`install.ps1` 和 `mojian-<版本>-windows-{amd64,arm64}.tar.gz`
 - 签名更新包（`*-darwin-*.tar.gz`、`*-linux-*.tar.gz`、`*-windows-*.tar.gz`）与 `update-<target>.json` 清单
 - `SHA256SUMS`

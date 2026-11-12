@@ -235,6 +235,7 @@
     <p class="more">
       <a href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian-0.3.1-amd64.dmg" data-download="mac-amd64" data-i18n="dlIntel">Intel Mac 版</a>
       <a href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian_0.3.1_arm64.deb" data-download="linux-arm64" data-i18n="dlArm">Linux arm64 版</a>
+      <a href="https://github.com/ox0pine/mojian/releases" data-download="linux-amd64-rpm" data-i18n="dlRpm">Fedora / RHEL 版（RPM）</a>
       <a href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian-setup-0.3.1-arm64.exe" data-download="windows-arm64" data-i18n="dlWinArm">Windows arm64 版</a>
       <a href="https://github.com/ox0pine/mojian/releases" data-i18n="dlAll">所有版本与校验值</a>
     </p>
@@ -266,6 +267,7 @@ const T = {
     dlLinux: "下载 · amd64 .deb",
     dlIntel: "Intel Mac 版",
     dlArm: "Linux arm64 版",
+    dlRpm: "Fedora / RHEL 版（RPM）",
     dlWin: "下载 · x64 安装包",
     dlWinArm: "Windows arm64 版",
     dlAll: "所有版本与校验值",
@@ -281,6 +283,7 @@ const T = {
     dlLinux: "下載 · amd64 .deb",
     dlIntel: "Intel Mac 版",
     dlArm: "Linux arm64 版",
+    dlRpm: "Fedora / RHEL 版（RPM）",
     dlWin: "下載 · x64 安裝包",
     dlWinArm: "Windows arm64 版",
     dlAll: "所有版本與校驗值",
@@ -296,6 +299,7 @@ const T = {
     dlLinux: "Download · amd64 .deb",
     dlIntel: "Intel Mac",
     dlArm: "Linux arm64",
+    dlRpm: "Fedora / RHEL (RPM)",
     dlWin: "Download · x64 installer",
     dlWinArm: "Windows arm64",
     dlAll: "All releases & checksums",
@@ -311,6 +315,7 @@ const T = {
     dlLinux: "ダウンロード · amd64 .deb",
     dlIntel: "Intel Mac 版",
     dlArm: "Linux arm64 版",
+    dlRpm: "Fedora / RHEL 版（RPM）",
     dlWin: "ダウンロード · x64 インストーラー",
     dlWinArm: "Windows arm64 版",
     dlAll: "すべてのリリースとチェックサム",
@@ -389,6 +394,7 @@ async function loadRelease() {
   setDownload("mac-amd64", pickAsset(assets, /-amd64\.dmg$/));
   setDownload("linux-amd64", pickAsset(assets, /_amd64\.deb$/) || pickAsset(assets, /-linux-amd64\.tar\.gz$/));
   setDownload("linux-arm64", pickAsset(assets, /_arm64\.deb$/) || pickAsset(assets, /-linux-arm64\.tar\.gz$/));
+  setDownload("linux-amd64-rpm", pickAsset(assets, /-1\.x86_64\.rpm$/));
   setDownload("windows-amd64", pickAsset(assets, /-setup-.*-amd64\.exe$/));
   setDownload("windows-arm64", pickAsset(assets, /-setup-.*-arm64\.exe$/));
 

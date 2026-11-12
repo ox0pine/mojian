@@ -33,6 +33,7 @@ Windows has been a release target since 0.3.0.
 The workflow refuses a tag that does not match `mygo.json`, builds
 `mojian-X.Y.Z-arm64.dmg`, `mojian-X.Y.Z-amd64.dmg`,
 `mojian-X.Y.Z-linux-amd64.tar.gz`, `mojian-X.Y.Z-linux-arm64.tar.gz`,
+`mojian-X.Y.Z-1.x86_64.rpm`, `mojian-X.Y.Z-1.aarch64.rpm`,
 `mojian-setup-X.Y.Z-amd64.exe`, `mojian-setup-X.Y.Z-arm64.exe`,
 the signed `*-darwin-*.tar.gz`, `*-linux-*.tar.gz` and
 `*-windows-*.tar.gz` update archives, `update-<target>.json` manifests,
