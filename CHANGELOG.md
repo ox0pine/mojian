@@ -1,16 +1,14 @@
 # Changelog
 
-## Unreleased
-
-- RPM file names now match the other artifacts, without the package
-  release number: `mojian-<version>-x86_64.rpm` and
-  `mojian-<version>-aarch64.rpm`. The RPM metadata keeps its release.
-
 ## 0.4.1
 
 - Releases now publish RPM packages for Fedora and RHEL alongside the
-  `.deb` packages: `mojian-<version>-1.x86_64.rpm` and
-  `mojian-<version>-1.aarch64.rpm` install with `dnf install`.
+  `.deb` packages. RPM file names follow the other artifacts, without the
+  package release number: `mojian-<version>-x86_64.rpm` and
+  `mojian-<version>-aarch64.rpm` install with `dnf install`.
+- The app creates `~/Documents/Mojian` when it is missing, so a fresh
+  Linux install opens its own project instead of reporting that the
+  folder was not found.
 
 ## 0.4.0
 

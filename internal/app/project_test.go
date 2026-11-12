@@ -369,3 +369,22 @@ func TestEmptyExplorerPromptIsCentered(t *testing.T) {
 		t.Fatalf("the empty prompt sits near the top: header y=%.1f prompt y=%.1f", header.Y, prompt.Y)
 	}
 }
+
+// A fresh install has no ~/Documents/Mojian folder: opening the app's own
+// project creates it instead of failing with "no such file or directory".
+func TestOpenDefaultStoreCreatesMissingFolder(t *testing.T) {
+	startLocalServerForTest(t)
+	dir := filepath.Join(t.TempDir(), "Documents", "Mojian")
+	t.Setenv("MOJIAN_VAULT", dir)
+	a := &app{workspace: &workspace{}, dataDir: t.TempDir()}
+	s, err := a.openDefaultStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Dir != dir {
+		t.Errorf("default project: %q, want %q", s.Dir, dir)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Welcome.md")); err != nil {
+		t.Errorf("the welcome note was not written: %v", err)
+	}
+}

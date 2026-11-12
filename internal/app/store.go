@@ -32,6 +32,11 @@ func (a *app) openDefaultStore() (*store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A fresh install has no ~/Documents/Mojian, and the session server
+	// lists projects that exist: create the folder before opening it.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
 	s, err := a.openLocalStore(dir)
 	if err != nil {
 		return nil, err
