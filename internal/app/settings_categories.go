@@ -28,7 +28,7 @@ func commandAvailable(c *commands.Command) bool {
 	if !remoteSupported() && c == cmdSSH {
 		return false
 	}
-	if runtime.GOOS == "js" && (c == cmdTerminal || c == cmdOpenProject || c == cmdNewFolder) {
+	if runtime.GOOS == "js" && (c == cmdTerminal || c == cmdOpenProject || c == cmdNewFolder || c == cmdBranch) {
 		return false
 	}
 	return true

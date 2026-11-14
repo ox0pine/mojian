@@ -125,6 +125,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 			a.serverChip(c, k)
 		}
 		a.projectChip(c, k)
+		a.branchChip(c, k)
 		a.tabStrip(c, k)
 		if iconButton(c, k, "plus", "New Tab", 26, 16).
 			Tooltip(a.tip("New Tab", cmdNewTab)).Clicked() {

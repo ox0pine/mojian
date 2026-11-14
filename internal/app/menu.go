@@ -92,7 +92,7 @@ func (a *app) menu() *mygo.Menu {
 	if terminalsSupported() {
 		viewItems = append(viewItems, item(cmdTerminal))
 	}
-	viewItems = append(viewItems, item(cmdGit), item(cmdPalette), mygo.Separator(), item(cmdSettings),
+	viewItems = append(viewItems, item(cmdGit), item(cmdBranch), item(cmdPalette), mygo.Separator(), item(cmdSettings),
 		&mygo.MenuItem{Label: "Appearance", Submenu: []*mygo.MenuItem{
 			appearance("System", 0),
 			appearance("Light", 1),

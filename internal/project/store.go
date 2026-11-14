@@ -150,6 +150,50 @@ func (s *Store) Refresh() error {
 	return nil
 }
 
+// Reload reads the project again and replaces the text of every clean
+// note with what the disk holds now, so open panes follow a checkout
+// instead of showing the other branch. A note with unsaved edits keeps
+// its text: the person's text outranks the branch's. It must run on the
+// UI thread.
+func (s *Store) Reload() error {
+	if s.IsMemory() {
+		return nil
+	}
+	entries, bodies, err := s.ListFresh()
+	if err != nil {
+		return err
+	}
+	reset := func(n *Note, body string) {
+		n.Saved = body
+		n.Title = NoteTitle(body, n.Path)
+		if n.Buf != nil {
+			n.Buf.Reset(body)
+		}
+	}
+	for rel, body := range bodies {
+		if n := s.ByRel[rel]; n != nil && n.Loaded && !n.Dirty() && n.Saved != body {
+			reset(n, body)
+		}
+	}
+	// A body the listing left out, such as a file over its size cap,
+	// still has to reach an open pane.
+	for _, n := range s.Notes {
+		if !n.Loaded || n.Dirty() {
+			continue
+		}
+		if _, ok := bodies[n.Rel]; ok {
+			continue
+		}
+		data, err := s.FS.Read(n.Rel)
+		if err != nil || string(data) == n.Saved {
+			continue
+		}
+		reset(n, string(data))
+	}
+	s.Apply(entries, bodies)
+	return nil
+}
+
 // AssetByRel returns the viewer asset at rel, if it is in the project.
 func (s *Store) AssetByRel(rel string) *Asset {
 	if s == nil {

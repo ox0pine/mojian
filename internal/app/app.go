@@ -284,7 +284,8 @@ func (a *app) open() {
 		}
 		a.rememberProject(s.Dir)
 		a.saveSettings()
-		if a.NoRestoreLayout || !a.restoreLayout() {
+		restored := !a.NoRestoreLayout && a.restoreLayout()
+		if !restored {
 			a.focusFirstNote()
 		} else if t := a.tab(); t != nil {
 			a.focusReq = t.editorPane()
@@ -305,6 +306,7 @@ func (a *app) open() {
 		a.win = a.createWindow("main")
 		a.checkHosts()
 		a.registerActiveWorkspace()
+		a.refreshBranch()
 		a.updateTitle()
 		a.reconnectActiveRemoteAsync()
 		return
@@ -312,6 +314,7 @@ func (a *app) open() {
 	a.win = a.createWindow("main")
 	a.checkHosts()
 	a.registerActiveWorkspace()
+	a.refreshBranch()
 	a.updateTitle()
 }
 

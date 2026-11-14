@@ -39,6 +39,7 @@ func (a *app) initCommands() {
 	r.Bind("toggle-tree", func() { a.toggleTree() })
 	r.Bind("toggle-terminal", func() { a.toggleTerminal() })
 	r.Bind("git", func() { a.toggleGit() })
+	r.Bind("switch-branch", func() { a.openBranchPicker() })
 	r.Bind("settings", func() { openSettingsCommand(a) })
 	r.Bind("ssh", func() { a.openSSHPicker() })
 	a.commands = r

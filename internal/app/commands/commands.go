@@ -74,6 +74,7 @@ var Palette = []*Command{
 	{ID: "toggle-tree", Title: "Toggle File Tree", Accel: "CmdOrCtrl+B", Glyph: "panel-left"},
 	{ID: "toggle-terminal", Title: "Toggle Terminal", Accel: "Ctrl+`", Glyph: "square-terminal"},
 	{ID: "git", Title: "Git Diff", Accel: "Ctrl+Shift+G", Glyph: "git-branch"},
+	{ID: "switch-branch", Title: "Switch Branch…", Accel: "CmdOrCtrl+Shift+B", Glyph: "git-branch"},
 	{ID: "settings", Title: "Settings…", Accel: "CmdOrCtrl+,", Glyph: "settings"},
 	{ID: "ssh", Title: "New SSH Terminal…", Accel: "CmdOrCtrl+Shift+S", Glyph: "server"},
 }

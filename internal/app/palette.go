@@ -41,6 +41,7 @@ var (
 	cmdTree        = commands.ByID("toggle-tree")
 	cmdTerminal    = commands.ByID("toggle-terminal")
 	cmdGit         = commands.ByID("git")
+	cmdBranch      = commands.ByID("switch-branch")
 	cmdSettings    = commands.ByID("settings")
 	cmdSSH         = commands.ByID("ssh")
 )

@@ -35,6 +35,7 @@ type workspace struct {
 	tabScroll  ui.ScrollState
 
 	git       gitpage.Page
+	branch    branchState
 	revealTab bool
 }
 
@@ -83,6 +84,10 @@ func (a *app) stashActiveWorkspace() {
 	a.git.DiffSeq++
 	a.git.Loading = false
 	a.git.DiffLoad = false
+	// A branch read from this project must not land in the next one.
+	a.branch.seq++
+	a.branch.loading = false
+	a.branch.queued = false
 	if key := a.activeWorkspaceKey(); key != "" {
 		a.workspace.key = key
 		a.workspaces[key] = a.workspace
@@ -113,6 +118,14 @@ func (a *app) activateWorkspace(ws *workspace) {
 	a.closeTransientUI()
 	// A cut is a pending one-shot action for the project it was made in.
 	a.fileCut = false
+	// The branch may have moved while this project was off screen.
+	a.branch.seq++
+	a.branch.loading = false
+	a.branch.queued = false
+	a.branch.open = false
+	a.branch.creating = false
+	a.branch.err = ""
+	a.refreshBranch()
 	a.updateTitle()
 	a.invalidate()
 }
@@ -139,6 +152,9 @@ func (a *app) closeModals() {
 	a.quickOpen = false
 	a.sshPick = false
 	a.remotePicker = false
+	a.branch.open = false
+	a.branch.creating = false
+	a.branch.err = ""
 }
 
 // closeTransientUI drops the pickers and edits that belong to the
