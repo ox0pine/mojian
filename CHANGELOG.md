@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.3
+
+- The three title-bar chips — server, project and branch — now share one
+  look: a 15-pixel glyph, the same weight and color, and one maximum width,
+  so the group reads as peers instead of the server chip looking disabled.
+- The command palette, quick open and the SSH picker are one sheet: 560 by
+  440 pinned under the title bar, a 48-pixel search row with a close
+  button, and a list that scrolls after nine rows.
+- Every list row in the window — quick open, a blank pane's picker, the
+  Explorer's search results, the welcome page's recents, both folder
+  pickers and the Git change list — is 34 tall with 13-pixel titles and
+  12-pixel details. Empty pages and empty lists use one block and one
+  line, icon buttons come in four sizes, and every dialog takes the same
+  shadow.
+
 ## 0.4.2
 
 - The title bar shows the checked-out Git branch right of the project. Its
