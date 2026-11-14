@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- The title bar shows the checked-out Git branch right of the project. Its
+  menu switches to another branch or creates one (`⌘⇧B`, or View → Switch
+  Branch…), locally and on remote projects. A switch reloads the project
+  from the branch — Explorer tree, assets and every note without unsaved
+  edits — and is refused, with the reason in the banner, while a note is
+  dirty. Folders outside a repository show no chip.
+
 ## 0.4.1
 
 - Releases now publish RPM packages for Fedora and RHEL alongside the
