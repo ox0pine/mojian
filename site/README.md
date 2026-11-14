@@ -62,3 +62,20 @@ move those files into `src/assets/` so Vite hashes and rebases them.
 
 The social card is `public/home.jpg`, 1200x630, referenced by `og:image` and the
 JSON-LD `screenshot`.
+
+## Vercel
+
+The `mojian` project deploys the site from this directory. Project settings:
+
+| Setting | Value |
+|---|---|
+| Root Directory | `site` |
+| Framework Preset | Vite |
+| Install Command | `bun install` |
+| Build Command | `bun run build` |
+| Output Directory | `dist` |
+| Node.js Version | 26.x |
+
+Production aliases include `mojian.ox0pine.cn`, `mojian-one.vercel.app` and
+`mojian-git-main-ox0pine.vercel.app`. A push to `main` builds and promotes the
+new deployment; no separate static upload is needed.
