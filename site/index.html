@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mojian · 墨间：字在纸上，工具退后</title>
+<meta name="description" content="Mojian 是一个安静的原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。支持 macOS、Linux 与 Windows。">
+<meta name="theme-color" content="#fcfbf9">
+<meta property="og:title" content="Mojian · 墨间：字在纸上，工具退后">
+<meta property="og:description" content="安静的原生纯文本编辑器。标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。macOS、Linux 与 Windows，开源免费。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mojian">
+<meta property="og:url" content="https://github.com/ox0pine/mojian">
+<meta property="og:image" content="https://raw.githubusercontent.com/ox0pine/mojian/main/site/public/home.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" href="/fonts/geist-latin.woff2" type="font/woff2" crossorigin>
+<link rel="preload" as="font" href="/fonts/geist-mono-latin.woff2" type="font/woff2" crossorigin>
+<link rel="preload" as="image" href="/home-1000.webp" imagesrcset="/home-1000.webp 1000w, /home-1466.webp 1466w" imagesizes="(max-width: 1160px) calc(100vw - 32px), 1040px" fetchpriority="high">
+<script>
+// The theme is chosen before the first paint, so the page never flashes the wrong one.
+try {
+  var saved = localStorage.getItem("mojian:theme");
+  var dark = saved === "dark" || (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#0e0d0b" : "#fcfbf9";
+} catch (e) {}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Mojian",
+  "alternateName": "墨间",
+  "operatingSystem": "macOS 13+, Linux, Windows 10 1809+",
+  "applicationCategory": "DeveloperApplication",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://opensource.org/license/mit",
+  "url": "https://github.com/ox0pine/mojian",
+  "downloadUrl": "https://github.com/ox0pine/mojian/releases/latest",
+  "screenshot": "https://raw.githubusercontent.com/ox0pine/mojian/main/site/public/home.jpg"
+}
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

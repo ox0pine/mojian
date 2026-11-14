@@ -30,6 +30,7 @@ Tests: [docs/testing.md](docs/testing.md). Driving the UI headlessly: [docs/harn
 | `cmd/mojian-server/` | The per-user server uploaded to SSH hosts. Never installed as a service. |
 | `cmd/harness/` | Dev-only MCP server that renders the real views headlessly over disposable projects. |
 | `docs/subsystems/` | Contract pages for the UI shell, storage, session/remote, Git, persistence and themes. |
+| `site/` | The marketing website: React 19, Vite 8 and Base UI. It is the repo's one Node/Bun build; the app and its `go test` path do not use it. Commands, layout and deployment are in `site/README.md`. |
 | `internal/app/` | The window in one package: `app.go` state and `Run`, `view.go` root, `window.go` lifecycle, `model.go` split tree, `layout.go`, `store.go` openers, `menu.go`, `context_menu.go` (the title-bar menus' shared pieces), `style.go` (the one list row, section label and empty states), `sheet.go` (the search sheets' shared header), `palette.go`, `pane.go` card and drag/drop, `pane_actions.go`, `splitter.go`, `term.go`, `remote_project.go` and `remote_picker.go`, `settings_file.go`, `settings_host.go` and `settings_hosts.go`, `headless.go`, `git_bridge.go` and `branch.go`. `widgets_bridge.go` and `aliases.go` are the names this package gives lower ones. Its UI layers are subpackages: `explorer/`, `settingsui/`, `widgets/`, `commands/`. |
 | `internal/project/` | `Store`, `Note`, `Asset` and `TreeNode`: listing, save, rename/copy/move, asset cache, editor buffers. |
 | `internal/fs/` | Project storage: `Backend`, `Direct`, `Memory`, `Server`, path guards, atomic writes and cached-file names. |
@@ -65,11 +66,15 @@ CGO_ENABLED=0 go test ./...
 go test ./internal/app -run '^TestGitPage$' -v
 go test -race ./internal/session ./internal/app
 go generate ./internal/remotebin  # rebuild embedded Linux servers (needed after server/protocol changes)
+cd site && bun install    # the website only; never needed for the app
+cd site && bun run dev    # website at http://127.0.0.1:5173
+cd site && bun run build  # typecheck + site/dist
 ```
 
 The Go version, the MyGo pin and `mygo` itself all live in `go.mod`; there is no global install, no
-Makefile, no justfile, no Bun/Node. `go tool mygo migrate-ui .` previews UI API migrations for
-MyGo version bumps (`-write` applies).
+Makefile and no justfile. The app has no Bun or Node build. `site/` is the website's own React/Vite
+project, documented in [site/README.md](site/README.md), and `bun run build` there is the only site
+build. `go tool mygo migrate-ui .` previews UI API migrations for MyGo version bumps (`-write` applies).
 
 ## Constraints
 
