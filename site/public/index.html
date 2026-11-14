@@ -1,183 +1,479 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Mojian · 墨间 — 字在纸上，工具退后</title>
+<title>Mojian · 墨间：字在纸上，工具退后</title>
 <meta name="description" content="Mojian 是一个安静的原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。支持 macOS、Linux 与 Windows。">
-<meta name="theme-color" content="#14161A">
-<meta property="og:title" content="Mojian · 墨间 — 字在纸上，工具退后">
+<meta name="theme-color" content="#fcfbf9">
+<meta property="og:title" content="Mojian · 墨间：字在纸上，工具退后">
 <meta property="og:description" content="安静的原生纯文本编辑器。标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。macOS、Linux 与 Windows，开源免费。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://github.com/ox0pine/mojian">
-<!-- 部署到正式域名后，把 og:image 换到该域名下的 /home.jpg。 -->
 <meta property="og:image" content="https://raw.githubusercontent.com/ox0pine/mojian/main/site/public/home.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="icon.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="preload" as="image" href="bg.webp" type="image/webp">
-<link rel="preload" as="image" href="home-1000.webp" imagesrcset="home-1000.webp 1000w, home-1466.webp 1466w" imagesizes="(max-width: 1080px) calc(100vw - 32px), 1040px" fetchpriority="high">
+<link rel="preload" as="font" href="fonts/geist-latin.woff2" type="font/woff2" crossorigin>
+<link rel="preload" as="font" href="fonts/geist-mono-latin.woff2" type="font/woff2" crossorigin>
+<link rel="preload" as="image" href="home-1000.webp" imagesrcset="home-1000.webp 1000w, home-1466.webp 1466w" imagesizes="(max-width: 1120px) calc(100vw - 48px), 1072px" fetchpriority="high">
+<script>
+// The theme is chosen before the first paint, so the page never flashes the wrong one.
+try {
+  var saved = localStorage.getItem("mojian:theme");
+  var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#0e0d0b" : "#fcfbf9";
+} catch (e) {}
+</script>
 <style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    src: url("fonts/geist-latin.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Geist Mono";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    src: url("fonts/geist-mono-latin.woff2") format("woff2");
+  }
+
   :root {
     color-scheme: light;
-    --ink: #1F1B16;
-    --paper: #FBF7EF;
-    --cursor: #E4653F;
-    --blush: #E9A088;
-    /* Windows keeps its own Fluent blue, so the third download reads as Windows at a glance. */
-    --win: #0F6CBD;
-    --win-hover: #0A5AA6;
-    --glass: rgba(15, 20, 26, .46);
-    --glass-line: rgba(247, 244, 236, .18);
-    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Segoe UI", "Microsoft YaHei", Inter, Helvetica, Arial, sans-serif;
-    --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+    --bg: #fcfbf9;
+    --fg: #1c1917;
+    --muted: #f4f1ec;
+    --muted-fg: #6f6a63;
+    --faint: #767067;
+    --border: #e7e1d8;
+    --border-strong: #d7d0c5;
+    --card: #ffffff;
+    --code: #f8f5f0;
+    --accent: #b8451f;
+    --accent-soft: rgba(184, 69, 31, .09);
+    --shadow: 0 26px 70px -30px rgba(43, 34, 26, .35), 0 8px 24px -18px rgba(43, 34, 26, .25);
+    --header: 56px;
+    --radius: 10px;
+    --radius-sm: 8px;
+    --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e0d0b;
+    --fg: #f5f2ec;
+    --muted: #1a1814;
+    --muted-fg: #a7a099;
+    --faint: #8d867e;
+    --border: rgba(245, 242, 236, .12);
+    --border-strong: rgba(245, 242, 236, .22);
+    --card: #15130f;
+    --code: #12110e;
+    --accent: #ff8a63;
+    --accent-soft: rgba(255, 138, 99, .13);
+    --shadow: 0 30px 80px -30px rgba(0, 0, 0, .85), 0 10px 30px -20px rgba(0, 0, 0, .7);
+  }
+
   * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--header) + 24px);
+    -webkit-text-size-adjust: 100%;
+  }
   body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
     font-family: var(--font-sans);
-    color: var(--paper);
-    /* A soft dark scrim keeps the type readable over the photograph. */
-    background:
-      radial-gradient(ellipse 62% 50% at 50% 24%, rgba(9, 13, 18, .48), rgba(9, 13, 18, 0) 74%),
-      linear-gradient(to bottom, rgba(9, 13, 18, .40), rgba(9, 13, 18, .04) 38%, rgba(9, 13, 18, .24) 100%),
-      #14161A url(bg.webp) center 30% / cover no-repeat;
+    font-size: 15px;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    overflow-x: hidden;
   }
-  .page { min-height: 100svh; display: flex; flex-direction: column; position: relative; z-index: 0; }
-  a { color: inherit; }
-  a:focus-visible, select:focus-visible { outline: 2px solid var(--cursor); outline-offset: 3px; }
+  ::selection { background: var(--accent-soft); color: var(--fg); }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  .container { width: min(1120px, 100% - 48px); margin-inline: auto; }
 
-  nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 72px; padding: 0 max(18px, 3vw); }
-  .brand { display: flex; align-items: center; color: var(--paper); text-decoration: none; }
-  .brand img { display: block; height: 30px; width: auto; }
-  .nav-end { display: flex; align-items: center; gap: 8px; }
-  .pill-link {
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 999px;
-    color: var(--paper); text-decoration: none; font-size: 13.5px; font-weight: 550; font-family: var(--font-sans);
-    background: var(--glass); border: 1px solid var(--glass-line);
-    backdrop-filter: blur(14px) saturate(1.35); -webkit-backdrop-filter: blur(14px) saturate(1.35);
-    box-shadow: 0 1px 0 rgba(255, 255, 255, .10) inset;
-    transition: background-color .15s, border-color .15s;
+  /* Header: a hairline over a blurred page, as on the reference. */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: var(--header);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    backdrop-filter: blur(20px) saturate(1.4);
   }
-  .pill-link:hover { background-color: rgba(15, 20, 26, .64); border-color: rgba(255, 255, 255, .34); }
-  .pill-link svg { width: 16px; height: 16px; flex: none; }
-  .lang {
-    appearance: none; -webkit-appearance: none; cursor: pointer; font: inherit; font-size: 13px;
-    padding: 0 29px 0 13px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23FBF7EF' stroke-width='1.6'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 12px center;
+  .bar { height: 100%; display: flex; align-items: center; gap: 24px; }
+  .brand { display: flex; align-items: center; color: var(--fg); flex: none; }
+  .brand-mark {
+    display: block;
+    width: 126px;
+    height: 30px;
+    background: currentColor;
+    -webkit-mask: url("logo.svg") no-repeat left center / contain;
+    mask: url("logo.svg") no-repeat left center / contain;
   }
-  .lang option { color: var(--ink); background: var(--paper); }
+  .brand-mark.small { width: 101px; height: 24px; }
+  .main-nav { display: flex; align-items: center; gap: 20px; font-size: 14px; color: var(--muted-fg); }
+  .main-nav a { transition: color .15s ease; }
+  .main-nav a:hover { color: var(--fg); }
+  .nav-end { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted-fg);
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+  }
+  .icon-btn:hover { background: var(--muted); color: var(--fg); }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .lang-select {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 32px;
+    padding: 0 28px 0 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238a847b' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 9px center;
+    color: var(--muted-fg);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+  }
+  .lang-select:hover { background-color: var(--muted); color: var(--fg); }
+  .lang-select option { color: var(--fg); background: var(--card); }
+  .theme-toggle .moon { display: none; }
+  [data-theme="dark"] .theme-toggle .moon { display: block; }
+  [data-theme="dark"] .theme-toggle .sun { display: none; }
 
-  header { text-align: center; padding: clamp(10px, 3.2vh, 44px) 16px 0; }
-  .badge {
-    display: inline-flex; align-items: center; gap: 8px; height: 29px; padding: 0 12px 0 4px; border-radius: 999px;
-    font-size: 13px; font-weight: 550; color: rgba(251, 247, 239, .92);
-    background: var(--glass); border: 1px solid var(--glass-line);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  /* Hero */
+  .hero { padding: clamp(64px, 10vw, 104px) 0 48px; text-align: center; }
+  .hero .container { display: flex; flex-direction: column; align-items: center; }
+  .version {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 4px 11px 4px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--muted-fg);
+    font-size: 12.5px;
+    transition: border-color .15s ease;
   }
-  .badge b { padding: 2px 8px; border-radius: 999px; background: rgba(233, 160, 136, .18); color: #F4C9B9; font-size: 11.5px; font-weight: 650; letter-spacing: .01em; }
+  .version:hover { border-color: var(--border-strong); }
+  .version b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .version span { text-wrap: balance; }
+  .version .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
   h1 {
-    margin: clamp(15px, 2.5vh, 26px) 0 0;
-    font-family: var(--font-serif);
-    font-size: clamp(42px, 5.6vw, 78px);
-    line-height: 1.06;
-    font-weight: 500;
-    letter-spacing: -.025em;
-    color: var(--paper);
-    text-shadow: 0 2px 30px rgba(4, 6, 9, .55);
+    margin: 24px 0 0;
+    font-size: clamp(40px, 6.4vw, 64px);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -.045em;
     text-wrap: balance;
   }
-  h1 span { color: var(--blush); }
+  h1 span { display: block; color: var(--muted-fg); }
+  :lang(zh) h1, :lang(ja) h1 { letter-spacing: -.02em; }
   .lede {
-    max-width: 620px; margin: clamp(13px, 2.1vh, 21px) auto 0;
-    font-size: clamp(15px, 1.2vw, 17px); line-height: 1.65; font-weight: 450;
-    color: rgba(251, 247, 239, .94); text-shadow: 0 1px 16px rgba(4, 6, 9, .8), 0 0 2px rgba(4, 6, 9, .45); text-wrap: balance;
+    max-width: 640px;
+    margin: 20px 0 0;
+    color: var(--muted-fg);
+    font-size: 16px;
+    line-height: 1.7;
+    text-wrap: pretty;
+  }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 28px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 16px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .06s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .btn-primary { background: var(--fg); color: var(--bg); }
+  .btn-primary:hover { background: color-mix(in srgb, var(--fg) 86%, var(--bg)); }
+  .btn-secondary { background: var(--card); border-color: var(--border); color: var(--fg); }
+  .btn-secondary:hover { background: var(--muted); border-color: var(--border-strong); }
+  .platforms {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 16px;
+    margin-top: 18px;
+    font-size: 12.5px;
+    color: var(--muted-fg);
+  }
+  .platforms a {
+    text-decoration: underline;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 3px;
+    transition: color .15s ease, text-decoration-color .15s ease;
+  }
+  .platforms a:hover { color: var(--fg); text-decoration-color: currentColor; }
+
+  /* Product proof */
+  .proof { padding: 8px 0 0; }
+  .frame {
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+  .frame img { display: block; width: 100%; height: auto; border-radius: 9px; }
+  .caption { margin: 12px 0 0; text-align: center; color: var(--faint); font-size: 12.5px; }
+
+  /* Facts */
+  .stats { margin-top: 48px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+  .stat { display: flex; flex-direction: column-reverse; justify-content: flex-end; padding: 22px 8px; text-align: center; }
+  .stat + .stat { border-left: 1px solid var(--border); }
+  .stat dd {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat dt { margin: 5px 0 0; color: var(--muted-fg); font-size: 12px; }
+
+  /* Sections */
+  .section { padding: clamp(72px, 9vw, 104px) 0; }
+  .section + .section { border-top: 1px solid var(--border); }
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+  }
+  h2 {
+    margin: 0;
+    font-size: clamp(28px, 3.6vw, 38px);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -.035em;
+    text-wrap: balance;
+  }
+  .section-lede { max-width: 640px; margin: 14px 0 0; color: var(--muted-fg); font-size: 15px; text-wrap: pretty; }
+  .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+  .head-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding-bottom: 3px;
+    color: var(--muted-fg);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .head-link:hover { color: var(--fg); }
+  .head-link svg { width: 14px; height: 14px; }
+
+  /* Features */
+  .feature-grid {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+  }
+  .feature { padding: 26px 24px 28px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .feature .ico {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    color: var(--fg);
+  }
+  .feature .ico svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .feature h3 { margin: 16px 0 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+  .feature p { margin: 6px 0 0; color: var(--muted-fg); font-size: 13.5px; line-height: 1.65; }
+
+  /* Files */
+  .files-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 72px); align-items: center; }
+  .points { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 12px; }
+  .points li { display: flex; gap: 10px; color: var(--muted-fg); font-size: 14px; }
+  .points svg {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .tree-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--code);
+    overflow: hidden;
+  }
+  .tree-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted-fg);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+  .tree-head .tag { color: var(--faint); }
+  .tree {
+    margin: 0;
+    padding: 16px 18px 20px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.9;
+    color: var(--muted-fg);
+  }
+  .tree .dir { color: var(--fg); font-weight: 500; }
+  .tree .file { color: var(--muted-fg); }
+  .tree-caption { margin: 12px 2px 0; color: var(--faint); font-size: 12.5px; }
+
+  /* Downloads */
+  .download-grid { margin-top: 40px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .platform-card {
+    display: flex;
+    flex-direction: column;
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+  }
+  .platform-head { display: flex; align-items: center; gap: 10px; }
+  .platform-head svg { width: 20px; height: 20px; flex: none; }
+  .platform-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .platform-head .tag { margin-left: auto; color: var(--faint); font-family: var(--font-mono); font-size: 11.5px; }
+  .platform-card p { margin: 10px 0 0; color: var(--muted-fg); font-size: 13px; }
+  .platform-card .btn { margin-top: 18px; width: 100%; }
+  .sub-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 12.5px; }
+  .sub-links a { color: var(--muted-fg); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+  .sub-links a:hover { color: var(--fg); text-decoration-color: currentColor; }
+  .download-note { margin: 18px 0 0; color: var(--faint); font-size: 12.5px; }
+
+  /* Footer */
+  .site-footer { border-top: 1px solid var(--border); padding: 40px 0 32px; }
+  .footer-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; }
+  .footer-brand p { margin: 10px 0 0; color: var(--muted-fg); font-size: 13px; }
+  .footer-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 20px; font-size: 13px; color: var(--muted-fg); }
+  .footer-links a:hover { color: var(--fg); }
+  .footer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--faint);
+    font-size: 12px;
   }
 
-  .actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: clamp(20px, 3.1vh, 32px); }
-  .dl {
-    display: inline-flex; align-items: center; gap: 12px; height: 56px; padding: 0 22px 0 18px; border-radius: 15px;
-    text-decoration: none; text-align: left;
-    transition: transform .16s, box-shadow .16s, background-color .16s;
+  :lang(zh-Hant) {
+    --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Segoe UI", Helvetica, Arial, sans-serif;
   }
-  .dl:hover { transform: translateY(-1px); }
-  .dl svg { width: 23px; height: 23px; flex: none; }
-  .dl small { display: block; font-size: 11.5px; font-weight: 500; opacity: .7; line-height: 1.2; }
-  .dl strong { display: block; font-size: 17px; font-weight: 650; line-height: 1.25; letter-spacing: -.01em; }
-  .dl.mac { background: var(--paper); color: var(--ink); box-shadow: 0 1px 0 rgba(255, 255, 255, .55) inset, 0 12px 30px -10px rgba(0, 0, 0, .65); }
-  .dl.mac:hover { background-color: #FFFFFF; box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 16px 34px -10px rgba(0, 0, 0, .68); }
-  .dl.linux { color: var(--paper); background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(16px) saturate(1.25); -webkit-backdrop-filter: blur(16px) saturate(1.25); box-shadow: 0 12px 30px -14px rgba(0, 0, 0, .7); }
-  .dl.linux:hover { background-color: rgba(15, 20, 26, .64); }
-  .dl.win { color: #fff; background: var(--win); box-shadow: 0 1px 0 rgba(255, 255, 255, .22) inset, 0 12px 30px -12px rgba(0, 0, 0, .7); }
-  .dl.win:hover { background-color: var(--win-hover); box-shadow: 0 1px 0 rgba(255, 255, 255, .26) inset, 0 16px 34px -12px rgba(0, 0, 0, .72); }
-
-  .more {
-    display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 20px;
-    width: max-content; max-width: calc(100% - 32px); margin: 14px auto 0; padding: 7px 16px; border-radius: 999px;
-    font-size: 12.5px; font-weight: 500;
-    background: var(--glass); border: 1px solid var(--glass-line);
-    backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
-  }
-  .more a { color: rgba(251, 247, 239, .92); text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .40); text-underline-offset: 3px; text-shadow: 0 1px 8px rgba(4, 6, 9, .5); }
-  .more a:hover { color: #fff; text-decoration-color: #fff; }
-
-  /* The app window rises from the bottom edge; its lower part is cut off by the screen. */
-  .stage { flex: 1; min-height: 230px; display: flex; justify-content: center; align-items: flex-start; padding: clamp(22px, 4.2vh, 52px) 16px 0; overflow: hidden; }
-  .window {
-    width: min(1040px, 100%, 112svh); aspect-ratio: 1466 / 919; border-radius: 10px; overflow: hidden;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, .10), 0 34px 80px -22px rgba(0, 0, 0, .75), 0 14px 32px -14px rgba(0, 0, 0, .55);
-    animation: window-in .8s cubic-bezier(.22, .75, .2, 1) both;
-  }
-  .window img { display: block; width: 100%; height: 100%; }
-  @keyframes window-in {
-    from { opacity: 0; transform: translateY(22px) scale(.994); }
-    to { opacity: 1; transform: none; }
+  :lang(ja) {
+    --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", "Segoe UI", Helvetica, Arial, sans-serif;
   }
 
-  footer {
-    position: absolute; right: 18px; bottom: 14px; z-index: 2;
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 8px 14px; border-radius: 999px;
-    font-size: 11.5px; color: rgba(251, 247, 239, .86);
-    background: var(--glass); border: 1px solid var(--glass-line);
-    backdrop-filter: blur(12px) saturate(1.2); -webkit-backdrop-filter: blur(12px) saturate(1.2);
-  }
-  footer a { color: inherit; text-decoration: none; }
-  footer a:hover { color: #fff; }
-
-  :lang(zh-Hant) { --font-sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Segoe UI", Helvetica, Arial, sans-serif; --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "Noto Serif CJK TC", Georgia, serif; }
-  :lang(ja) { --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", "Segoe UI", Helvetica, Arial, sans-serif; --font-serif: "Iowan Old Style", "Palatino Linotype", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif; }
-  :lang(en) h1 { letter-spacing: -.032em; }
-
-  @media (min-height: 700px) and (min-width: 900px) {
-    .page { height: 100svh; }
-    .stage { min-height: 0; }
+  @media (max-width: 900px) {
+    .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .files-grid { grid-template-columns: 1fr; }
+    .download-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 720px) {
-    nav { height: 60px; padding: 0 16px; }
-    .brand img { height: 24px; }
-    .nav-end { gap: 6px; }
-    .pill-link { height: 34px; padding: 0 12px; }
-    .gh span { display: none; }
-    .actions { flex-direction: column; align-items: stretch; max-width: 340px; margin-left: auto; margin-right: auto; }
-    .dl { justify-content: center; }
-    .stage { min-height: 260px; padding-top: 24px; }
-    footer { position: static; justify-content: center; gap: 12px; margin: 18px auto 22px; max-width: calc(100% - 32px); }
+    .container { width: min(1120px, 100% - 32px); }
+    .main-nav { display: none; }
+    .brand-mark { width: 110px; height: 26px; }
+    .hero { padding-top: 56px; }
+    .lede { font-size: 15px; }
+    .actions { width: 100%; max-width: 340px; }
+    .actions .btn { flex: 1 1 100%; }
+    .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat:nth-child(3) { border-left: 0; border-top: 1px solid var(--border); }
+    .stat:nth-child(4) { border-top: 1px solid var(--border); }
+    .section-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .footer-top { flex-direction: column; gap: 22px; }
+    .footer-links { justify-content: flex-start; }
+    .footer-bottom { flex-direction: column; align-items: flex-start; }
   }
-  @media (max-width: 480px) {
+  @media (max-width: 360px) {
+    .version { gap: 6px; padding: 4px 9px; font-size: 12px; }
+  }
+  @media (max-width: 600px) {
+    .feature-grid { grid-template-columns: 1fr; }
     h1 { font-size: clamp(36px, 10.5vw, 48px); }
-    .lede { font-size: 14.5px; }
+    .platforms { max-width: 340px; }
+    .version { border-radius: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .window { animation: none; }
-    .dl, .pill-link { transition: none; }
-    .dl:hover { transform: none; }
+    html { scroll-behavior: auto; }
+    .btn, .icon-btn, .main-nav a, .platforms a, .version, .lang-select { transition: none; }
+    .btn:active { transform: none; }
   }
 </style>
 <script type="application/ld+json">
@@ -197,128 +493,494 @@
 </script>
 </head>
 <body>
-<div class="page">
-  <nav>
-    <a class="brand" href="https://github.com/ox0pine/mojian" aria-label="Mojian"><img src="logo.svg" alt="Mojian" width="126" height="30"></a>
+<header class="site-header">
+  <div class="container bar">
+    <a class="brand" href="#top" aria-label="Mojian">
+      <span class="brand-mark" aria-hidden="true"></span>
+    </a>
+    <nav class="main-nav" aria-label="Primary">
+      <a href="#features" data-i18n="navFeatures">功能</a>
+      <a href="#files" data-i18n="navFiles">文件</a>
+      <a href="#download" data-i18n="navDownload">下载</a>
+    </nav>
     <div class="nav-end">
-      <select class="pill-link lang" id="lang" aria-label="Language">
+      <select class="lang-select" id="lang" aria-label="Language">
         <option value="zh-Hans">简体中文</option>
         <option value="zh-Hant">繁體中文</option>
         <option value="en">English</option>
         <option value="ja">日本語</option>
       </select>
-      <a class="pill-link gh" href="https://github.com/ox0pine/mojian" aria-label="GitHub">
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        <span>GitHub</span>
+      <button class="icon-btn theme-toggle" id="theme" type="button" aria-label="切换明暗" aria-pressed="false">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a class="icon-btn" href="https://github.com/ox0pine/mojian" aria-label="GitHub">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
       </a>
     </div>
-  </nav>
+  </div>
+</header>
 
-  <header>
-    <div class="badge"><b data-version>v0.3.1</b><span data-i18n="badge">开源免费 · macOS 13+ · Linux · Windows 10+</span></div>
-    <h1 data-i18n-html="title">字在纸上<br><span>工具退后</span></h1>
-    <p class="lede" data-i18n="lede">原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。</p>
-    <div class="actions">
-      <a class="dl mac" href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian-0.3.1-arm64.dmg" data-download="mac-arm64">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
-        <span><small data-i18n="dlMac">下载 · Apple Silicon</small><strong>macOS</strong></span>
+<main id="top">
+  <section class="hero">
+    <div class="container">
+      <a class="version" href="https://github.com/ox0pine/mojian/releases/latest">
+        <span class="dot" aria-hidden="true"></span>
+        <b data-version>v0.4.2</b>
+        <span data-i18n="badge">开源免费 · macOS · Linux · Windows</span>
       </a>
-      <a class="dl linux" href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian_0.3.1_amd64.deb" data-download="linux-amd64">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z"/></svg>
-        <span><small data-i18n="dlLinux">下载 · amd64 .deb</small><strong>Linux</strong></span>
-      </a>
-      <a class="dl win" href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian-setup-0.3.1-amd64.exe" data-download="windows-amd64">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 4.8 10.2 3.8v7.7H3V4.8Zm8.2-1.1L21 2.4v9.1h-9.8V3.7ZM3 12.5h7.2v7.7L3 19.2v-6.7Zm8.2 0H21v9.1l-9.8-1.3v-7.8Z"/></svg>
-        <span><small data-i18n="dlWin">下载 · x64 安装包</small><strong>Windows</strong></span>
-      </a>
+      <h1 data-i18n-html="title">字在纸上<br><span>工具退后</span></h1>
+      <p class="lede" data-i18n="lede">原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span data-i18n="ctaDownload">下载 Mojian</span>
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/ox0pine/mojian">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-i18n="ctaGithub">在 GitHub 查看</span>
+        </a>
+      </div>
+      <p class="platforms">
+        <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-0.4.2-amd64.dmg" data-download="mac-amd64" data-i18n="dlIntel">Intel Mac 版</a>
+        <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian_0.4.2_arm64.deb" data-download="linux-arm64" data-i18n="dlArm">Linux arm64 版</a>
+        <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-0.4.2-x86_64.rpm" data-download="linux-amd64-rpm" data-i18n="dlRpm">Fedora / RHEL 版（RPM）</a>
+        <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-setup-0.4.2-amd64.exe" data-download="windows-amd64" data-i18n="dlWinX64">Windows x64 版</a>
+        <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-setup-0.4.2-arm64.exe" data-download="windows-arm64" data-i18n="dlWinArm">Windows arm64 版</a>
+        <a href="https://github.com/ox0pine/mojian/releases" data-i18n="dlAll">所有版本与校验值</a>
+      </p>
     </div>
-    <p class="more">
-      <a href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian-0.3.1-amd64.dmg" data-download="mac-amd64" data-i18n="dlIntel">Intel Mac 版</a>
-      <a href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian_0.3.1_arm64.deb" data-download="linux-arm64" data-i18n="dlArm">Linux arm64 版</a>
-      <a href="https://github.com/ox0pine/mojian/releases" data-download="linux-amd64-rpm" data-i18n="dlRpm">Fedora / RHEL 版（RPM）</a>
-      <a href="https://github.com/ox0pine/mojian/releases/download/v0.3.1/mojian-setup-0.3.1-arm64.exe" data-download="windows-arm64" data-i18n="dlWinArm">Windows arm64 版</a>
-      <a href="https://github.com/ox0pine/mojian/releases" data-i18n="dlAll">所有版本与校验值</a>
-    </p>
-  </header>
+  </section>
 
-  <main class="stage">
-    <div class="window">
-      <img id="shot" src="home-1000.webp" srcset="home-1000.webp 1000w, home-1466.webp 1466w" sizes="(max-width: 1080px) calc(100vw - 32px), 1040px" width="1466" height="919" fetchpriority="high" decoding="async" alt="Mojian 的窗口：左侧是文件树，中间是编辑器，右侧是终端与文件选择面板。">
+  <section class="proof">
+    <div class="container">
+      <figure class="frame">
+        <img id="shot" src="home-1000.webp" srcset="home-1000.webp 1000w, home-1466.webp 1466w" sizes="(max-width: 1120px) calc(100vw - 48px), 1072px" width="1466" height="919" fetchpriority="high" decoding="async" alt="Mojian 的窗口：左侧是文件树，中间是编辑器，右侧是终端与文件选择面板。">
+      </figure>
+      <p class="caption" data-i18n="proofCaption">一个标签页：文件树、编辑器、文件选择与两个终端。</p>
     </div>
-  </main>
+  </section>
 
-  <footer>
-    <span>© 2026 Mojian</span>
-    <a href="https://github.com/ox0pine/mojian/blob/main/LICENSE">MIT License</a>
-    <a href="https://mygo.egoist.dev">Built with MyGo</a>
-    <a href="https://wallhaven.cc/w/7je6v3" title="Wallpaper: wallhaven 7je6v3">Photo: wallhaven</a>
-  </footer>
-</div>
+  <section class="stats" aria-label="Mojian">
+    <dl class="container stats-grid">
+      <div class="stat"><dt data-i18n="statWebview">webview</dt><dd>0</dd></div>
+      <div class="stat"><dt data-i18n="statCgo">cgo</dt><dd>0</dd></div>
+      <div class="stat"><dt data-i18n="statBinary">个可执行文件</dt><dd>1</dd></div>
+      <div class="stat"><dt data-i18n="statPlatform">个平台</dt><dd>3</dd></div>
+    </dl>
+  </section>
+
+  <section class="section" id="features">
+    <div class="container">
+      <p class="eyebrow" data-i18n="featuresEyebrow">为什么是 Mojian</p>
+      <h2 data-i18n="featuresTitle">一个文件夹，就是全部</h2>
+      <p class="section-lede" data-i18n="featuresLede">没有工作区文件，没有导入流程。打开一个文件夹，里面的普通文件就是你的项目。</p>
+      <div class="feature-grid">
+        <article class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></div>
+          <h3 data-i18n="f1Title">纯文本，真文件</h3>
+          <p data-i18n="f1Body">每个文件都是磁盘上的普通文件。没有数据库，没有专有格式，随时可以用别的工具打开。</p>
+        </article>
+        <article class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></div>
+          <h3 data-i18n="f2Title">标签即工作区</h3>
+          <p data-i18n="f2Body">一个标签里并排放编辑器、图片、PDF、终端与 Git diff。拖动窗格即可重排。</p>
+        </article>
+        <article class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg></div>
+          <h3 data-i18n="f3Title">终端与 SSH</h3>
+          <p data-i18n="f3Body">内置终端打开在当前文件夹。连接远程主机时，服务端只在你使用它时运行。</p>
+        </article>
+        <article class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>
+          <h3 data-i18n="f4Title">图片与 PDF</h3>
+          <p data-i18n="f4Body">截图、设计稿和文档就在项目里，不必离开窗口去预览。</p>
+        </article>
+        <article class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></div>
+          <h3 data-i18n="f5Title">Git，不离开编辑器</h3>
+          <p data-i18n="f5Body">查看工作区改动和逐文件 diff，在标题栏切换分支。</p>
+        </article>
+        <article class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/></svg></div>
+          <h3 data-i18n="f6Title">十种配色</h3>
+          <p data-i18n="f6Body">Petal、Mist、Meadow、Dusk、Tide、Apricot、Aurora、Dune、Paper、Plain，跟随系统明暗。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="files">
+    <div class="container files-grid">
+      <div>
+        <p class="eyebrow" data-i18n="filesEyebrow">文件还在原来的地方</p>
+        <h2 data-i18n="filesTitle">你的文件夹，就是项目</h2>
+        <p class="section-lede" data-i18n="filesBody">Mojian 不接管文件。它读你已有的文件夹，按原样保存，删掉 Mojian 也不会带走任何东西。</p>
+        <ul class="points">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg><span data-i18n="point1">打开任意文件夹作为项目</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg><span data-i18n="point2">⌘S 才写入，平时只在内存里</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg><span data-i18n="point3">原子写入，保存不会留下半个文件</span></li>
+        </ul>
+      </div>
+      <div>
+        <div class="tree-card">
+          <div class="tree-head"><span data-i18n="treeLabel">一个普通的项目文件夹</span><span class="tag">notes/</span></div>
+          <pre class="tree" data-i18n-aria="treeLabel"><span class="dir">notes/</span>
+├── <span class="dir">Ideas/</span>
+│   └── <span class="file">Quiet mornings.md</span>
+├── <span class="dir">scripts/</span>
+│   ├── <span class="file">app.js</span>
+│   └── <span class="file">tasks.py</span>
+├── <span class="file">Reading notes.md</span>
+└── <span class="file">Welcome.md</span></pre>
+        </div>
+        <p class="tree-caption" data-i18n="treeCaption">Markdown、代码、图片和脚本，都是普通文件。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="download">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow" data-i18n="downloadsEyebrow">下载</p>
+          <h2 data-i18n="downloadsTitle">选一个平台</h2>
+          <p class="section-lede" data-i18n="downloadsLede">开源免费，MIT 许可。macOS 版需要 macOS 13 或更新版本。</p>
+        </div>
+        <a class="head-link" href="https://github.com/ox0pine/mojian/releases">
+          <span data-i18n="dlAll">所有版本与校验值</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+      <div class="download-grid">
+        <article class="platform-card">
+          <div class="platform-head">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+            <h3>macOS</h3>
+            <span class="tag">arm64</span>
+          </div>
+          <p data-i18n="macReq">macOS 13 或更新版本</p>
+          <a class="btn btn-secondary" href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-0.4.2-arm64.dmg" data-download="mac-arm64">
+            <span data-i18n="dlMac">下载 .dmg</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          </a>
+          <div class="sub-links">
+            <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-0.4.2-amd64.dmg" data-download="mac-amd64" data-i18n="dlIntel">Intel Mac 版</a>
+          </div>
+        </article>
+
+        <article class="platform-card">
+          <div class="platform-head">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z"/></svg>
+            <h3>Linux</h3>
+            <span class="tag">amd64</span>
+          </div>
+          <p data-i18n="linuxReq">Debian / Ubuntu 与 Fedora / RHEL</p>
+          <a class="btn btn-secondary" href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian_0.4.2_amd64.deb" data-download="linux-amd64">
+            <span data-i18n="dlLinux">下载 .deb</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          </a>
+          <div class="sub-links">
+            <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian_0.4.2_arm64.deb" data-download="linux-arm64" data-i18n="dlArm">Linux arm64 版</a>
+            <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-0.4.2-x86_64.rpm" data-download="linux-amd64-rpm" data-i18n="dlRpm">Fedora / RHEL 版（RPM）</a>
+          </div>
+        </article>
+
+        <article class="platform-card">
+          <div class="platform-head">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 4.8 10.2 3.8v7.7H3V4.8Zm8.2-1.1L21 2.4v9.1h-9.8V3.7ZM3 12.5h7.2v7.7L3 19.2v-6.7Zm8.2 0H21v9.1l-9.8-1.3v-7.8Z"/></svg>
+            <h3>Windows</h3>
+            <span class="tag">x64</span>
+          </div>
+          <p data-i18n="winReq">Windows 10 1809 或更新版本</p>
+          <a class="btn btn-secondary" href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-setup-0.4.2-amd64.exe" data-download="windows-amd64">
+            <span data-i18n="dlWin">下载 .exe</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          </a>
+          <div class="sub-links">
+            <a href="https://github.com/ox0pine/mojian/releases/download/v0.4.2/mojian-setup-0.4.2-arm64.exe" data-download="windows-arm64" data-i18n="dlWinArm">Windows arm64 版</a>
+          </div>
+        </article>
+      </div>
+      <p class="download-note" data-i18n="downloadNote">下载按钮会指向 GitHub 上的最新版本；离线时回退到当前版本。</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="#top" aria-label="Mojian"><span class="brand-mark small" aria-hidden="true"></span></a>
+        <p data-i18n="footerTagline">安静的原生纯文本编辑器。</p>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/ox0pine/mojian">GitHub</a>
+        <a href="https://github.com/ox0pine/mojian/releases" data-i18n="navDownload">下载</a>
+        <a href="https://github.com/ox0pine/mojian/blob/main/LICENSE" data-i18n="footerLicense">MIT 许可</a>
+        <a href="https://mygo.run" data-i18n="footerBuilt">使用 MyGo 构建</a>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Mojian</span>
+      <span data-i18n="footerNote">普通文件，原样保存。</span>
+    </div>
+  </div>
+</footer>
+
 <script>
 // Static i18n: ?lang= wins, then the saved choice, then the browser language; Simplified Chinese is the markup default.
 const T = {
   "zh-Hans": {
-    doc: "Mojian · 墨间 — 字在纸上，工具退后",
+    doc: "Mojian · 墨间：字在纸上，工具退后",
     desc: "Mojian 是一个安静的原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。支持 macOS、Linux 与 Windows。",
-    badge: "开源免费 · macOS 13+ · Linux · Windows 10+",
+    badge: "开源免费 · macOS · Linux · Windows",
     title: "字在纸上<br><span>工具退后</span>",
     lede: "原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。",
-    dlMac: "下载 · Apple Silicon",
-    dlLinux: "下载 · amd64 .deb",
+    ctaDownload: "下载 Mojian",
+    ctaGithub: "在 GitHub 查看",
+    navFeatures: "功能",
+    navFiles: "文件",
+    navDownload: "下载",
+    themeLabel: "切换明暗",
+    langLabel: "语言",
+    proofCaption: "一个标签页：文件树、编辑器、文件选择与两个终端。",
+    statWebview: "webview",
+    statCgo: "cgo",
+    statBinary: "个可执行文件",
+    statPlatform: "个平台",
+    featuresEyebrow: "为什么是 Mojian",
+    featuresTitle: "一个文件夹，就是全部",
+    featuresLede: "没有工作区文件，没有导入流程。打开一个文件夹，里面的普通文件就是你的项目。",
+    f1Title: "纯文本，真文件",
+    f1Body: "每个文件都是磁盘上的普通文件。没有数据库，没有专有格式，随时可以用别的工具打开。",
+    f2Title: "标签即工作区",
+    f2Body: "一个标签里并排放编辑器、图片、PDF、终端与 Git diff。拖动窗格即可重排。",
+    f3Title: "终端与 SSH",
+    f3Body: "内置终端打开在当前文件夹。连接远程主机时，服务端只在你使用它时运行。",
+    f4Title: "图片与 PDF",
+    f4Body: "截图、设计稿和文档就在项目里，不必离开窗口去预览。",
+    f5Title: "Git，不离开编辑器",
+    f5Body: "查看工作区改动和逐文件 diff，在标题栏切换分支。",
+    f6Title: "十种配色",
+    f6Body: "Petal、Mist、Meadow、Dusk、Tide、Apricot、Aurora、Dune、Paper、Plain，跟随系统明暗。",
+    filesEyebrow: "文件还在原来的地方",
+    filesTitle: "你的文件夹，就是项目",
+    filesBody: "Mojian 不接管文件。它读你已有的文件夹，按原样保存，删掉 Mojian 也不会带走任何东西。",
+    point1: "打开任意文件夹作为项目",
+    point2: "⌘S 才写入，平时只在内存里",
+    point3: "原子写入，保存不会留下半个文件",
+    treeLabel: "一个普通的项目文件夹",
+    treeCaption: "Markdown、代码、图片和脚本，都是普通文件。",
+    downloadsEyebrow: "下载",
+    downloadsTitle: "选一个平台",
+    downloadsLede: "开源免费，MIT 许可。macOS 版需要 macOS 13 或更新版本。",
+    macReq: "macOS 13 或更新版本",
+    linuxReq: "Debian / Ubuntu 与 Fedora / RHEL",
+    winReq: "Windows 10 1809 或更新版本",
+    dlMac: "下载 .dmg",
+    dlLinux: "下载 .deb",
+    dlWin: "下载 .exe",
     dlIntel: "Intel Mac 版",
     dlArm: "Linux arm64 版",
     dlRpm: "Fedora / RHEL 版（RPM）",
-    dlWin: "下载 · x64 安装包",
+    dlWinX64: "Windows x64 版",
     dlWinArm: "Windows arm64 版",
     dlAll: "所有版本与校验值",
+    downloadNote: "下载按钮会指向 GitHub 上的最新版本；离线时回退到当前版本。",
+    footerTagline: "安静的原生纯文本编辑器。",
+    footerBuilt: "使用 MyGo 构建",
+    footerLicense: "MIT 许可",
+    footerNote: "普通文件，原样保存。",
     alt: "Mojian 的窗口：左侧是文件树，中间是编辑器，右侧是终端与文件选择面板。"
   },
   "zh-Hant": {
-    doc: "Mojian · 墨間 — 字在紙上，工具退後",
+    doc: "Mojian · 墨間：字在紙上，工具退後",
     desc: "Mojian 是一個安靜的原生純文字編輯器。資料夾就是專案，分頁是工作區：文字、圖片、PDF、終端與 Git diff 同屏並排。沒有資料庫、帳號、webview 或 cgo。支援 macOS、Linux 與 Windows。",
-    badge: "開源免費 · macOS 13+ · Linux · Windows 10+",
+    badge: "開源免費 · macOS · Linux · Windows",
     title: "字在紙上<br><span>工具退後</span>",
     lede: "原生純文字編輯器。資料夾就是專案，分頁是工作區：文字、圖片、PDF、終端與 Git diff 同屏並排。沒有資料庫、帳號、webview 或 cgo。",
-    dlMac: "下載 · Apple Silicon",
-    dlLinux: "下載 · amd64 .deb",
+    ctaDownload: "下載 Mojian",
+    ctaGithub: "在 GitHub 查看",
+    navFeatures: "功能",
+    navFiles: "檔案",
+    navDownload: "下載",
+    themeLabel: "切換明暗",
+    langLabel: "語言",
+    proofCaption: "一個分頁：檔案樹、編輯器、檔案選擇與兩個終端。",
+    statWebview: "webview",
+    statCgo: "cgo",
+    statBinary: "個可執行檔",
+    statPlatform: "個平台",
+    featuresEyebrow: "為什麼是 Mojian",
+    featuresTitle: "一個資料夾，就是全部",
+    featuresLede: "沒有工作區檔案，沒有匯入流程。打開一個資料夾，裡面的普通檔案就是你的專案。",
+    f1Title: "純文字，真檔案",
+    f1Body: "每個檔案都是磁碟上的普通檔案。沒有資料庫，沒有專有格式，隨時可以用別的工具打開。",
+    f2Title: "分頁即工作區",
+    f2Body: "一個分頁裡並排放編輯器、圖片、PDF、終端與 Git diff。拖動窗格即可重排。",
+    f3Title: "終端與 SSH",
+    f3Body: "內建終端打開在目前資料夾。連線遠端主機時，伺服器只在你使用它時執行。",
+    f4Title: "圖片與 PDF",
+    f4Body: "截圖、設計稿和文件就在專案裡，不必離開視窗去預覽。",
+    f5Title: "Git，不離開編輯器",
+    f5Body: "查看工作區改動和逐檔案 diff，在標題列切換分支。",
+    f6Title: "十種配色",
+    f6Body: "Petal、Mist、Meadow、Dusk、Tide、Apricot、Aurora、Dune、Paper、Plain，跟隨系統明暗。",
+    filesEyebrow: "檔案還在原來的地方",
+    filesTitle: "你的資料夾，就是專案",
+    filesBody: "Mojian 不接管檔案。它讀你既有的資料夾，按原樣儲存，刪掉 Mojian 也不會帶走任何東西。",
+    point1: "開啟任意資料夾作為專案",
+    point2: "⌘S 才寫入，平時只在記憶體裡",
+    point3: "原子寫入，儲存不會留下半個檔案",
+    treeLabel: "一個普通的專案資料夾",
+    treeCaption: "Markdown、程式碼、圖片和腳本，都是普通檔案。",
+    downloadsEyebrow: "下載",
+    downloadsTitle: "選一個平台",
+    downloadsLede: "開源免費，MIT 授權。macOS 版需要 macOS 13 或更新版本。",
+    macReq: "macOS 13 或更新版本",
+    linuxReq: "Debian / Ubuntu 與 Fedora / RHEL",
+    winReq: "Windows 10 1809 或更新版本",
+    dlMac: "下載 .dmg",
+    dlLinux: "下載 .deb",
+    dlWin: "下載 .exe",
     dlIntel: "Intel Mac 版",
     dlArm: "Linux arm64 版",
     dlRpm: "Fedora / RHEL 版（RPM）",
-    dlWin: "下載 · x64 安裝包",
+    dlWinX64: "Windows x64 版",
     dlWinArm: "Windows arm64 版",
     dlAll: "所有版本與校驗值",
+    downloadNote: "下載按鈕會指向 GitHub 上的最新版本；離線時回退到目前版本。",
+    footerTagline: "安靜的原生純文字編輯器。",
+    footerBuilt: "使用 MyGo 打造",
+    footerLicense: "MIT 授權",
+    footerNote: "普通檔案，原樣儲存。",
     alt: "Mojian 的視窗：左側是檔案樹，中間是編輯器，右側是終端與檔案選擇面板。"
   },
   en: {
-    doc: "Mojian — A quiet text editor for plain files",
+    doc: "Mojian · A quiet text editor for plain files",
     desc: "A native plain-text editor for ordinary folders. Tabs are workspaces of editors, image and PDF viewers, terminals and Git diffs. No database, account, webview or cgo. For macOS, Linux and Windows.",
-    badge: "Open source · macOS 13+ · Linux · Windows 10+",
+    badge: "Open source · macOS · Linux · Windows",
     title: "Words on paper.<br><span>The tool steps back.</span>",
     lede: "A native plain-text editor for ordinary folders. Every tab is a workspace of editors, image and PDF viewers, terminals and Git diffs. No database, account, webview or cgo.",
-    dlMac: "Download · Apple Silicon",
-    dlLinux: "Download · amd64 .deb",
+    ctaDownload: "Download Mojian",
+    ctaGithub: "View on GitHub",
+    navFeatures: "Features",
+    navFiles: "Files",
+    navDownload: "Download",
+    themeLabel: "Toggle theme",
+    langLabel: "Language",
+    proofCaption: "One tab: file tree, editor, file picker and two terminals.",
+    statWebview: "webviews",
+    statCgo: "cgo",
+    statBinary: "binary",
+    statPlatform: "platforms",
+    featuresEyebrow: "Why Mojian",
+    featuresTitle: "A folder is the whole story",
+    featuresLede: "No workspace file, no import step. Open a folder and the ordinary files inside are the project.",
+    f1Title: "Plain text, real files",
+    f1Body: "Every file is an ordinary file on disk. No database, no proprietary format, open it with anything else whenever you like.",
+    f2Title: "Tabs are workspaces",
+    f2Body: "Editors, images, PDFs, terminals and Git diffs side by side in one tab. Drag a pane to rearrange.",
+    f3Title: "Terminal and SSH",
+    f3Body: "The built-in terminal opens in the current folder. On a remote host, the server runs only while you use it.",
+    f4Title: "Images and PDFs",
+    f4Body: "Screenshots, mockups and documents live in the project; preview them without leaving the window.",
+    f5Title: "Git, without leaving",
+    f5Body: "See working-tree changes and per-file diffs, and switch branches from the title bar.",
+    f6Title: "Ten color themes",
+    f6Body: "Petal, Mist, Meadow, Dusk, Tide, Apricot, Aurora, Dune, Paper, Plain, following the system appearance.",
+    filesEyebrow: "Files stay where they are",
+    filesTitle: "Your folder is the project",
+    filesBody: "Mojian does not take files over. It reads the folder you already have, saves in place, and deleting Mojian takes nothing with it.",
+    point1: "Open any folder as a project",
+    point2: "Command-S is the only write; edits stay in memory until then",
+    point3: "Atomic saves, so a save never leaves half a file",
+    treeLabel: "An ordinary project folder",
+    treeCaption: "Markdown, code, images and scripts, all ordinary files.",
+    downloadsEyebrow: "Download",
+    downloadsTitle: "Pick a platform",
+    downloadsLede: "Open source under the MIT license. macOS 13 or later.",
+    macReq: "macOS 13 or later",
+    linuxReq: "Debian / Ubuntu and Fedora / RHEL",
+    winReq: "Windows 10 1809 or later",
+    dlMac: "Download .dmg",
+    dlLinux: "Download .deb",
+    dlWin: "Download .exe",
     dlIntel: "Intel Mac",
     dlArm: "Linux arm64",
     dlRpm: "Fedora / RHEL (RPM)",
-    dlWin: "Download · x64 installer",
+    dlWinX64: "Windows x64",
     dlWinArm: "Windows arm64",
     dlAll: "All releases & checksums",
+    downloadNote: "Download buttons point at the latest GitHub release, and fall back to this version offline.",
+    footerTagline: "A quiet native editor for plain files.",
+    footerBuilt: "Built with MyGo",
+    footerLicense: "MIT license",
+    footerNote: "Ordinary files, saved as they are.",
     alt: "The Mojian window: a file tree on the left, an editor in the middle, and terminals and a file picker on the right."
   },
   ja: {
-    doc: "Mojian — 紙に書くように、静かに編集するエディタ",
+    doc: "Mojian · 紙に書くように、静かに編集する",
     desc: "普通のフォルダのためのネイティブ・プレーンテキストエディタ。タブはワークスペースで、エディタ、画像・PDFビューア、ターミナル、Git diff を並べて使えます。データベースもアカウントも webview も cgo もありません。macOS、Linux、Windows に対応。",
-    badge: "オープンソース · macOS 13+ · Linux · Windows 10+",
+    badge: "オープンソース · macOS · Linux · Windows",
     title: "紙に書くように<br><span>静かに編集</span>",
     lede: "普通のフォルダのためのネイティブ・プレーンテキストエディタ。タブはワークスペースで、エディタ、画像・PDFビューア、ターミナル、Git diff を並べて使えます。データベースもアカウントも webview も cgo もありません。",
-    dlMac: "ダウンロード · Apple Silicon",
-    dlLinux: "ダウンロード · amd64 .deb",
+    ctaDownload: "Mojian をダウンロード",
+    ctaGithub: "GitHub で見る",
+    navFeatures: "機能",
+    navFiles: "ファイル",
+    navDownload: "ダウンロード",
+    themeLabel: "テーマを切り替え",
+    langLabel: "言語",
+    proofCaption: "1 つのタブに、ファイルツリー、エディタ、ファイル選択、2 つのターミナル。",
+    statWebview: "webview",
+    statCgo: "cgo",
+    statBinary: "バイナリ",
+    statPlatform: "プラットフォーム",
+    featuresEyebrow: "Mojian を選ぶ理由",
+    featuresTitle: "フォルダが、そのまま全部",
+    featuresLede: "ワークスペースファイルも、読み込み手順もありません。フォルダを開けば、中の普通のファイルがプロジェクトになります。",
+    f1Title: "プレーンテキスト、本物のファイル",
+    f1Body: "すべてのファイルはディスク上の普通のファイル。データベースも独自形式もなく、いつでも他のツールで開けます。",
+    f2Title: "タブがワークスペース",
+    f2Body: "1 つのタブにエディタ、画像、PDF、ターミナル、Git diff を並べます。ペインをドラッグして入れ替え。",
+    f3Title: "ターミナルと SSH",
+    f3Body: "内蔵ターミナルは今のフォルダで開きます。リモートでは、使っている間だけサーバーが動きます。",
+    f4Title: "画像と PDF",
+    f4Body: "スクリーンショットもデザインも文書もプロジェクトの中。ウィンドウを離れずにプレビューできます。",
+    f5Title: "Git も、そのまま",
+    f5Body: "作業ツリーの変更とファイルごとの diff を表示し、タイトルバーからブランチを切り替えます。",
+    f6Title: "10 のカラーテーマ",
+    f6Body: "Petal、Mist、Meadow、Dusk、Tide、Apricot、Aurora、Dune、Paper、Plain。システムの明暗に従います。",
+    filesEyebrow: "ファイルは元の場所に",
+    filesTitle: "あなたのフォルダがプロジェクト",
+    filesBody: "Mojian はファイルを占有しません。既にあるフォルダを読み、そのまま保存します。Mojian を消しても何も失われません。",
+    point1: "任意のフォルダをプロジェクトとして開く",
+    point2: "書き込みは ⌘S のときだけ。それまではメモリの中",
+    point3: "アトミック保存で、中途半端なファイルを残さない",
+    treeLabel: "普通のプロジェクトフォルダ",
+    treeCaption: "Markdown もコードも画像もスクリプトも、普通のファイルです。",
+    downloadsEyebrow: "ダウンロード",
+    downloadsTitle: "プラットフォームを選ぶ",
+    downloadsLede: "MIT ライセンスのオープンソース。macOS 版は macOS 13 以降が必要です。",
+    macReq: "macOS 13 以降",
+    linuxReq: "Debian / Ubuntu と Fedora / RHEL",
+    winReq: "Windows 10 1809 以降",
+    dlMac: "ダウンロード .dmg",
+    dlLinux: "ダウンロード .deb",
+    dlWin: "ダウンロード .exe",
     dlIntel: "Intel Mac 版",
     dlArm: "Linux arm64 版",
     dlRpm: "Fedora / RHEL 版（RPM）",
-    dlWin: "ダウンロード · x64 インストーラー",
+    dlWinX64: "Windows x64 版",
     dlWinArm: "Windows arm64 版",
     dlAll: "すべてのリリースとチェックサム",
+    downloadNote: "ダウンロードボタンは GitHub の最新リリースを指し、オフライン時はこのバージョンを使います。",
+    footerTagline: "静かなネイティブ・プレーンテキストエディタ。",
+    footerBuilt: "MyGo で構築",
+    footerLicense: "MIT ライセンス",
+    footerNote: "普通のファイルを、そのまま保存。",
     alt: "Mojian のウィンドウ：左にファイルツリー、中央にエディタ、右にターミナルとファイル選択パネル。"
   }
 };
@@ -326,7 +988,7 @@ const T = {
 function detect() {
   const q = new URLSearchParams(location.search).get("lang");
   if (q && T[q]) return q;
-  try { const saved = localStorage.getItem("mojian:lang"); if (saved && T[saved]) return saved; } catch {}
+  try { const saved = localStorage.getItem("mojian:lang"); if (saved && T[saved]) return saved; } catch (e) {}
   for (const l of navigator.languages || [navigator.language]) {
     const v = (l || "").toLowerCase();
     if (/^zh-(tw|hk|mo|hant)/.test(v)) return "zh-Hant";
@@ -337,25 +999,53 @@ function detect() {
   return "en";
 }
 
+let currentLang = detect();
+
 function apply(lang) {
+  currentLang = lang;
   const t = T[lang];
   document.documentElement.lang = lang === "zh-Hans" ? "zh-CN" : lang === "zh-Hant" ? "zh-Hant" : lang;
   document.title = t.doc;
   document.querySelector('meta[name="description"]').content = t.desc;
   document.querySelectorAll("[data-i18n]").forEach(e => { e.textContent = t[e.dataset.i18n]; });
   document.querySelectorAll("[data-i18n-html]").forEach(e => { e.innerHTML = t[e.dataset.i18nHtml]; });
+  document.querySelectorAll("[data-i18n-aria]").forEach(e => { e.setAttribute("aria-label", t[e.dataset.i18nAria]); });
   document.getElementById("shot").alt = t.alt;
   document.getElementById("lang").value = lang;
+  document.getElementById("theme").setAttribute("aria-label", t.themeLabel);
+  document.getElementById("lang").setAttribute("aria-label", t.langLabel);
 }
 
-apply(detect());
+function syncThemeColor() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#0e0d0b" : "#fcfbf9";
+  document.getElementById("theme").setAttribute("aria-pressed", dark ? "true" : "false");
+}
+
+apply(currentLang);
+syncThemeColor();
 document.getElementById("lang").addEventListener("change", e => {
   apply(e.target.value);
-  try { localStorage.setItem("mojian:lang", e.target.value); } catch {}
+  try { localStorage.setItem("mojian:lang", e.target.value); } catch (err) {}
+});
+
+document.getElementById("theme").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("mojian:theme", next); } catch (err) {}
+  syncThemeColor();
+});
+
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
+  let saved = null;
+  try { saved = localStorage.getItem("mojian:theme"); } catch (err) {}
+  if (saved) return;
+  document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+  syncThemeColor();
 });
 
 // Upgrade the download buttons to the assets of the latest release when the API
-// answers. The static hrefs above point at v0.3.1, so downloads still work
+// answers. The static hrefs above point at v0.4.2, so downloads still work
 // offline or when GitHub rate-limits the visitor.
 const REPO = "ox0pine/mojian";
 
@@ -375,7 +1065,7 @@ async function loadRelease() {
   try {
     const cached = JSON.parse(sessionStorage.getItem("mojian:release") || "null");
     if (cached && Date.now() - cached.at < 10 * 60 * 1000) release = cached.release;
-  } catch {}
+  } catch (e) {}
   if (!release) {
     try {
       const res = await fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
@@ -383,9 +1073,9 @@ async function loadRelease() {
       });
       if (res.ok) {
         release = await res.json();
-        try { sessionStorage.setItem("mojian:release", JSON.stringify({ at: Date.now(), release })); } catch {}
+        try { sessionStorage.setItem("mojian:release", JSON.stringify({ at: Date.now(), release })); } catch (e) {}
       }
-    } catch {}
+    } catch (e) {}
   }
   if (!release || !Array.isArray(release.assets)) return;
 
@@ -394,7 +1084,7 @@ async function loadRelease() {
   setDownload("mac-amd64", pickAsset(assets, /-amd64\.dmg$/));
   setDownload("linux-amd64", pickAsset(assets, /_amd64\.deb$/) || pickAsset(assets, /-linux-amd64\.tar\.gz$/));
   setDownload("linux-arm64", pickAsset(assets, /_arm64\.deb$/) || pickAsset(assets, /-linux-arm64\.tar\.gz$/));
-  setDownload("linux-amd64-rpm", pickAsset(assets, /\.x86_64\.rpm$/));
+  setDownload("linux-amd64-rpm", pickAsset(assets, /x86_64\.rpm$/));
   setDownload("windows-amd64", pickAsset(assets, /-setup-.*-amd64\.exe$/));
   setDownload("windows-arm64", pickAsset(assets, /-setup-.*-arm64\.exe$/));
 
