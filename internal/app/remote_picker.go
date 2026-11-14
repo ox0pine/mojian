@@ -157,7 +157,7 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 		backdrop.Background(k.Backdrop)
 		panel.Width(620).Height(520).Radius(radius).Background(k.Sheet).
 			Border(1, k.PanelBorder).
-			Shadow(0, 24, 70, -10, k.ShadowFocused).Clip()
+			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip()
 		ui.Column(c).Fill().Children(func() {
 			ui.Row(c).Height(60).Padding(0, 18, 0, 12).Gap(11).AlignItems(ui.Center).
 				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
@@ -171,12 +171,12 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 						TextColor(k.TextFaint)
 				})
 				ui.Spacer(c)
-				if iconButton(c, k, "x", "Close", 28, 15).Clicked() {
+				if iconButton(c, k, "x", "Close", iconBtnMd, iconGlyphMd).Clicked() {
 					a.remotePicker = false
 				}
 			})
 			ui.Row(c).Padding(12, 18).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Row(c).Grow(1).Height(34).Padding(0, 10).Gap(7).Radius(radius).
+				ui.Row(c).Grow(1).Height(32).Padding(0, 9).Gap(7).Radius(radius).
 					Background(k.Hover).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, icons.FolderIcon()).Size(14, 14).TextColor(k.TextFaint)
 					in := ui.TextInputBase(c, &a.remoteQuery).Grow(1).FontSize(13).
@@ -287,13 +287,8 @@ func (a *app) loadRemoteDirs(path string) {
 
 func (a *app) serverChip(c *ui.Context, k *colors) {
 	label := a.remoteName()
-	chip := ui.ButtonBase(c).Gap(6).Padding(3, 8, 3, 6).Radius(radius).
-		Justify(ui.Start).Cursor(ui.CursorPointer).Label("Switch server: " + label).
-		Tooltip("Server  " + nativeKeys("⇧⌘S")).MaxWidth(170).Shrink(0).ClipX().
-		Transition(motion.Colors)
-	if chip.Hovered() || a.serverOpen {
-		chip.Background(k.Hover)
-	}
+	chip := titleChip(c, k, a.serverOpen).Label("Switch server: " + label).
+		Tooltip("Switch server").MaxWidth(210)
 	drop := float32(0)
 	if a.serverOpen {
 		drop = 1
@@ -303,40 +298,32 @@ func (a *app) serverChip(c *ui.Context, k *colors) {
 		a.serverOpen = !a.serverOpen
 	}
 	chip.Children(func() {
-		ui.Icon(c, icons.Icon("server")).Size(16, 16).TextColor(k.TextMuted)
-		ui.Text(c, label).FontSize(12.5).FontWeight(600).TextColor(k.TextMuted).
+		ui.Icon(c, icons.Icon("server")).Size(15, 15).TextColor(k.TextMuted)
+		ui.Text(c, label).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	ui.PopoverBase(c, chip, &a.serverOpen, func(panel ui.Element) {
-		panel.Width(280).Padding(9).Radius(radius).Background(k.Panel).
-			Border(1, k.PanelBorder).Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
-			Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
-		ui.Text(c, "SERVERS").FontSize(10).FontWeight(650).TextColor(k.TextFaint).Padding(4, 8)
-		a.serverRow(c, k, "", "Local")
-		for _, h := range a.hosts() {
-			label := h.Name
-			if label == "" {
-				label = h.Address
+		menuSurface(panel, k, drop)
+		menuHeader(c, k, "Servers", "")
+		menuList(c, func() {
+			a.serverRow(c, k, "", "Local")
+			for _, h := range a.hosts() {
+				label := h.Name
+				if label == "" {
+					label = h.Address
+				}
+				a.serverRow(c, k, h.Address, label)
 			}
-			a.serverRow(c, k, h.Address, label)
-		}
+		})
 		if len(a.hosts()) == 0 {
-			ui.Text(c, "Add a server in Settings › Hosts.").FontSize(11).
-				TextColor(k.TextFaint).Padding(4, 8)
+			menuNote(c, k, "Add a server in Settings › Hosts.", false)
 		}
 	})
 }
 
 func (a *app) serverRow(c *ui.Context, k *colors, host, label string) {
-	selected := a.serverAlias == host
-	row := ui.ButtonBase(c.Key("server:"+host)).Height(36).Padding(0, 8).Gap(8).
-		Radius(radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label("Server " + label)
-	if selected {
-		row.Background(k.PanelSel)
-	} else if row.Hovered() {
-		row.Background(k.Hover)
-	}
+	row := menuChoice(c, k, "server:"+host, "server", label, a.serverAlias == host)
 	if row.Clicked() {
 		a.serverOpen = false
 		if host == "" {
@@ -349,46 +336,45 @@ func (a *app) serverRow(c *ui.Context, k *colors, host, label string) {
 			a.later(func() { a.switchToServer(host) })
 		}
 	}
-	row.Children(func() {
-		ui.Icon(c, icons.Icon("server")).Size(14, 14).TextColor(k.TextMuted)
-		ui.Text(c, label).FontSize(12.5).TextColor(k.Text)
-		if selected {
-			ui.Spacer(c)
-			ui.Icon(c, icons.Icon("check")).Size(13, 13).TextColor(k.TextMuted)
-		}
-	})
 }
 
 func (a *app) remoteProjectRows(c *ui.Context, k *colors) {
 	recent := a.remoteProjects()
-	ui.Text(c, "PROJECTS ON "+strings.ToUpper(a.remoteName())).
-		FontSize(10).FontWeight(650).TextColor(k.TextFaint).Padding(4, 8)
-	if len(recent) == 0 {
-		ui.Text(c, "No recent remote projects.").FontSize(11.5).TextColor(k.TextFaint).Padding(4, 8)
-	}
+	menuHeader(c, k, "Projects on "+a.remoteName(), "")
+	onHost := 0
 	for _, p := range recent {
-		if p.Host != a.serverAlias {
-			continue
+		if p.Host == a.serverAlias {
+			onHost++
 		}
-		p := p
-		current := p.Path == a.remotePath
-		a.projectRowBase(c, k, projectRowSpec{
-			key:        "remote:" + p.Host + ":" + p.Path,
-			label:      p.Path,
-			title:      filepath.Base(p.Path),
-			detail:     p.Path,
-			closeLabel: p.Path,
-			current:    current,
-			open: func() {
-				a.projectOpen = false
-				a.later(func() { a.openRemoteProjectAsync(p.Host, p.Path) })
-			},
-			close: func() {
-				a.projectOpen = false
-				a.later(func() { a.closeRemoteProject(p.Host, p.Path) })
-			},
-		})
 	}
+	if onHost == 0 {
+		menuNote(c, k, "No recent remote projects.", false)
+		return
+	}
+	menuList(c, func() {
+		for _, p := range recent {
+			if p.Host != a.serverAlias {
+				continue
+			}
+			p := p
+			a.projectRowBase(c, k, projectRowSpec{
+				key:        "remote:" + p.Host + ":" + p.Path,
+				label:      p.Path,
+				title:      filepath.Base(p.Path),
+				detail:     p.Path,
+				closeLabel: p.Path,
+				current:    p.Path == a.remotePath,
+				open: func() {
+					a.projectOpen = false
+					a.later(func() { a.openRemoteProjectAsync(p.Host, p.Path) })
+				},
+				close: func() {
+					a.projectOpen = false
+					a.later(func() { a.closeRemoteProject(p.Host, p.Path) })
+				},
+			})
+		}
+	})
 }
 
 func (a *app) hostLabel(address string) string {

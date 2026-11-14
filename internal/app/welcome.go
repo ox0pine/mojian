@@ -9,9 +9,9 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// emptyState is the welcome page of a tab with no file open: quick
+// welcomePage is the welcome page of a tab with no file open: quick
 // actions, then the files touched most recently.
-func (a *app) emptyState(c *ui.Context, k *colors, vw, vh float32) {
+func (a *app) welcomePage(c *ui.Context, k *colors, vw, vh float32) {
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).FillWidth().MinHeight(vh).Justify(ui.Center).Children(func() {
 			ui.Column(c).FillWidth().MaxWidth(560).AlignSelf(ui.Center).
@@ -47,8 +47,7 @@ func (a *app) emptyState(c *ui.Context, k *colors, vw, vh float32) {
 
 				notes := a.welcomeNotes()
 				if len(notes) > 0 {
-					ui.Text(c, "RECENT FILES").FontSize(10).FontWeight(650).
-						TextColor(k.TextFaint).Padding(2, 2)
+					sectionLabel(c, k, "Recent files").Padding(2, 2)
 					recent := ui.Column(c).FillWidth().Background(k.Card).
 						Border(1, k.CardBorder).Radius(radius).Clip()
 					recent.Children(func() {
@@ -57,8 +56,8 @@ func (a *app) emptyState(c *ui.Context, k *colors, vw, vh float32) {
 							if i > 0 {
 								ui.Divider(c)
 							}
-							row := ui.ButtonBase(c.Key("welcome:"+n.Rel)).Height(40).Padding(0, 14).
-								Gap(9).Justify(ui.Start).Cursor(ui.CursorPointer).
+							row := ui.ButtonBase(c.Key("welcome:"+n.Rel)).Height(rowH).Padding(0, 14).
+								Gap(rowGap).Justify(ui.Start).Cursor(ui.CursorPointer).
 								Label(n.Title)
 							if row.Hovered() {
 								row.Background(k.Hover)
@@ -68,9 +67,9 @@ func (a *app) emptyState(c *ui.Context, k *colors, vw, vh float32) {
 							}
 							row.Children(func() {
 								ui.Icon(c, icons.FileIcon(n.Path)).Size(15, 15).TextColor(k.TextMuted)
-								ui.Text(c, n.Title).FontSize(12.5).TextColor(k.Text).
+								ui.Text(c, n.Title).FontSize(rowTitle).FontWeight(500).TextColor(k.Text).
 									SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-								ui.Text(c, n.Rel).FontSize(11).TextColor(k.TextFaint).
+								ui.Text(c, n.Rel).FontSize(rowDetail).TextColor(k.TextFaint).
 									SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 							})
 						}
@@ -85,7 +84,7 @@ func (a *app) emptyState(c *ui.Context, k *colors, vw, vh float32) {
 }
 
 func (a *app) welcomeAction(c *ui.Context, k *colors, glyph, title string, cmd *commands.Command, run func()) {
-	row := ui.ButtonBase(c).Height(42).Padding(0, 14).Gap(10).
+	row := ui.ButtonBase(c).Height(38).Padding(0, 14).Gap(rowGap).
 		Justify(ui.Start).Cursor(ui.CursorPointer).Label(title)
 	if row.Hovered() {
 		row.Background(k.Hover)
@@ -95,9 +94,9 @@ func (a *app) welcomeAction(c *ui.Context, k *colors, glyph, title string, cmd *
 	}
 	row.Children(func() {
 		ui.Icon(c, icons.Icon(glyph)).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, title).FontSize(12.5).TextColor(k.Text).Grow(1)
+		ui.Text(c, title).FontSize(rowTitle).TextColor(k.Text).Grow(1)
 		if hint := a.commandKeys(cmd); hint != "" {
-			ui.Text(c, hint).FontSize(11).TextColor(k.TextFaint)
+			ui.Text(c, hint).FontSize(rowDetail).TextColor(k.TextFaint)
 		}
 	})
 }

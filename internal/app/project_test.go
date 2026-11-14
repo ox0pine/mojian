@@ -125,7 +125,7 @@ func TestProjectChip(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("Projects") {
+	if !tt.HasText("PROJECTS") {
 		t.Fatalf("no project popover: %q", tt.Texts())
 	}
 	if !tt.HasText("Open Folder…") {

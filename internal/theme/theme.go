@@ -24,7 +24,7 @@ type Colors struct {
 	BgTop, BgMid, BgLow, BgBottom, BgTint ui.Color
 
 	Card, CardFocused, CardBorder, CardBorderFocused ui.Color
-	Shadow, ShadowFocused                            ui.Color
+	Shadow, ShadowFocused, ShadowDialog              ui.Color
 
 	Text, TextMuted, TextFaint, IconMuted ui.Color
 	Hover, Pressed                        ui.Color
@@ -54,6 +54,7 @@ var lightColors = Colors{
 	CardBorderFocused: ui.RGBA(255, 255, 255, 1),
 	Shadow:            ui.RGBA(48, 36, 48, 0.07),
 	ShadowFocused:     ui.RGBA(48, 36, 48, 0.12),
+	ShadowDialog:      ui.RGBA(30, 20, 30, 0.26),
 
 	Text:      ui.Hex("#1f1b20"),
 	TextMuted: ui.Hex("#66616a"),
@@ -96,6 +97,7 @@ var darkColors = Colors{
 	CardBorderFocused: ui.RGBA(255, 255, 255, 0.14),
 	Shadow:            ui.RGBA(0, 0, 0, 0.28),
 	ShadowFocused:     ui.RGBA(0, 0, 0, 0.45),
+	ShadowDialog:      ui.RGBA(0, 0, 0, 0.60),
 
 	Text:      ui.Hex("#f3f0f4"),
 	TextMuted: ui.Hex("#b1abb4"),

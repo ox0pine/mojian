@@ -31,26 +31,32 @@ func ListNav(in ui.Element, sel *int, n int, reveal *bool) bool {
 	return in.Submitted()
 }
 
-// CommandDialog is the search sheet the palette and quick open share.
-func CommandDialog(c *ui.Context, k *theme.Colors, open *bool, width, maxH float32, start bool, body func()) {
+// CommandDialog is the search sheet the palette, quick open and the SSH
+// picker share: one width, one top edge and one shadow.
+func CommandDialog(c *ui.Context, k *theme.Colors, open *bool, body func()) {
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.Backdrop)
-		if start {
-			backdrop.Justify(ui.Start).Padding(78, 0, 0, 0)
-		}
-		panel.Width(width).MaxHeight(maxH).Radius(theme.Radius).Background(k.Panel).
+		backdrop.Background(k.Backdrop).Justify(ui.Start).Padding(78, 0, 0, 0)
+		panel.Width(560).MaxHeight(440).Radius(theme.Radius).Background(k.Panel).
 			Border(1, k.PanelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).
-			Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
+			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip()
 		body()
 	})
 }
 
+// The one row the file lists share: quick open, a blank pane's picker,
+// the SSH hosts and the Settings font picker all read at this size.
+const (
+	RowH      = 34 // one row
+	RowPadX   = 10 // its left and right padding
+	RowGap    = 10 // between its glyph, title and detail
+	RowTitle  = 13 // its title
+	RowDetail = 12 // its quieter second line
+)
+
 // FileRow is one file in a picker: its icon, title and project path, with
 // the shared selected and hover faces.
-func FileRow(c *ui.Context, k *theme.Colors, key any, title, rel string, selected bool,
-	height, padX, gap, titleSize, relSize float32, titleWeight int) (ui.Element, bool) {
-	row := ui.Row(c.Key(key)).Height(height).Padding(0, padX).Gap(gap).
+func FileRow(c *ui.Context, k *theme.Colors, key any, title, rel string, selected bool) (ui.Element, bool) {
+	row := ui.Row(c.Key(key)).Height(RowH).Padding(0, RowPadX).Gap(RowGap).
 		Radius(theme.Radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(title)
 	fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
@@ -63,9 +69,9 @@ func FileRow(c *ui.Context, k *theme.Colors, key any, title, rel string, selecte
 	}
 	row.Children(func() {
 		ui.Icon(c, icons.FileIcon(rel)).Size(15, 15).TextColor(icon)
-		ui.Text(c, title).FontSize(titleSize).FontWeight(titleWeight).TextColor(fg).
+		ui.Text(c, title).FontSize(RowTitle).FontWeight(500).TextColor(fg).
 			SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
-		ui.Text(c, rel).FontSize(relSize).TextColor(muted).
+		ui.Text(c, rel).FontSize(RowDetail).TextColor(muted).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	})
 	return row, row.Clicked()

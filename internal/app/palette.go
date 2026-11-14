@@ -145,22 +145,18 @@ func (a *app) palette(c *ui.Context, k *colors) {
 	was := a.paletteOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.paletteOpen, 560, 440, true, func() {
-		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).
-			BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
-			ui.Icon(c, icons.Icon("search")).Size(17, 17).TextColor(k.TextFaint)
-			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).
-				Placeholder("Type a command, or the name of a note…").AutoFocus()
-			if listNav(in, &a.paletteSel, len(items), &reveal) {
-				chosen = a.paletteSel
-			}
-		})
+	commandDialog(c, k, &a.paletteOpen, func() {
+		in := sheetHeader(c, k, &a.paletteQuery, "Type a command, or the name of a note…",
+			"Search commands", &a.paletteOpen)
+		if listNav(in, &a.paletteSel, len(items), &reveal) {
+			chosen = a.paletteSel
+		}
 		a.paletteList.Selected = &a.paletteSel
 		a.paletteList.Key = func(i int) any { return items[i].id }
 		list := ui.List(c, &a.paletteList, len(items), func(i int) {
 			it := items[i]
-			row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(radius).
-				AlignItems(ui.Center).Cursor(ui.CursorPointer)
+			row := ui.Row(c.Key(i)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
+				Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
 			if i == a.paletteSel {
 				fg = c.Theme().AccentText
@@ -173,10 +169,10 @@ func (a *app) palette(c *ui.Context, k *colors) {
 			}
 			row.Children(func() {
 				ui.Icon(c, icons.Icon(it.glyph)).Size(15, 15).TextColor(icon)
-				ui.Text(c, it.title).FontSize(13.5).FontWeight(500).TextColor(fg).
+				ui.Text(c, it.title).FontSize(rowTitle).FontWeight(500).TextColor(fg).
 					SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 				if it.detail != "" {
-					ui.Text(c, it.detail).FontSize(13).TextColor(muted).
+					ui.Text(c, it.detail).FontSize(rowDetail).TextColor(muted).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				}
 				ui.Spacer(c)
@@ -189,11 +185,9 @@ func (a *app) palette(c *ui.Context, k *colors) {
 						Padding(2, 7).Radius(radius).Background(chipBg).Shrink(0)
 				}
 			})
-		}).MaxHeight(384).Padding(6)
+		}).MaxHeight(sheetListH).Padding(6)
 		if len(items) == 0 {
-			list.Children(func() {
-				ui.Text(c, "No matches").FontSize(13).TextColor(k.TextFaint).Padding(14)
-			})
+			list.Children(func() { emptyLine(c, k, "No matches") })
 		}
 		if reveal {
 			a.paletteList.ScrollIntoView(a.paletteSel)

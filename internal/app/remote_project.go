@@ -490,12 +490,12 @@ func (a *app) remoteBusyView(c *ui.Context, k *colors) {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 					ui.Text(c, "Connecting to a server").FontSize(13).
 						FontWeight(600).TextColor(k.Text)
-					ui.Text(c, a.remoteBusyMsg).FontSize(11.5).TextColor(k.TextMuted).
+					ui.Text(c, a.remoteBusyMsg).FontSize(12).TextColor(k.TextMuted).
 						LineHeight(1.35)
 				})
-				a.pickerButton(c, k, "Cancel", false, func() {
+				if ui.Button(c, "Cancel").Clicked() {
 					a.cancelRemoteTask()
-				})
+				}
 			})
 		})
 	})

@@ -155,13 +155,8 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 	if a.store == nil {
 		return
 	}
-	chip := ui.ButtonBase(c).Gap(7).Padding(3, 8, 3, 6).Radius(radius).
-		Justify(ui.Start).Cursor(ui.CursorPointer).Label("Switch project: " + a.projectName()).
-		Tooltip(a.projectPath() + "  " + nativeKeys("⌘O")).MaxWidth(230).Shrink(0).ClipX().
-		Transition(motion.Colors)
-	if chip.Hovered() || a.projectOpen {
-		chip.Background(k.Hover)
-	}
+	chip := titleChip(c, k, a.projectOpen).Label("Switch project: " + a.projectName()).
+		Tooltip(a.projectPath()).MaxWidth(210)
 	drop := float32(0)
 	if a.projectOpen {
 		drop = 1
@@ -171,62 +166,44 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 		a.projectOpen = !a.projectOpen
 	}
 	chip.Children(func() {
-		ui.Icon(c, icons.FolderIcon()).Size(19, 19).TextColor(k.TextMuted)
-		ui.Text(c, a.projectName()).FontSize(13.5).FontWeight(700).TextColor(k.Text.Alpha(0.9)).
+		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
+		ui.Text(c, a.projectName()).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		ui.Icon(c, icons.Icon("chevron-down")).Size(13, 13).TextColor(k.TextFaint)
+		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	if a.store.IsMemory() {
 		return
 	}
 	ui.PopoverBase(c, chip, &a.projectOpen, func(panel ui.Element) {
-		panel.Width(304).Padding(9).Radius(radius).Background(k.Panel).Border(1, k.PanelBorder).
-			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
-			Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
+		menuSurface(panel, k, drop)
 		if a.remotePath != "" {
 			a.remoteProjectRows(c, k)
 			ui.Divider(c).Margin(6, 0)
-			row := ui.ButtonBase(c).Height(34).Padding(0, 8).Gap(8).Radius(radius).
-				Justify(ui.Start).Cursor(ui.CursorPointer).
-				Label("Open Remote Folder…")
-			if row.Hovered() {
-				row.Background(k.Hover)
-			}
+			row := menuAction(c, k, "menu:open-remote-folder", "folder-plus", "Open Remote Folder…")
 			if row.Clicked() {
 				a.projectOpen = false
 				a.later(func() { a.openRemotePicker(a.serverAlias) })
 			}
-			row.Children(func() {
-				ui.Icon(c, icons.Icon("folder-plus")).Size(15, 15).TextColor(k.TextMuted)
-				ui.Text(c, "Open Remote Folder…").FontSize(12.5).TextColor(k.Text)
-			})
 			return
 		}
-		ui.Row(c).Padding(4, 8, 5, 8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "Projects").FontSize(11).FontWeight(600).TextColor(k.TextFaint)
-			ui.Spacer(c)
-			ui.Text(c, nativeKeys("⌘O")).FontSize(11).TextColor(k.TextFaint)
+		menuHeader(c, k, "Projects", nativeKeys("⌘O"))
+		recent := a.recentProjects()
+		menuList(c, func() {
+			for _, p := range recent {
+				a.projectRow(c, k, p)
+			}
 		})
-		for _, p := range a.recentProjects() {
-			a.projectRow(c, k, p)
+		if len(recent) == 0 {
+			menuNote(c, k, "No recent projects.", false)
 		}
 		if runtime.GOOS != "js" {
 			ui.Divider(c).Margin(6, 0)
-			row := ui.ButtonBase(c).Height(34).Padding(0, 8).Gap(8).Radius(radius).
-				Justify(ui.Start).Cursor(ui.CursorPointer).
-				Label("Open Folder…")
-			if row.Hovered() {
-				row.Background(k.Hover)
-			}
+			row := menuAction(c, k, "menu:open-folder", "folder-plus", "Open Folder…")
 			row.Tooltip(a.tip("Open Folder", cmdOpenProject))
 			if row.Clicked() {
 				a.projectOpen = false
 				a.openProjectPicker()
 			}
-			row.Children(func() {
-				ui.Icon(c, icons.Icon("folder-plus")).Size(15, 15).TextColor(k.TextMuted)
-				ui.Text(c, "Open Folder…").FontSize(12.5).TextColor(k.Text)
-			})
 		}
 	})
 }
@@ -265,29 +242,37 @@ type projectRowSpec struct {
 }
 
 func (a *app) projectRowBase(c *ui.Context, k *colors, s projectRowSpec) {
-	row := ui.Row(c.Key(s.key)).Height(42).Padding(0, 8).MarginY(2).Gap(9).Radius(radius).
+	row := ui.Row(c.Key(s.key)).Height(menuRowH).Padding(0, menuInset).Gap(8).Radius(radius).
 		AlignItems(ui.Center)
 	if s.current {
 		row.Background(k.PanelSel)
 	} else if row.Hovered() {
 		row.Background(k.Hover)
 	}
+	weight := 500
+	if s.current {
+		weight = 600
+	}
 	row.Children(func() {
-		info := ui.ButtonBase(c).Grow(1).MinWidth(0).Gap(9).Justify(ui.Start).
+		info := ui.ButtonBase(c).Grow(1).MinWidth(0).Gap(8).Justify(ui.Start).
 			Cursor(ui.CursorPointer).Label(s.label)
 		if info.Clicked() && s.open != nil {
 			s.open()
 		}
 		info.Children(func() {
-			ui.Icon(c, icons.FolderIcon()).Size(16, 16).TextColor(k.TextMuted)
+			if s.current {
+				ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
+			} else {
+				ui.Icon(c, icons.FolderIcon()).Size(16, 16).TextColor(k.TextMuted)
+			}
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, s.title).FontSize(12.5).FontWeight(500).TextColor(k.Text).
+				ui.Text(c, s.title).FontSize(12.5).FontWeight(weight).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
 				ui.Text(c, s.detail).FontSize(11).TextColor(k.TextFaint).
 					SingleLine().Ellipsis("…")
 			})
 		})
-		remove := iconButton(c, k, "trash-2", "Remove project "+s.closeLabel, 22, 13).
+		remove := iconButton(c, k, "trash-2", "Remove project "+s.closeLabel, iconBtnSm, iconGlyphSm).
 			Tooltip("Remove Project")
 		if remove.Clicked() && s.close != nil {
 			s.close()

@@ -99,7 +99,7 @@ func (a *app) workspaceView(c *ui.Context, k *colors) {
 	case t != nil:
 		box.Children(func() { a.tabContent(c, k, t, vw, vh) })
 	default:
-		box.Children(func() { a.emptyState(c, k, vw, vh) })
+		box.Children(func() { a.welcomePage(c, k, vw, vh) })
 	}
 }
 
@@ -117,17 +117,24 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// window, and leaves the corner itself to the resize edge.
 		ui.Box(c).Width(dragW).Height(titleH).DragWindow().
 			Cursor(ui.CursorGrab).Description("Drag Window")
-		if iconButton(c, k, "panel-left", "File Tree", 30, 17).
+		if iconButton(c, k, "panel-left", "File Tree", iconBtnLg, iconGlyphLg).
 			Tooltip(a.tip("File Tree", cmdTree)).Clicked() {
 			a.later(func() { a.toggleTree() })
 		}
-		if terminalsSupported() {
-			a.serverChip(c, k)
-		}
-		a.projectChip(c, k)
-		a.branchChip(c, k)
+		// The machine, project and branch of the frame sit in a track
+		// that matches the tabs: the same height, radius and border, and
+		// the chip whose menu is open lifts to the active tab's face.
+		ui.Row(c).Height(tabH+4).Padding(2).Gap(2).Radius(radius).
+			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(0).
+			Children(func() {
+				if terminalsSupported() {
+					a.serverChip(c, k)
+				}
+				a.projectChip(c, k)
+				a.branchChip(c, k)
+			})
 		a.tabStrip(c, k)
-		if iconButton(c, k, "plus", "New Tab", 26, 16).
+		if iconButton(c, k, "plus", "New Tab", iconBtnMd, iconGlyphMd).
 			Tooltip(a.tip("New Tab", cmdNewTab)).Clicked() {
 			a.later(func() { a.newTab() })
 		}
@@ -135,21 +142,21 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// window, and a double click on it zooms the window.
 		ui.Box(c).Grow(1).MinWidth(24)
 		ui.Toolbar(c, func() {
-			if iconButton(c, k, "command", "Command Palette", 30, 17).
+			if iconButton(c, k, "command", "Command Palette", iconBtnLg, iconGlyphLg).
 				Tooltip(a.tip("Command Palette", cmdPalette)).Clicked() {
 				a.openPalette()
 			}
-			if iconButton(c, k, "git-branch", "Git Diff", 30, 17).
+			if iconButton(c, k, "git-branch", "Git Diff", iconBtnLg, iconGlyphLg).
 				Tooltip(a.tip("Git Diff", cmdGit)).Clicked() {
 				a.later(func() { a.toggleGit() })
 			}
 			if terminalsSupported() {
-				if iconButton(c, k, "square-terminal", "Toggle Terminal", 30, 17).
+				if iconButton(c, k, "square-terminal", "Toggle Terminal", iconBtnLg, iconGlyphLg).
 					Tooltip(a.tip("Toggle Terminal", cmdTerminal)).Clicked() {
 					a.later(func() { a.toggleTerminal() })
 				}
 			}
-			if iconButton(c, k, "settings", "Settings", 30, 17).
+			if iconButton(c, k, "settings", "Settings", iconBtnLg, iconGlyphLg).
 				Tooltip(a.tip("Settings", cmdSettings)).Clicked() {
 				a.later(func() { a.openSettingsWindow() })
 			}
@@ -165,6 +172,22 @@ func (a *app) tip(label string, cmd *commands.Command) string {
 		return label
 	}
 	return label + "  " + keys
+}
+
+// titleChip is the frame of one chip in the title bar's context track:
+// tab-sized, so the machine, project and branch read as a group, and
+// filled like the active tab while its menu is open.
+func titleChip(c *ui.Context, k *colors, open bool) ui.Element {
+	e := ui.ButtonBase(c).Height(tabH).Gap(6).Padding(0, 8, 0, 6).Radius(radius).
+		Justify(ui.Start).Cursor(ui.CursorPointer).Shrink(0).ClipX().
+		Transition(motion.Colors)
+	switch {
+	case open:
+		e.Background(k.TabActive).Shadow(0, 1, 2, 0, k.Shadow).Shadow(0, 2, 8, 0, k.Shadow)
+	case e.Hovered():
+		e.Background(k.Hover)
+	}
+	return e
 }
 
 // iconButton is a borderless button of an icon, with a face on hover;
@@ -194,7 +217,7 @@ func iconButton(c *ui.Context, k *colors, name, label string, size, iconSize flo
 // split gives its sides the share its divider was dragged to.
 func (a *app) tabContent(c *ui.Context, k *colors, t *tab, vw, vh float32) {
 	if t.Root == nil {
-		a.emptyState(c, k, vw, vh)
+		a.welcomePage(c, k, vw, vh)
 		return
 	}
 	if t.Zoom != nil && t.contains(t.Zoom) {

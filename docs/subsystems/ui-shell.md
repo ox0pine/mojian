@@ -16,6 +16,9 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   `later`, `runPending`, `changed`, `scheduleLayoutSave`, `persistLayout`, `fail`.
 - [`internal/app/view.go`](../../internal/app/view.go) — `(*app).view`, the window root:
   title bar, workspace switch, pane overlays and the error banner.
+- [`internal/app/context_menu.go`](../../internal/app/context_menu.go) — `menuSurface`,
+  `menuHeader`, `menuChoice`, `menuAction`, `menuNote`, `menuList`: the one look the three
+  title-bar menus share.
 - [`internal/app/window.go`](../../internal/app/window.go) — `(*app).invalidate`, window and tray
   lifecycle.
 - [`internal/app/settings_host.go`](../../internal/app/settings_host.go) —
@@ -87,6 +90,26 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   same 44 the views draw, so on Windows the minimize, maximize and close buttons fill that band
   and their glyphs center on the same line as the title bar's own buttons. With MyGo's 32
   default they sat half a row higher. The page keeps clear of them with `c.TitleBar().Right`.
+- The title bar's left end is one track, as a tab strip: `serverChip`, `projectChip` and
+  `branchChip` sit in a `k.Track` frame at `radius`, and `titleChip` gives each a `tabH`-tall face
+  that turns `k.TabActive` with the active tab's shadows while its menu is open, so the open chip
+  reads as the raised tab above its popover.
+- The three title-bar popovers share `internal/app/context_menu.go`: `menuSurface` (one width,
+  inset and shadow for all of them), `menuHeader`, `menuChoice` (36 tall, with a leading check on
+  the current entry), `menuAction`, `menuNote` and `menuList` (scrolls after nine rows). A menu
+  adds its own rows only; a new menu takes the same pieces rather than a fourth set of metrics.
+- Every list row in a window is one row: `internal/app/style.go` holds `rowH` (34), `rowPadX`
+  (10), `rowGap` (10), `rowTitle` (13), `rowDetail` (12), aliased from `internal/app/widgets`,
+  which draws the one file row the pickers use. Quick open, a blank pane's picker, the Explorer's
+  search results, the Welcome page's recents, the folder pickers and the Git change list take
+  those numbers; `sectionLabel`, `emptyLine` and `emptyState` draw their captions, empty lines and
+  empty pages. Settings keeps its own denser scale inside its own window.
+- The palette, quick open and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
+  below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
+  close button); their lists scroll after `sheetListH` (384) and say "no matches" with
+  `emptyLine`. `theme.Colors.ShadowDialog` is the dialog shadow; `k.ShadowFocused` stays for
+  popovers and floating overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through
+  `iconBtnLg` (30), rather than a pair per call site.
 - `internal/app/theme_bridge.go` is the only file in `internal/app` that names `internal/theme`
   (besides `settings_host.go`); `archtest` enforces it.
 

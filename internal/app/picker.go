@@ -141,7 +141,7 @@ func (a *app) projectPickerModal(c *ui.Context, k *colors) {
 		panel.WidthPercent(58).HeightPercent(66).
 			MinWidth(520).MinHeight(360).MaxWidth(680).MaxHeight(480).
 			Radius(radius).Background(k.Sheet).Border(1, k.PanelBorder).
-			Shadow(0, 24, 70, -10, k.ShadowFocused).Clip()
+			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip()
 		ui.Column(c).Fill().Children(func() {
 			a.pickerHeader(c, k)
 			ui.Divider(c)
@@ -167,7 +167,7 @@ func (a *app) pickerHeader(c *ui.Context, k *colors) {
 				FontSize(11.5).TextColor(k.TextFaint)
 		})
 		ui.Spacer(c)
-		if iconButton(c, k, "x", "Close", 28, 15).Clicked() {
+		if iconButton(c, k, "x", "Close", iconBtnMd, iconGlyphMd).Clicked() {
 			a.projectPicker = false
 		}
 	})
@@ -209,7 +209,7 @@ func (a *app) pickerPlace(c *ui.Context, k *colors, label, path string) {
 		return
 	}
 	current := filepath.Clean(path) == filepath.Clean(a.pickerPath)
-	row := ui.Row(c.Key("place:"+path)).Height(30).Padding(0, 8).Gap(8).Radius(radius).
+	row := ui.Row(c.Key("place:"+path)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).Radius(radius).
 		AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 	if current {
 		row.Background(k.PanelSel)
@@ -221,12 +221,12 @@ func (a *app) pickerPlace(c *ui.Context, k *colors, label, path string) {
 	}
 	row.Children(func() {
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, label).FontSize(12.5).TextColor(k.Text)
+		ui.Text(c, label).FontSize(rowTitle).TextColor(k.Text)
 	})
 }
 
 func (a *app) pickerRecent(c *ui.Context, k *colors, path string) {
-	row := ui.Row(c.Key("recent:"+path)).Height(30).Padding(0, 8).Gap(8).Radius(radius).
+	row := ui.Row(c.Key("recent:"+path)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).Radius(radius).
 		AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleButton).
 		Label(a.projectLabel(path)).Tooltip(shortPath(path))
 	if row.Hovered() {
@@ -238,23 +238,23 @@ func (a *app) pickerRecent(c *ui.Context, k *colors, path string) {
 	}
 	row.Children(func() {
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, a.projectLabel(path)).FontSize(12.5).TextColor(k.Text).
+		ui.Text(c, a.projectLabel(path)).FontSize(rowTitle).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	})
 }
 
 func (a *app) pickerMain(c *ui.Context, k *colors) {
 	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Padding(14, 12).Gap(8).Children(func() {
-		ui.Row(c).Height(34).Gap(6).AlignItems(ui.Center).Children(func() {
-			if b := iconButton(c, k, "arrow-up", "Parent Folder", 28, 14).
+		ui.Row(c).Height(32).Gap(6).AlignItems(ui.Center).Children(func() {
+			if b := iconButton(c, k, "arrow-up", "Parent Folder", iconBtnMd, iconGlyphMd).
 				Tooltip("Parent Folder"); b.Clicked() {
 				a.later(func() { a.pickerUp() })
 			}
-			field := ui.Row(c).Grow(1).Height(34).Padding(0, 10).Gap(7).Radius(radius).
+			field := ui.Row(c).Grow(1).Height(32).Padding(0, 9).Gap(7).Radius(radius).
 				Background(k.Hover).AlignItems(ui.Center)
 			field.Children(func() {
 				ui.Icon(c, icons.FolderIcon()).Size(14, 14).TextColor(k.TextFaint)
-				in := ui.TextInputBase(c, &a.pickerInput).Grow(1).FontSize(12.5).
+				in := ui.TextInputBase(c, &a.pickerInput).Grow(1).FontSize(13).
 					Placeholder("Folder path").AutoFocus()
 				if in.Submitted() {
 					a.later(func() { a.setPickerPath(a.pickerInput) })
@@ -262,7 +262,7 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 			})
 		})
 		if a.pickerErr != "" {
-			ui.Text(c, a.pickerErr).FontSize(11.5).TextColor(k.Danger).
+			ui.Text(c, a.pickerErr).FontSize(rowDetail).TextColor(k.Danger).
 				SingleLine().Ellipsis("…")
 		}
 		a.pickerList.Selected = &a.pickerSel
@@ -271,8 +271,8 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 		list := ui.List(c, &a.pickerList, len(a.pickerEntries), func(i int) {
 			e := a.pickerEntries[i]
 			selected := i == a.pickerSel
-			row := ui.Row(c.Key("pick:"+e.Path)).Height(32).Padding(0, 9).MarginY(2).
-				Gap(9).Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+			row := ui.Row(c.Key("pick:"+e.Path)).Height(rowH).Padding(0, rowPadX).
+				Gap(rowGap).Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 				Label(e.Name)
 			fg, icon := k.Text, k.TextMuted
 			if selected {
@@ -286,7 +286,7 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 			}
 			row.Children(func() {
 				ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(icon)
-				ui.Text(c, e.Name).FontSize(12.5).TextColor(fg).
+				ui.Text(c, e.Name).FontSize(rowTitle).TextColor(fg).
 					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				ui.Spacer(c)
 				if row.Hovered() {
@@ -296,8 +296,7 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 		}).Grow(1).MinHeight(0).Padding(0, 2)
 		if len(a.pickerEntries) == 0 {
 			list.Children(func() {
-				ui.Text(c, "No subfolders").FontSize(12.5).TextColor(k.TextFaint).
-					Padding(10, 8)
+				emptyLine(c, k, "No subfolders")
 			})
 		}
 		if list.Submitted() && a.pickerSel >= 0 && a.pickerSel < len(a.pickerEntries) {
@@ -312,7 +311,7 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 // pickerHiddenSwitch draws the hidden-folder switch beside Cancel.
 func (a *app) pickerHiddenSwitch(c *ui.Context, k *colors) {
 	ui.Row(c).Height(28).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, "Hidden folders").FontSize(11.5).TextColor(k.TextFaint)
+		ui.Text(c, "Hidden folders").FontSize(rowDetail).TextColor(k.TextFaint)
 		on := a.pickerHidden
 		sw := ui.Switch(c, &on).Label("Show hidden folders").
 			Tooltip("Show folders whose name starts with a dot")
@@ -328,39 +327,16 @@ func (a *app) pickerFooter(c *ui.Context, k *colors) {
 	ui.Row(c).Height(58).Padding(0, 18).Gap(8).AlignItems(ui.Center).Children(func() {
 		target := a.pickerTarget()
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-			ui.Text(c, "Open").FontSize(10.5).FontWeight(600).TextColor(k.TextFaint)
+			sectionLabel(c, k, "Open")
 			ui.Text(c, shortPath(target)).FontSize(12).TextColor(k.TextMuted).
 				SingleLine().Ellipsis("…")
 		})
 		a.pickerHiddenSwitch(c, k)
-		a.pickerButton(c, k, "Cancel", false, func() {
+		if ui.Button(c, "Cancel").Clicked() {
 			a.projectPicker = false
-		})
-		a.pickerButton(c, k, "Open", true, func() {
+		}
+		if ui.PrimaryButton(c, "Open").Clicked() {
 			a.later(func() { a.pickerOpen() })
-		})
-	})
-}
-
-func (a *app) pickerButton(c *ui.Context, k *colors, label string, primary bool, fn func()) {
-	b := ui.ButtonBase(c).Padding(6, 14).Radius(radius).
-		Cursor(ui.CursorPointer).Label(label)
-	if primary {
-		b.Background(k.Text)
-		if b.Hovered() {
-			b.Background(k.Text.Alpha(0.86))
 		}
-	} else if b.Hovered() {
-		b.Background(k.Hover)
-	}
-	if b.Clicked() {
-		fn()
-	}
-	b.Children(func() {
-		col := k.Text
-		if primary {
-			col = k.Panel
-		}
-		ui.Text(c, label).FontSize(12.5).FontWeight(600).TextColor(col)
 	})
 }

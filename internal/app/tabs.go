@@ -186,10 +186,10 @@ func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, wh
 			actions := ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0)
 			actions.Children(func() {
 				if t.dirty() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(k.Attention).Shrink(0).
+					ui.Box(c).Size(dotSize, dotSize).Radius(dotSize / 2).Background(k.Attention).Shrink(0).
 						Tooltip("Unsaved edits")
 				}
-				if iconButton(c, k, "x", "Close Tab", 18, 12).Tooltip("Close Tab").Clicked() {
+				if iconButton(c, k, "x", "Close Tab", iconBtnXs, iconGlyphXs).Tooltip("Close Tab").Clicked() {
 					a.later(func() { a.closeTab(t) })
 				}
 			})

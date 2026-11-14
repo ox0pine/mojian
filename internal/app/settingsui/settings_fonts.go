@@ -64,7 +64,7 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 		backdrop.Background(k.Backdrop)
 		panel.Width(500).MaxHeight(480).Radius(radius).Background(k.Panel).
 			Border(1, k.PanelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Clip()
+			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip()
 		ui.Column(c).Children(func() {
 			title := "Editor font"
 			if u.FontPickFor == 1 {
@@ -103,8 +103,8 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 			u.FontList.Key = func(i int) any { return choices[i].name }
 			ui.List(c, &u.FontList, len(choices), func(i int) {
 				ch := choices[i]
-				row := ui.Row(c.Key("picker-"+ch.name)).Height(32).Padding(0, 10).Gap(8).
-					Radius(8).Cursor(ui.CursorPointer).Label(ch.label)
+				row := ui.Row(c.Key("picker-"+ch.name)).Height(34).Padding(0, 10).Gap(10).
+					Radius(radius).Cursor(ui.CursorPointer).Label(ch.label)
 				if ch.name == current {
 					row.Background(k.PanelSel)
 				} else if row.Hovered() {
@@ -120,13 +120,13 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 						text.Font(ch.name)
 					}
 					if ch.monospaced {
-						ui.Text(c, "Mono").FontSize(9).FontWeight(650).
+						ui.Text(c, "Mono").FontSize(10).FontWeight(650).
 							TextColor(k.TextFaint).Padding(1, 4).Radius(radius).
 							Background(k.Hover).Shrink(0)
 					}
 					if ch.name == current {
 						ui.Spacer(c)
-						ui.Icon(c, icons.Icon("check")).Size(13, 13).TextColor(k.TextMuted)
+						ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.TextMuted)
 					}
 				})
 			}).Height(350).Padding(6)

@@ -42,11 +42,14 @@ checkout.
    `refreshBranch` through `a.later`, so the first paint never waits on Git; `ReadBranches` runs in
    the background through the same `Runner` and lands under `branch.seq`. The chip is absent while
    that read is pending, and for `BranchData.Root == ""`.
-5. The menu is a popover anchored to that chip, not a centered dialog: `branchMenuBody` lists
-   `BranchData.Branches` with the current one checked, and its `New Branch…` row swaps the list for
-   a name field whose Enter runs `createBranchAt` with `BranchData.Current` named as the source. A
-   click on a branch runs `checkoutBranch`. The same menu opens from the `switch-branch` command,
-   whose banner reports the reason when there is no chip to anchor to.
+5. The menu is a popover anchored to that chip, not a centered dialog. `branchMenuBody` draws it
+   from the shared title-bar pieces in `internal/app/context_menu.go`: a `BRANCHES` header with the
+   shortcut, one 36-pixel `menuChoice` per branch — leading check and `PanelSel` fill on the
+   current one — a `menuAction` row `New Branch…` under a divider, and `menuNote` for the
+   reading, empty and failure lines. `New Branch…` swaps the list for a name field whose Enter
+   runs `createBranchAt` with `BranchData.Current` named as the source. A click on a branch runs
+   `checkoutBranch`. The same menu opens from the `switch-branch` command, whose banner reports
+   the reason when there is no chip to anchor to.
 6. `branchRoot` refuses the change while any note is dirty, since checkout would overwrite the file
    those edits belong to: the reason lands in the banner and in the menu's footer, and the menu
    stays open. Otherwise `runBranchChange` runs `git switch` (or `git checkout` for Git older than
@@ -60,6 +63,9 @@ checkout.
 
 - `Change.Status` is one letter: `M` modified, `A` added, `D` deleted, `R` renamed, `U` untracked,
   `C` conflict. `statusLetter` maps `??` to `U` and any code containing `U`, plus `AA`/`DD`, to `C`.
+- A change row is the window's list row: 34 tall, a 15-pixel file icon, 13-pixel name, 12-pixel
+  directory and the status badge at 10. The panel's two headers are `headerH` tall, like the
+  Explorer's and a pane's.
 - `Change.Path` stays relative to the repository root so Git commands keep working; `OldPath` keeps
   a rename's source so Git can pair it; `Display` is relative to the project for people.
 - A project nested inside a repository reports changes with `Display` relative to the project and

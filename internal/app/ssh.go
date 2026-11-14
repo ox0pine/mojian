@@ -56,83 +56,62 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 	}
 	a.sshSel = min(max(a.sshSel, 0), max(len(filtered)-1, 0))
 	connected := ""
-	commandDialog(c, k, &a.sshPick, 560, 460, true, func() {
-		ui.Column(c).Children(func() {
-			reveal := false
-			ui.Row(c).Padding(13, 16).Gap(10).AlignItems(ui.Center).
-				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
-				ui.Box(c).Size(30, 30).Radius(radius).Background(k.Hover).Center().Children(func() {
-					ui.Icon(c, icons.Icon("server")).Size(15, 15).TextColor(k.TextMuted)
-				})
-				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, "Connect to Server").FontSize(14).FontWeight(650).TextColor(k.Text)
-					ui.Text(c, "Hosts from Settings › Hosts").FontSize(11.5).TextColor(k.TextFaint)
-				})
-				ui.Spacer(c)
-				if iconButton(c, k, "x", "Close", 24, 13).Clicked() {
-					a.sshPick = false
-				}
+	commandDialog(c, k, &a.sshPick, func() {
+		reveal := false
+		in := sheetHeader(c, k, &a.sshQuery, "Search hosts…", "Connect to Server", &a.sshPick)
+		if listNav(in, &a.sshSel, len(filtered), &reveal) {
+			connected = filtered[a.sshSel].Address
+		}
+		if len(a.hosts()) == 0 {
+			ui.Column(c).Height(sheetListH).Children(func() {
+				emptyState(c, k, "server", k.TextMuted, "No servers configured",
+					"Add a server in Settings › Hosts, then come back here.", func() {
+						if ui.Button(c, "Open Settings › Hosts").Clicked() {
+							a.sshPick = false
+							a.later(func() {
+								a.settings.Cat = settingsHosts
+								a.openSettingsWindow()
+							})
+						}
+					})
 			})
-			ui.Row(c).Padding(9, 13).Gap(8).AlignItems(ui.Center).Children(func() {
-				in := ui.SearchField(c.Key("ssh-search"), &a.sshQuery).Grow(1).
-					Padding(0).Gap(8).Background(ui.Transparent).Border(0, ui.Transparent).
-					FontSize(13).Placeholder("Search hosts…").Label("Search hosts").AutoFocus()
-				if listNav(in, &a.sshSel, len(filtered), &reveal) {
-					connected = filtered[a.sshSel].Address
-				}
+			return
+		}
+		a.sshList.Selected = &a.sshSel
+		a.sshList.Key = func(i int) any { return filtered[i].Address }
+		list := ui.List(c, &a.sshList, len(filtered), func(i int) {
+			h := filtered[i]
+			label := h.Name
+			if label == "" {
+				label = h.Address
+			}
+			row := ui.Row(c.Key(h.Address)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
+				Radius(radius).Cursor(ui.CursorPointer).
+				Label(label + " " + h.Address)
+			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
+			if i == a.sshSel {
+				fg = c.Theme().AccentText
+				muted, icon = fg.Alpha(0.9), fg.Alpha(0.9)
+			} else if row.Hovered() {
+				row.Background(k.Hover)
+			}
+			if row.Clicked() {
+				connected = h.Address
+			}
+			row.Children(func() {
+				ui.Icon(c, icons.Icon("server")).Size(15, 15).TextColor(icon)
+				ui.Text(c, label).FontSize(rowTitle).FontWeight(500).TextColor(fg).
+					Shrink(0)
+				ui.Text(c, h.Address).FontSize(rowDetail).TextColor(muted).
+					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			})
-			if len(a.hosts()) == 0 {
-				ui.Column(c).Padding(20).Gap(10).Children(func() {
-					ui.Text(c, "No servers configured").FontSize(13).FontWeight(600).TextColor(k.Text)
-					ui.Text(c, "Add a server in Settings › Hosts, then come back here.").
-						FontSize(11.5).TextColor(k.TextFaint)
-					if ui.Button(c, "Open Settings › Hosts").Clicked() {
-						a.sshPick = false
-						a.later(func() {
-							a.settings.Cat = settingsHosts
-							a.openSettingsWindow()
-						})
-					}
-				})
-				return
-			}
-			a.sshList.Selected = &a.sshSel
-			a.sshList.Key = func(i int) any { return filtered[i].Address }
-			ui.List(c, &a.sshList, len(filtered), func(i int) {
-				h := filtered[i]
-				label := h.Name
-				if label == "" {
-					label = h.Address
-				}
-				row := ui.Row(c.Key(h.Address)).Height(40).Padding(0, 10).Gap(9).
-					Radius(radius).Cursor(ui.CursorPointer).
-					Label(label + " " + h.Address)
-				fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
-				if i == a.sshSel {
-					fg = c.Theme().AccentText
-					muted, icon = fg.Alpha(0.9), fg.Alpha(0.9)
-				} else if row.Hovered() {
-					row.Background(k.Hover)
-				}
-				if row.Clicked() {
-					connected = h.Address
-				}
-				row.Children(func() {
-					ui.Icon(c, icons.Icon("server")).Size(14, 14).TextColor(icon)
-					ui.Text(c, label).FontSize(12.5).FontWeight(550).TextColor(fg).
-						Shrink(0)
-					ui.Text(c, h.Address).FontSize(11).TextColor(muted).
-						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-					if i == a.sshSel {
-						ui.Spacer(c)
-						ui.Text(c, "↵").FontSize(10).TextColor(muted)
-					}
-				})
-			}).MaxHeight(340).Padding(6)
-			if reveal {
-				a.sshList.ScrollIntoView(a.sshSel)
-			}
-		})
+		}).MaxHeight(sheetListH).Padding(6)
+		if len(filtered) == 0 {
+			list.Children(func() { emptyLine(c, k, "No hosts match") })
+		}
+		if reveal {
+			a.sshList.ScrollIntoView(a.sshSel)
+		}
 	})
 	if connected != "" {
 		a.sshPick = false

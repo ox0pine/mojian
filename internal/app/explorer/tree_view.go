@@ -93,17 +93,17 @@ func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
 		ui.Text(c, "Explorer").FontSize(12.5).FontWeight(600).TextColor(k.Text)
 		ui.Spacer(c)
 		ui.Toolbar(c, func() {
-			if iconButton(c, k, "file-plus", "New File", 24, 14).
+			if iconButton(c, k, "file-plus", "New File", 22, 13).
 				Tooltip(u.tip("New File", "new-file")).Clicked() {
 				u.later(func() { u.StartNewFile() })
 			}
-			if iconButton(c, k, "folder-plus", "New Folder", 24, 14).
+			if iconButton(c, k, "folder-plus", "New Folder", 22, 13).
 				Tooltip(u.tip("New Folder", "new-folder")).Clicked() {
 				u.later(func() { u.StartNewFolder() })
 			}
 			if u.refreshing() {
 				ui.Spinner(c).Size(14, 14).Label("Refreshing project")
-			} else if iconButton(c, k, "refresh-cw", "Refresh Project", 24, 14).
+			} else if iconButton(c, k, "refresh-cw", "Refresh Project", 22, 13).
 				Tooltip("Refresh Project").Clicked() {
 				u.later(func() { u.RefreshProject() })
 			}
@@ -113,8 +113,8 @@ func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
 
 func (u *UI) sidebarSearch(c *ui.Context, k *colors) {
 	field := ui.SearchField(c.Key("tree-search"), u.TreeQueryPtr()).
-		Height(30).Margin(0, 9, 6, 9).Padding(5, 8).Gap(6).Radius(radius).
-		Background(k.Hover).Border(0, ui.Transparent).FontSize(12.5).
+		Height(32).Margin(0, 9, 6, 9).Padding(0, 9).Gap(6).Radius(radius).
+		Background(k.Hover).Border(0, ui.Transparent).FontSize(13).
 		Placeholder("Search files…").Label("Search files").Bind(u.TreeSearch())
 	if field.Submitted() {
 		if notes := u.filteredNotes(); len(notes) > 0 {
@@ -152,7 +152,7 @@ func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row
 		}
 		ui.Icon(c, icons.Icon(arrow)).Size(12, 12).TextColor(k.TextFaint)
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, n.Name).FontSize(12.5).FontWeight(550).TextColor(k.Text).
+		ui.Text(c, n.Name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	})
 }
@@ -294,19 +294,14 @@ func (u *UI) emptyTree(c *ui.Context, k *colors) {
 	ui.Column(c).Grow(1).MinHeight(0).Padding(18, 8).Gap(8).Center().
 		PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, "", true) }).
 		Children(func() {
-			ui.Icon(c, icons.Icon("file-plus")).Size(20, 20).TextColor(k.TextFaint)
-			ui.Text(c, "No files here").FontSize(12.5).FontWeight(600).TextColor(k.TextMuted)
-			btn := ui.ButtonBase(c).Padding(5, 10).Radius(radius).
-				Cursor(ui.CursorPointer).Label("New File").Background(k.Hover)
-			if btn.Hovered() {
-				btn.Background(k.Pressed)
-			}
-			if btn.Clicked() {
+			ui.Box(c).Size(40, 40).Radius(radius).Background(k.Hover).Center().
+				Children(func() {
+					ui.Icon(c, icons.Icon("file-plus")).Size(20, 20).TextColor(k.TextFaint)
+				})
+			ui.Text(c, "No files here").FontSize(13).FontWeight(600).TextColor(k.Text)
+			if ui.Button(c, "New File").Clicked() {
 				u.later(func() { u.StartNewFile() })
 			}
-			btn.Children(func() {
-				ui.Text(c, "New File").FontSize(12).FontWeight(500).TextColor(k.Text)
-			})
 		})
 }
 
@@ -314,12 +309,12 @@ func (u *UI) emptyTree(c *ui.Context, k *colors) {
 func (u *UI) searchResults(c *ui.Context, k *colors) {
 	notes := u.filteredNotes()
 	if len(notes) == 0 {
-		ui.Text(c, "No files match").FontSize(12.5).TextColor(k.TextFaint).Padding(10)
+		ui.Text(c, "No files match").FontSize(12.5).TextColor(k.TextFaint).Padding(10, 8)
 		return
 	}
 	for _, n := range notes {
 		n := n
-		row := ui.Row(c.Key("result:"+n.Rel)).Padding(6, 7).Gap(8).Radius(radius).
+		row := ui.Row(c.Key("result:"+n.Rel)).Height(34).Padding(0, 8).Gap(10).Radius(radius).
 			AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleTreeItem).
 			Focusable().FocusRing(false).Label(n.Title).
 			PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, n.Rel, false) })
@@ -336,9 +331,9 @@ func (u *UI) searchResults(c *ui.Context, k *colors) {
 		row.Children(func() {
 			ui.Icon(c, icons.FileIcon(n.Path)).Size(15, 15).TextColor(k.TextMuted)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, n.Title).FontSize(12.5).FontWeight(500).TextColor(k.Text).
+				ui.Text(c, n.Title).FontSize(13).FontWeight(500).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
-				ui.Text(c, n.Rel).FontSize(11).TextColor(k.TextFaint).
+				ui.Text(c, n.Rel).FontSize(12).TextColor(k.TextFaint).
 					SingleLine().Ellipsis("…")
 			})
 			if n.Dirty() {

@@ -118,13 +118,8 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 	if d.Detached {
 		name = "detached at " + d.Current
 	}
-	chip := ui.ButtonBase(c).Gap(6).Padding(2, 8, 2, 6).Radius(radius).
-		Justify(ui.Start).Cursor(ui.CursorPointer).Label("Switch branch: " + name).
-		Tooltip("Branch " + name + "  " + nativeKeys("⌘⇧B")).MaxWidth(220).Shrink(0).ClipX().
-		Transition(motion.Colors)
-	if chip.Hovered() || a.branch.open {
-		chip.Background(k.Hover)
-	}
+	chip := titleChip(c, k, a.branch.open).Label("Switch branch: " + name).
+		Tooltip("Branch " + name + "  " + nativeKeys("⌘⇧B")).MaxWidth(210)
 	drop := float32(0)
 	if a.branch.open {
 		drop = 1
@@ -138,15 +133,13 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 		}
 	}
 	chip.Children(func() {
-		ui.Icon(c, icons.Icon("git-branch")).Size(14, 14).TextColor(k.TextMuted)
-		ui.Text(c, name).FontSize(12.5).TextColor(k.Text.Alpha(0.9)).
+		ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
+		ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	ui.PopoverBase(c, chip, &a.branch.open, func(panel ui.Element) {
-		panel.Width(272).Padding(6).Radius(radius).Background(k.Panel).Border(1, k.PanelBorder).
-			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
-			Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
+		menuSurface(panel, k, drop)
 		a.branchMenuBody(c, k)
 	})
 }
@@ -156,9 +149,9 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors) {
 	d := a.branch.data
 	if a.branch.creating {
 		submit := false
-		ui.Row(c).Padding(2, 6).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Padding(2, menuInset).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
-			in := ui.TextInputBase(c, &a.branch.name).Grow(1).FontSize(13).
+			in := ui.TextInputBase(c, &a.branch.name).Grow(1).FontSize(12.5).
 				Placeholder("New branch name").AutoFocus()
 			submit = in.Submitted()
 		})
@@ -166,82 +159,53 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors) {
 		if d.Detached {
 			hint = "Creates a branch at " + d.Current
 		}
-		face := k.TextFaint
 		if a.branch.err != "" {
-			hint, face = a.branch.err, k.Danger
+			menuNote(c, k, a.branch.err, true)
+		} else {
+			menuNote(c, k, hint, false)
 		}
-		ui.Text(c, hint).FontSize(11.5).TextColor(face).Padding(0, 8, 6, 8)
 		if submit {
 			a.createBranchAt(a.branch.name)
 		}
 		return
 	}
-	ui.Row(c).Padding(4, 8, 5, 8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, "Branches").FontSize(11).FontWeight(600).TextColor(k.TextFaint)
-		ui.Spacer(c)
-		ui.Text(c, nativeKeys("⌘⇧B")).FontSize(11).TextColor(k.TextFaint)
-	})
+	menuHeader(c, k, "Branches", nativeKeys("⌘⇧B"))
 	switch {
 	case a.branch.loading && len(d.Branches) == 0:
-		ui.Text(c, "Reading branches…").FontSize(12.5).TextColor(k.TextFaint).Padding(4, 8)
+		menuNote(c, k, "Reading branches…", false)
 	case len(d.Branches) == 0:
 		msg := "No branches"
 		if d.Err != "" {
 			msg = d.Err
 		}
-		ui.Text(c, msg).FontSize(12.5).TextColor(k.TextFaint).Padding(4, 8)
+		menuNote(c, k, msg, d.Err != "")
 	default:
-		ui.Scroll(c).MaxHeight(300).Children(func() {
+		menuList(c, func() {
 			for _, b := range d.Branches {
 				a.branchMenuRow(c, k, b)
 			}
 		})
 	}
 	if a.branch.err != "" {
-		ui.Text(c, a.branch.err).FontSize(11.5).TextColor(k.Danger).Padding(4, 8)
+		menuNote(c, k, a.branch.err, true)
 	}
 	ui.Divider(c).Margin(6, 0)
-	row := ui.ButtonBase(c).Height(32).Padding(0, 8).Gap(8).Radius(radius).
-		Justify(ui.Start).Cursor(ui.CursorPointer).Label("New Branch…")
-	if row.Hovered() {
-		row.Background(k.Hover)
-	}
+	row := menuAction(c, k, "menu:new-branch", "plus", "New Branch…")
 	if row.Clicked() {
 		a.branch.creating = true
 		a.branch.name = ""
 		a.branch.err = ""
 	}
-	row.Children(func() {
-		ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, "New Branch…").FontSize(12.5).TextColor(k.Text)
-	})
 }
 
 // branchMenuRow is one branch in the menu, checked when it is current.
 func (a *app) branchMenuRow(c *ui.Context, k *colors, b gitpage.Branch) {
-	row := ui.ButtonBase(c).Height(30).Padding(0, 8).Gap(8).Radius(radius).
-		Justify(ui.Start).Cursor(ui.CursorPointer).Label(b.Name)
-	if row.Hovered() {
-		row.Background(k.Hover)
-	}
+	row := menuChoice(c, k, "branch:"+b.Name, "git-branch", b.Name, b.Current)
 	if row.Clicked() {
 		a.branch.open = false
 		a.branch.creating = false
 		a.checkoutBranch(b.Name)
 	}
-	row.Children(func() {
-		if b.Current {
-			ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.TextMuted)
-		} else {
-			ui.Icon(c, icons.Icon("git-branch")).Size(14, 14).TextColor(k.TextFaint)
-		}
-		weight := 400
-		if b.Current {
-			weight = 600
-		}
-		ui.Text(c, b.Name).FontSize(12.5).FontWeight(weight).TextColor(k.Text).
-			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-	})
 }
 
 // checkoutBranch switches to an existing branch, then reloads every clean

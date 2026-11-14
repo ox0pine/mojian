@@ -2,8 +2,6 @@ package app
 
 import (
 	"github.com/egoist/mygo/ui"
-
-	"mojian/internal/icons"
 )
 
 // openQuickOpen shows the file picker over the window: every file of the
@@ -39,29 +37,22 @@ func (a *app) quickOpenModal(c *ui.Context, k *colors) {
 	was := a.quickOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.quickOpen, 560, 440, false, func() {
-		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).
-			BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
-			ui.Icon(c, icons.Icon("search")).Size(17, 17).TextColor(k.TextFaint)
-			in := ui.TextInputBase(c, &a.quickQuery).Grow(1).FontSize(15).
-				Placeholder("Open a file…").Label("Open a file").AutoFocus()
-			if listNav(in, &a.quickSel, len(choices), &reveal) {
-				chosen = a.quickSel
-			}
-		})
+	commandDialog(c, k, &a.quickOpen, func() {
+		in := sheetHeader(c, k, &a.quickQuery, "Open a file…", "Open a file", &a.quickOpen)
+		if listNav(in, &a.quickSel, len(choices), &reveal) {
+			chosen = a.quickSel
+		}
 		a.quickList.Selected = &a.quickSel
 		a.quickList.Key = func(i int) any { return choices[i].rel }
 		list := ui.List(c, &a.quickList, len(choices), func(i int) {
 			ch := choices[i]
-			_, clicked := fileChoiceRow(c, k, i, ch, i == a.quickSel, 34, 10, 10, 13.5, 13, 500)
+			_, clicked := fileChoiceRow(c, k, i, ch, i == a.quickSel)
 			if clicked {
 				chosen = i
 			}
-		}).MaxHeight(384).Padding(6)
+		}).MaxHeight(sheetListH).Padding(6)
 		if len(choices) == 0 {
-			list.Children(func() {
-				ui.Text(c, "No files match").FontSize(13).TextColor(k.TextFaint).Padding(14)
-			})
+			list.Children(func() { emptyLine(c, k, "No files match") })
 		}
 		if reveal {
 			a.quickList.ScrollIntoView(a.quickSel)

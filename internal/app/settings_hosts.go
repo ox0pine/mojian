@@ -120,13 +120,13 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, label, detail stri
 				a.selectServer(host)
 			}
 			if host != "" {
-				edit := iconButton(c, k, "pencil", "Edit server "+label, 24, 14)
+				edit := iconButton(c, k, "pencil", "Edit server "+label, iconBtnSm, iconGlyphSm)
 				if edit.Clicked() {
 					a.hostEditAddr, a.hostEditName, a.hostEditAddress = host, label, host
 					a.hostRemoveAddr, a.settings.Notice = "", ""
 					a.invalidate()
 				}
-				remove := iconButton(c, k, "x", "Remove server "+label, 24, 14)
+				remove := iconButton(c, k, "x", "Remove server "+label, iconBtnSm, iconGlyphSm)
 				if remove.Clicked() {
 					a.hostRemoveAddr = host
 					a.settings.Notice = ""

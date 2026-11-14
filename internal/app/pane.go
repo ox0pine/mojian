@@ -285,11 +285,11 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 	p.emptySel = min(max(p.emptySel, 0), max(len(choices)-1, 0))
 	reveal := false
 	ui.Column(c).Fill().Padding(14, 16).Gap(8).Children(func() {
-		ui.Text(c, "Open a file in this pane").FontSize(12.5).
+		ui.Text(c, "Open a file in this pane").FontSize(13).
 			FontWeight(600).TextColor(k.Text)
 		ui.Row(c).Children(func() {
 			in := ui.SearchField(c.Key("empty-pane-search:"+p.ID), &p.emptyQuery).Grow(1).
-				Height(34).Padding(0, 9).Gap(7).Radius(radius).Background(k.Hover).
+				Height(32).Padding(0, 9).Gap(7).Radius(radius).Background(k.Hover).
 				Border(0, ui.Transparent).FontSize(13).Placeholder("Type a file name…").
 				Label("Search files")
 			if t.Focus == p {
@@ -306,12 +306,12 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2).Children(func() {
 			if len(choices) == 0 {
-				ui.Text(c, "No files match").FontSize(12).TextColor(k.TextFaint).Padding(10)
+				emptyLine(c, k, "No files match")
 				return
 			}
 			for i, ch := range choices {
 				i, ch := i, ch
-				row, clicked := fileChoiceRow(c, k, "open:"+p.ID+":"+ch.rel, ch, i == p.emptySel, 32, 9, 8, 12.5, 11.5, 400)
+				row, clicked := fileChoiceRow(c, k, "open:"+p.ID+":"+ch.rel, ch, i == p.emptySel)
 				if i == p.emptySel && reveal {
 					row.ScrollIntoView()
 				}
@@ -401,9 +401,9 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 		name, ic = p.Term.Spec.title(), icons.Icon("square-terminal")
 	}
 	hpad, hgap := float32(12), float32(7)
-	btn, isize := float32(26), float32(16)
+	btn, isize := float32(iconBtnMd), float32(iconGlyphMd)
 	if compact {
-		hpad, hgap, btn, isize = 4, 5, 21, 13
+		hpad, hgap, btn, isize = 4, 5, iconBtnSm, iconGlyphSm
 	}
 	// With more than one pane on screen, name each action's accessible
 	// label after its pane, so the four visible button sets stay distinct.
@@ -454,7 +454,7 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				if p.Note != nil && p.Note.Dirty() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(k.Attention).Margin(0, 0, 0, 2).
+					ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
 						Tooltip("Unsaved edits")
 				}
 			})

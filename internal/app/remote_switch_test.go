@@ -68,7 +68,7 @@ func TestServerRowResumesLoadedProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Server Local"); err != nil {
+	if err := tt.Click("Local"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -84,7 +84,7 @@ func TestServerRowResumesLoadedProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Server buildbox"); err != nil {
+	if err := tt.Click("buildbox"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

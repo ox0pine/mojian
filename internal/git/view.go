@@ -43,17 +43,17 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 			})
 		}
 		if n := len(p.Changes); n > 0 {
-			ui.Text(c, fileCount(n)).FontSize(10.5).TextColor(k.TextFaint)
+			ui.Text(c, fileCount(n)).FontSize(11).TextColor(k.TextFaint)
 		}
 		ui.Spacer(c)
 		if p.Loading || p.DiffLoad {
-			ui.Text(c, "Reading…").FontSize(10.5).TextColor(k.TextFaint)
+			ui.Text(c, "Reading…").FontSize(11).TextColor(k.TextFaint)
 		}
-		if iconButton(c, k, "refresh-cw", "Refresh Changes", 25, 14).
+		if iconButton(c, k, "refresh-cw", "Refresh Changes", 26, 16).
 			Tooltip("Refresh Changes").Clicked() {
 			p.Refresh()
 		}
-		if iconButton(c, k, "x", "Close Changes", 25, 13).Clicked() {
+		if iconButton(c, k, "x", "Close Changes", 26, 16).Clicked() {
 			p.Open = false
 			p.h.Invalidate()
 		}
@@ -69,7 +69,7 @@ func fileCount(n int) string {
 
 func (p *Page) files(c *ui.Context, k *theme.Colors) {
 	ui.Column(c).Width(248).Shrink(0).FillHeight().Children(func() {
-		ui.Row(c).Height(34).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(headerH).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "WORKING TREE").FontSize(10).FontWeight(650).TextColor(k.TextFaint)
 			ui.Spacer(c)
 			if n := len(p.Changes); n > 0 {
@@ -79,21 +79,21 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 		})
 		ui.Divider(c)
 		if p.Err != "" {
-			ui.Column(c).Fill().Center().Padding(16).Children(func() {
-				ui.Icon(c, icons.Icon("git-branch")).Size(22, 22).TextColor(k.TextFaint)
-				ui.Text(c, "Changes unavailable").FontSize(12).FontWeight(600).
+			ui.Column(c).Fill().Center().Padding(16).Gap(8).Children(func() {
+				ui.Icon(c, icons.Icon("git-branch")).Size(20, 20).TextColor(k.TextFaint)
+				ui.Text(c, "Changes unavailable").FontSize(13).FontWeight(600).
 					TextColor(k.Text).TextAlign(ui.Center)
-				ui.Text(c, p.Err).FontSize(11).TextColor(k.TextFaint).
+				ui.Text(c, p.Err).FontSize(12).TextColor(k.TextFaint).
 					TextAlign(ui.Center).MaxWidth(210)
 			})
 			return
 		}
 		if len(p.Changes) == 0 {
-			ui.Column(c).Fill().Center().Padding(16).Gap(6).Children(func() {
-				ui.Icon(c, icons.Icon("check")).Size(22, 22).TextColor(k.DiffAdd)
-				ui.Text(c, "No changes").FontSize(12.5).FontWeight(600).TextColor(k.Text)
+			ui.Column(c).Fill().Center().Padding(16).Gap(8).Children(func() {
+				ui.Icon(c, icons.Icon("check")).Size(20, 20).TextColor(k.DiffAdd)
+				ui.Text(c, "No changes").FontSize(13).FontWeight(600).TextColor(k.Text)
 				if p.Loading {
-					ui.Text(c, "Reading…").FontSize(11).TextColor(k.TextFaint)
+					ui.Text(c, "Reading…").FontSize(12).TextColor(k.TextFaint)
 				}
 			})
 			return
@@ -103,8 +103,8 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 		openPath := ""
 		list := ui.List(c, &p.list, len(p.Changes), func(i int) {
 			ch := p.Changes[i]
-			row := ui.Row(c.Key(fmt.Sprintf("git:%d", i))).Height(38).Padding(0, 7).
-				Gap(7).Radius(theme.Radius).Cursor(ui.CursorPointer).
+			row := ui.Row(c.Key(fmt.Sprintf("git:%d", i))).Height(34).Padding(0, 10).
+				Gap(10).Radius(theme.Radius).Cursor(ui.CursorPointer).
 				Label(ch.Display).Tooltip(ch.Display + " — " + statusLabel(ch.Status)).
 				PopoverMenu(func(m *ui.Menu) { p.h.FileMenu(m, ch.Display) })
 			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
@@ -118,12 +118,12 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 				openPath = ch.Display
 			}
 			row.Children(func() {
-				ui.Icon(c, icons.FileIcon(ch.Path)).Size(16, 16).TextColor(icon)
+				ui.Icon(c, icons.FileIcon(ch.Path)).Size(15, 15).TextColor(icon)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, filepath.Base(ch.Display)).FontSize(12).FontWeight(500).
+					ui.Text(c, filepath.Base(ch.Display)).FontSize(13).FontWeight(500).
 						TextColor(fg).SingleLine().Ellipsis("…")
 					if dir := filepath.Dir(ch.Display); dir != "." {
-						ui.Text(c, dir).FontSize(10.5).TextColor(muted).
+						ui.Text(c, dir).FontSize(12).TextColor(muted).
 							SingleLine().Ellipsis("…")
 					}
 				})
@@ -178,7 +178,7 @@ func (p *Page) changeStatus() string {
 
 func (p *Page) statusBadge(c *ui.Context, k *theme.Colors, status string) {
 	col := statusColor(status, k)
-	ui.Text(c, statusLabel(status)).FontSize(9.5).FontWeight(700).
+	ui.Text(c, statusLabel(status)).FontSize(10).FontWeight(700).
 		TextColor(col).Padding(2, 5).Radius(theme.Radius).Background(col.Alpha(0.11)).
 		Shrink(0).Tooltip(statusLabel(status))
 }
@@ -192,18 +192,18 @@ func (p *Page) diffPane(c *ui.Context, k *theme.Colors) {
 }
 
 func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
-	ui.Row(c).Height(34).Padding(0, 10, 0, 12).Gap(7).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Height(headerH).Padding(0, 10, 0, 12).Gap(7).AlignItems(ui.Center).Children(func() {
 		path := p.DiffPath
 		if path == "" {
-			ui.Text(c, "No file selected").FontSize(11.5).TextColor(k.TextMuted)
+			ui.Text(c, "No file selected").FontSize(12).TextColor(k.TextMuted)
 			ui.Spacer(c)
 			return
 		}
 		ui.Icon(c, icons.FileIcon(path)).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, filepath.Base(path)).FontSize(12).FontWeight(550).TextColor(k.Text).
+		ui.Text(c, filepath.Base(path)).FontSize(13).FontWeight(500).TextColor(k.Text).
 			SingleLine().Shrink(0)
 		if dir := filepath.Dir(path); dir != "." {
-			ui.Text(c, dir).FontSize(10.5).TextColor(k.TextFaint).
+			ui.Text(c, dir).FontSize(12).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		}
 		ui.Spacer(c)
@@ -211,9 +211,9 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 			p.statusBadge(c, k, status)
 		}
 		if add, del := DiffStat(p.Diff); add > 0 || del > 0 {
-			ui.Text(c, fmt.Sprintf("+%d", add)).FontSize(10.5).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("+%d", add)).FontSize(11).FontWeight(600).
 				TextColor(k.DiffAdd).Shrink(0)
-			ui.Text(c, fmt.Sprintf("−%d", del)).FontSize(10.5).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("−%d", del)).FontSize(11).FontWeight(600).
 				TextColor(k.DiffDel).Shrink(0)
 		}
 		if p.h.HasPath(path) {
@@ -226,7 +226,7 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 				p.h.OpenPath(path)
 			}
 			open.Children(func() {
-				ui.Text(c, "Open").FontSize(11.5).FontWeight(550).TextColor(k.Text)
+				ui.Text(c, "Open").FontSize(12).FontWeight(500).TextColor(k.Text)
 			})
 		}
 	})
@@ -267,13 +267,13 @@ func (p *Page) diffState(c *ui.Context, k *theme.Colors) {
 
 func (p *Page) state(c *ui.Context, k *theme.Colors, glyph string, col ui.Color, title, detail string) {
 	ui.Column(c).Fill().Center().Padding(20).Gap(8).Children(func() {
-		ui.Box(c).Size(42, 42).Radius(theme.Radius).Background(col.Alpha(0.10)).Center().Children(func() {
-			ui.Icon(c, icons.Icon(glyph)).Size(21, 21).TextColor(col)
+		ui.Box(c).Size(40, 40).Radius(theme.Radius).Background(col.Alpha(0.10)).Center().Children(func() {
+			ui.Icon(c, icons.Icon(glyph)).Size(20, 20).TextColor(col)
 		})
 		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(k.Text).
 			TextAlign(ui.Center)
 		if detail != "" {
-			ui.Text(c, detail).FontSize(11.5).TextColor(k.TextFaint).
+			ui.Text(c, detail).FontSize(12).TextColor(k.TextFaint).
 				TextAlign(ui.Center).MaxWidth(460)
 		}
 	})
@@ -397,7 +397,11 @@ func iconButton(c *ui.Context, k *theme.Colors, name, label string, size, iconSi
 		b.Background(k.Hover)
 	}
 	b.Children(func() {
-		ui.Icon(c, icons.Icon(name)).Size(iconSize, iconSize).TextColor(k.IconMuted)
+		col := k.IconMuted
+		if b.Hovered() {
+			col = k.Text
+		}
+		ui.Icon(c, icons.Icon(name)).Size(iconSize, iconSize).TextColor(col)
 	})
 	return b
 }
