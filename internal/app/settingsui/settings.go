@@ -16,7 +16,6 @@ const (
 	settingsAppearance = settings.Appearance
 	settingsEditor     = settings.Editor
 	settingsTerminal   = settings.Terminal
-	settingsAgent      = settings.Agent
 	settingsKeyboard   = settings.Keyboard
 	settingsHosts      = settings.Hosts
 	settingsAdvanced   = settings.Advanced
@@ -326,8 +325,6 @@ func (u *UI) settingsPage(c *ui.Context, k *colors, cat int) {
 		if remoteSupported() {
 			u.settingsNote(c, k, "Remote projects use the shell on the server, not this path.")
 		}
-	case settingsAgent:
-		u.settingsGenericPage(c, k, cat)
 	case settingsAppearance:
 		u.settingsAppearancePage(c, k)
 	case settingsKeyboard:

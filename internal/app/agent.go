@@ -16,6 +16,7 @@ import (
 // without a pane, whose only voice is a system notification.
 type agentTask struct {
 	prompt string
+	agent  string
 	sess   *acp.Session
 	perm   *acp.Permission
 	reply  strings.Builder
@@ -48,10 +49,6 @@ func (a *app) startAgentTask(prompt string) {
 		a.fail(errors.New("an agent task is already running"))
 		return
 	}
-	command := strings.Fields(a.AgentCommand)
-	if len(command) == 0 {
-		command = []string{"omp", "acp"}
-	}
 	post := a.uiPoster()
 	if post == nil {
 		a.fail(errors.New("agent tasks need a window"))
@@ -62,12 +59,8 @@ func (a *app) startAgentTask(prompt string) {
 	a.agentOpen = false
 	dir := a.store.Dir
 	go func() {
-		s, err := acp.Start(context.Background(), acp.Options{
-			Dir:     dir,
-			Command: command,
-			Events: func(ev acp.Event) {
-				post(func() { a.agentTaskEvent(t, ev) })
-			},
+		s, _, err := acp.StartAny(context.Background(), dir, func(ev acp.Event) {
+			post(func() { a.agentTaskEvent(t, ev) })
 		})
 		if err != nil {
 			post(func() {
@@ -118,6 +111,8 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 		return
 	}
 	switch ev.Kind {
+	case acp.KindReady:
+		t.agent = ev.Agent
 	case acp.KindAgentText:
 		if t.reply.Len() > 8000 {
 			t.reply.Reset()
@@ -198,7 +193,7 @@ func (a *app) answerAgentTask(option string) {
 // notifyAgentTask is the task's only result: the window has no pane to
 // print into.
 func (a *app) notifyAgentTask(title, body string) {
-	if a.harness || a.quitting || !a.NotifyAgent {
+	if a.harness || a.quitting {
 		return
 	}
 	mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
@@ -259,7 +254,7 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			return
 		}
 		ui.Column(c).Padding(10).Gap(10).Children(func() {
-			ui.Text(c, "Runs "+a.agentCommandLabel()+" in the background and notifies you when it finishes, fails or asks for permission.").
+			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Gemini CLI or Goose — in the background, and notifies you when it finishes, fails or asks for permission.").
 				FontSize(12).TextColor(k.TextFaint)
 			if ui.PrimaryButton(c, "Run").Clicked() {
 				submit = true
@@ -292,12 +287,4 @@ func (a *app) agentPermission(c *ui.Context, k *colors, t *agentTask) {
 			}
 		})
 	})
-}
-
-// agentCommandLabel is the command a task starts.
-func (a *app) agentCommandLabel() string {
-	if command := strings.TrimSpace(a.AgentCommand); command != "" {
-		return command
-	}
-	return "omp acp"
 }

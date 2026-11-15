@@ -22,9 +22,9 @@ process that lives only as long as its task.
 - [`internal/app/view.go`](../../internal/app/view.go) — `agentSheet` joins the modal stack.
 - [`internal/app/workspace.go`](../../internal/app/workspace.go) — `closeModals` also closes the
   sheet.
-- [`internal/prefs/prefs.go`](../../internal/prefs/prefs.go) — `AgentCommand` (empty means
-  `omp acp`) and `NotifyAgent`.
-- [`internal/settings/schema.go`](../../internal/settings/schema.go) — the Agent page.
+- [`internal/acp/acp.go`](../../internal/acp/acp.go) — `Agents`, the ordered list of known ACP
+  commands (`omp acp`, `claude-code-acp`, `gemini --experimental-acp`, `goose acp`), and `StartAny`,
+  which runs the first one on PATH that answers the protocol.
 
 ## Runtime path
 
@@ -33,7 +33,8 @@ process that lives only as long as its task.
    runs, the command either reopens the sheet on a pending permission or reports that a task is
    already running.
 2. The sheet takes one line and Enter or Run calls `startAgentTask`. The sheet closes, the task is
-   stored on `*app`, and `acp.Start` runs on a goroutine with the command from `AgentCommand`.
+   stored on `*app`, and `acp.StartAny` tries the known agents in order on a goroutine, so the task
+   does not depend on one vendor's command.
 3. Events reach the window through `(*app).uiPoster`: `Window.Update` in a real window, the
    `Headless` queue in the harness. The task is identified by pointer, so events of a cancelled
    task are dropped.
@@ -49,15 +50,15 @@ process that lives only as long as its task.
 ## Contracts and failure behavior
 
 - One task per window. Its process never outlives the window, unlike a terminal's session server.
-- Notifications are the only result: `NotifyAgent` on, never in the harness, never while quitting,
-  no focus gate (a background task has no in-app output to watch). Titles: `Agent finished`,
+- Notifications are the only result: never in the harness, never while quitting, no focus gate (a
+  background task has no in-app output to watch) and no setting of its own. Titles: `Agent finished`,
   `Agent tool failed`, `Agent needs permission`, `Agent error`, `Agent could not start`.
 - Permissions block the agent until the sheet is answered; the notification still fires first, and
   the command reopens the sheet later.
 - The task is not persisted: a launch starts with no agent. A missing `omp` or a protocol error is
   reported in the start notification, with the agent's last stderr line when it wrote one.
-- Settings › Agent edits the command and the notification toggle; no pane, no transcript and no
-  Markdown rendering exist by design.
+- There is no Agent page in Settings: the agent is discovered per task, and every discoverable
+  agent gets the same treatment. No pane, no transcript and no Markdown rendering exist by design.
 
 ## Verification
 

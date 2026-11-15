@@ -20,7 +20,6 @@ const (
 	Appearance
 	Editor
 	Terminal
-	Agent
 	Keyboard
 	Hosts
 	Advanced
@@ -40,7 +39,6 @@ var Categories = []Category{
 	{"Appearance", "How Mojian looks", "palette", "theme light dark appearance look colors mode auto palette"},
 	{"Editor", "Type, writing and Markdown", "pencil", "editor code font line height tab wrap markdown active line indent brackets scroll"},
 	{"Terminal", "Type, input, notifications and the shell", "square-terminal", "terminal shell font cursor blink scrollback clipboard option alt notifications bell exit"},
-	{"Agent", "ACP agents and their notifications", "bot", "agent acp omp claude codex notifications turn permission tool"},
 	{"Keyboard", "Shortcuts this app uses", "command", "keyboard shortcut keys hotkeys keybindings commands"},
 	{"Hosts", "SSH servers and remote projects", "server", "host server ssh remote project address"},
 	{"Advanced", "Shell command, data, settings file and reset", "sliders-horizontal", "advanced shell command zsh bash alias install data settings file reset paths server session socket"},
@@ -163,14 +161,6 @@ var Rows = []Row{
 	{ID: "notify-exit", Cat: Terminal, Section: "NOTIFICATIONS", Title: "Notify when a terminal exits",
 		Detail: "Show a notification when a background terminal finishes.", Words: "exit notify finish done terminal",
 		Kind: Toggle, Pref: "NotifyExit"},
-
-	// Agent
-	{ID: "agent-command", Cat: Agent, Section: "AGENT", Title: "Agent command",
-		Detail: "Program run as an ACP agent over stdio.", Words: "agent acp omp command program",
-		Kind: Text, Pref: "AgentCommand", Placeholder: "omp acp"},
-	{ID: "agent-notify", Cat: Agent, Section: "NOTIFICATIONS", Title: "Notify when the agent finishes",
-		Detail: "Show a notification when a turn ends, a tool fails or the agent asks for permission.",
-		Words:  "agent notify notification turn permission failed tool", Kind: Toggle, Pref: "NotifyAgent"},
 	{ID: "shell-path", Cat: Terminal, Section: "SHELL", Title: "Shell",
 		Detail: "Program new local terminals run; empty uses $SHELL.", Words: "shell login program zsh bash fish environment",
 		Kind: Text, Pref: "ShellPath", Placeholder: "$SHELL"},

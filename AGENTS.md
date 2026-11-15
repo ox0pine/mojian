@@ -39,7 +39,7 @@ Tests: [docs/testing.md](docs/testing.md). Driving the UI headlessly: [docs/harn
 | `internal/fs/` | Project storage: `Backend`, `Direct`, `Memory`, `Server`, path guards, atomic writes and cached-file names. |
 | `internal/session/` | PTY server and client, wire protocol, remote file ops, spawn/lock, platform stubs. |
 | `internal/git/` | Working-tree diff page and branches: status/diff reading, parsing, branch read and switch, view. |
-| `internal/acp/` | One Agent Client Protocol session over stdio: process, initialize, session, prompt, cancel, events. |
+| `internal/acp/` | One Agent Client Protocol session over stdio, and the known agent commands tried in order: process, initialize, session, prompt, cancel, events. |
 | `internal/gitenv/` | The environment Git commands run in, without redirect variables. |
 | `internal/theme/` | The ten color themes and their derivation, `Colors`, `Radius`, background painting, editor and terminal themes, font registration. |
 | `internal/motion/` | `ui.ElementTransition` values (`Page`, `Tab`, `Tree`, `Row`, `Pane`, `Colors`), springs for interruptible changes. |

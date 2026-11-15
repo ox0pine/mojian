@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -200,5 +201,18 @@ func TestSessionCloseEndsTheProcess(t *testing.T) {
 	case <-s.Done():
 	case <-time.After(10 * time.Second):
 		t.Fatal("the agent process did not end")
+	}
+}
+
+func TestStartAnyReportsWhenNoAgentIsInstalled(t *testing.T) {
+	old := Agents
+	Agents = []Agent{{Name: "Missing", Command: []string{"mojian-no-such-agent"}}}
+	defer func() { Agents = old }()
+	_, _, err := StartAny(context.Background(), t.TempDir(), nil)
+	if err == nil {
+		t.Fatal("no agent should have started")
+	}
+	if want := "no ACP agent found"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %q, want it to mention %q", err, want)
 	}
 }

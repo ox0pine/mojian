@@ -107,6 +107,49 @@ const (
 // ErrClosed is returned by Prompt after Close.
 var ErrClosed = errors.New("the agent has stopped")
 
+// Agent is one ACP agent command the window knows how to run.
+type Agent struct {
+	Name    string
+	Command []string
+}
+
+// Agents are tried in order; the first command on PATH that answers the
+// protocol is the one a task runs.
+var Agents = []Agent{
+	{Name: "omp", Command: []string{"omp", "acp"}},
+	{Name: "Claude Code", Command: []string{"claude-code-acp"}},
+	{Name: "Gemini CLI", Command: []string{"gemini", "--experimental-acp"}},
+	{Name: "Goose", Command: []string{"goose", "acp"}},
+}
+
+// StartAny runs the first known agent that answers, so a task does not
+// depend on one vendor's command.
+func StartAny(ctx context.Context, dir string, events func(Event)) (*Session, Agent, error) {
+	var failures []string
+	for _, agent := range Agents {
+		if _, err := exec.LookPath(agent.Command[0]); err != nil {
+			continue
+		}
+		s, err := Start(ctx, Options{Dir: dir, Command: agent.Command, Events: events})
+		if err == nil {
+			return s, agent, nil
+		}
+		failures = append(failures, agent.Name+": "+err.Error())
+	}
+	if len(failures) == 0 {
+		return nil, Agent{}, errors.New("no ACP agent found; looked for " + agentNames())
+	}
+	return nil, Agent{}, errors.New(strings.Join(failures, "; "))
+}
+
+func agentNames() string {
+	names := make([]string, 0, len(Agents))
+	for _, a := range Agents {
+		names = append(names, a.Command[0])
+	}
+	return strings.Join(names, ", ")
+}
+
 // Options starts an agent.
 type Options struct {
 	// Dir is the working directory the session names, usually the project.

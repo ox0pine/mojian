@@ -25,8 +25,6 @@ type Prefs struct {
 	TerminalCursor      int     `json:"terminalCursor,omitempty"`
 	NotifyBell          bool    `json:"notifyBell,omitempty"`
 	NotifyExit          bool    `json:"notifyExit,omitempty"`
-	AgentCommand        string  `json:"agentCommand,omitempty"`
-	NotifyAgent         bool    `json:"notifyAgent,omitempty"`
 	TerminalLineHeight  float64 `json:"terminalLineHeight,omitempty"`
 	TerminalOptionAsAlt bool    `json:"terminalOptionAsAlt,omitempty"`
 	TerminalCopySelect  bool    `json:"terminalCopySelect,omitempty"`
@@ -47,7 +45,6 @@ var defaults = Prefs{
 	EditorFontSize: 12.5, EditorLineHeight: 1.55, EditorTabSize: 4,
 	TerminalFontSize: 12.5, TerminalLineHeight: 1, TerminalScrollback: 10,
 	NotifyBell: true, NotifyExit: true,
-	AgentCommand: "omp acp", NotifyAgent: true,
 }
 
 // Default is the settings of a new install.
