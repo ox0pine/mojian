@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.4
+
+- Agent tasks run in the background: View → Run Agent Task… takes one
+  prompt, starts an ACP agent in the project folder and notifies you when
+  it finishes, a tool fails or the agent asks for permission. There is no
+  chat pane; a permission request reopens the same sheet. The agent is
+  discovered per task — omp, Claude Code and Codex through their ACP
+  adapters, plus Gemini CLI, Qwen Code, Goose, OpenCode, Kimi, Amp and
+  Cursor — and Settings has no agent command to maintain.
+- The tab strip fills the whole chip track, so tabs and the machine,
+  project and branch chips share one height.
+- Long paths in the Git change list, Explorer search results, project
+  rows and the folder picker are cut at the start, keeping the folder
+  nearest the file.
+- MyGo moves to v0.9.1: SVG text, markers and CSS classes in Markdown
+  previews, faster layout and text, and a terminal notification hook.
+- Windows builds leave out the WebView2 loader (`mygo_nowebview`).
+
 ## 0.4.3
 
 - The three title-bar chips — server, project and branch — now share one
