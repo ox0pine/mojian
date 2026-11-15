@@ -170,6 +170,9 @@ jobs:
       - name: Build
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          # Nothing in the app uses a webview; leaving it out drops the
+          # WebView2 loader and the heuristic hits its strings cause.
+          GOFLAGS: -tags=mygo_nowebview
         run: go tool mygo build -platform windows/amd64,windows/arm64
       - name: Check the artifacts
         run: |

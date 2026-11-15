@@ -269,7 +269,7 @@ func (a *app) projectRowBase(c *ui.Context, k *colors, s projectRowSpec) {
 				ui.Text(c, s.title).FontSize(12.5).FontWeight(weight).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
 				ui.Text(c, s.detail).FontSize(11).TextColor(k.TextFaint).
-					SingleLine().Ellipsis("…")
+					SingleLine().TruncateStart()
 			})
 		})
 		remove := iconButton(c, k, "trash-2", "Remove project "+s.closeLabel, iconBtnSm, iconGlyphSm).

@@ -123,8 +123,10 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 					ui.Text(c, filepath.Base(ch.Display)).FontSize(13).FontWeight(500).
 						TextColor(fg).SingleLine().Ellipsis("…")
 					if dir := filepath.Dir(ch.Display); dir != "." {
+						// The folder nearest the file is the useful half
+						// of a path too long for the list.
 						ui.Text(c, dir).FontSize(12).TextColor(muted).
-							SingleLine().Ellipsis("…")
+							SingleLine().TruncateStart()
 					}
 				})
 				p.statusBadge(c, k, ch.Status)

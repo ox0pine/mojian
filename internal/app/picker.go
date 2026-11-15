@@ -329,7 +329,7 @@ func (a *app) pickerFooter(c *ui.Context, k *colors) {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 			sectionLabel(c, k, "Open")
 			ui.Text(c, shortPath(target)).FontSize(12).TextColor(k.TextMuted).
-				SingleLine().Ellipsis("…")
+				SingleLine().TruncateStart()
 		})
 		a.pickerHiddenSwitch(c, k)
 		if ui.Button(c, "Cancel").Clicked() {

@@ -334,7 +334,7 @@ func (u *UI) searchResults(c *ui.Context, k *colors) {
 				ui.Text(c, n.Title).FontSize(13).FontWeight(500).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
 				ui.Text(c, n.Rel).FontSize(12).TextColor(k.TextFaint).
-					SingleLine().Ellipsis("…")
+					SingleLine().TruncateStart()
 			})
 			if n.Dirty() {
 				ui.Box(c).Size(6, 6).Radius(3).Background(k.Attention).Shrink(0)
