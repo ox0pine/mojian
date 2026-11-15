@@ -93,9 +93,10 @@ func fetchWebImage(raw string) (ui.ImageSource, error) {
 	return ui.DecodeImage(data)
 }
 
-// shieldPNG asks shields.io for the PNG of a badge. Its SVG draws the
-// words as <text>, which the SVG renderer does not draw yet, while the
-// same badge as a PNG reads complete.
+// shieldPNG asks shields.io for the PNG of a badge. Its SVG sizes the
+// words with textLength and draws their shadow through a filter, both of
+// which the SVG renderer leaves out, so the words would not fit their
+// plates; the same badge as a PNG reads complete.
 func shieldPNG(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || !strings.EqualFold(u.Host, "img.shields.io") ||
