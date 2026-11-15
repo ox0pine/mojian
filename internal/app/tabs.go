@@ -67,7 +67,7 @@ func (a *app) tabStrip(c *ui.Context, k *colors) {
 		offset = min(offset, max(total-viewport, 0))
 	}
 	track.Children(func() {
-		ui.Row(c).Height(tabH + 4).Width(total).Padding(2).Gap(2).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(tabH+4).Width(total).Padding(0, 2).Gap(2).AlignItems(ui.Center).Children(func() {
 			x := float32(2)
 			for i, t := range tabs {
 				// A tab cut by the left edge shows a blank pill rather
@@ -120,7 +120,7 @@ func tabLabel(name, detail string, nameColor, detailColor ui.Color) []ui.Span {
 // tabItem draws one tab: the tiles of its panes and its label.
 func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, whole bool) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(0).
+	e := ui.Row(c.Key(t.ID)).Height(tabH+4).Basis(width).Shrink(0).
 		Padding(0, 9, 0, 5).Gap(8).AlignItems(ui.Center).Radius(radius).
 		Role(ui.RoleTab).Selected(active).FocusRing(false)
 	name, detail := t.label()
