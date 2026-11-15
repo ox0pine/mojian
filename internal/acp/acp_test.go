@@ -3,7 +3,6 @@ package acp
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -219,12 +218,9 @@ func TestStartAnyReportsWhenNoAgentIsInstalled(t *testing.T) {
 }
 
 func TestStartAnySkipsAProgramThatIsNotAnACPAgent(t *testing.T) {
-	script := filepath.Join(t.TempDir(), "fake-acp")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	old := Agents
-	Agents = []Agent{{Name: "Fake", Command: []string{script}}}
+	// go version starts, answers nothing and exits: not an ACP server.
+	Agents = []Agent{{Name: "Fake", Command: []string{"go", "version"}}}
 	defer func() { Agents = old }()
 	_, _, err := StartAny(context.Background(), t.TempDir(), nil)
 	if err == nil {
