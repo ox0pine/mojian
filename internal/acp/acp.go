@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	sdk "github.com/coder/acp-go-sdk"
 )
@@ -114,13 +115,25 @@ type Agent struct {
 }
 
 // Agents are tried in order; the first command on PATH that answers the
-// protocol is the one a task runs.
+// protocol is the one a task runs. Claude Code and Codex join through
+// their ACP adapters, not their own interactive commands.
 var Agents = []Agent{
 	{Name: "omp", Command: []string{"omp", "acp"}},
 	{Name: "Claude Code", Command: []string{"claude-code-acp"}},
+	{Name: "Claude Code", Command: []string{"claude-code-acp-rs"}},
+	{Name: "Codex", Command: []string{"codex-acp"}},
 	{Name: "Gemini CLI", Command: []string{"gemini", "--experimental-acp"}},
+	{Name: "Qwen Code", Command: []string{"qwen", "--experimental-acp"}},
 	{Name: "Goose", Command: []string{"goose", "acp"}},
+	{Name: "OpenCode", Command: []string{"opencode", "acp"}},
+	{Name: "Kimi", Command: []string{"kimi", "--acp"}},
+	{Name: "Amp", Command: []string{"amp", "acp"}},
+	{Name: "Cursor", Command: []string{"cursor-agent", "acp"}},
 }
+
+// probeTimeout bounds one agent's handshake, so an installed program that
+// is not an ACP server is skipped instead of holding the task forever.
+const probeTimeout = 20 * time.Second
 
 // StartAny runs the first known agent that answers, so a task does not
 // depend on one vendor's command.
@@ -130,14 +143,16 @@ func StartAny(ctx context.Context, dir string, events func(Event)) (*Session, Ag
 		if _, err := exec.LookPath(agent.Command[0]); err != nil {
 			continue
 		}
-		s, err := Start(ctx, Options{Dir: dir, Command: agent.Command, Events: events})
+		probe, cancel := context.WithTimeout(ctx, probeTimeout)
+		s, err := Start(probe, Options{Dir: dir, Command: agent.Command, Events: events})
+		cancel()
 		if err == nil {
 			return s, agent, nil
 		}
 		failures = append(failures, agent.Name+": "+err.Error())
 	}
 	if len(failures) == 0 {
-		return nil, Agent{}, errors.New("no ACP agent found; looked for " + agentNames())
+		return nil, Agent{}, errors.New("no ACP agent found; looked for " + agentNames() + ". Claude Code and Codex need claude-code-acp or codex-acp installed.")
 	}
 	return nil, Agent{}, errors.New(strings.Join(failures, "; "))
 }

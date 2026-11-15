@@ -23,8 +23,11 @@ process that lives only as long as its task.
 - [`internal/app/workspace.go`](../../internal/app/workspace.go) — `closeModals` also closes the
   sheet.
 - [`internal/acp/acp.go`](../../internal/acp/acp.go) — `Agents`, the ordered list of known ACP
-  commands (`omp acp`, `claude-code-acp`, `gemini --experimental-acp`, `goose acp`), and `StartAny`,
-  which runs the first one on PATH that answers the protocol.
+  commands (`omp acp`, `claude-code-acp`, `codex-acp`, `gemini --experimental-acp`,
+  `qwen --experimental-acp`, `goose acp`, `opencode acp`, `kimi --acp`, `amp acp`,
+  `cursor-agent acp`), and `StartAny`, which gives each one on PATH a bounded handshake and runs
+  the first that answers. Claude Code and Codex join through those adapters, not their own
+  interactive commands.
 
 ## Runtime path
 

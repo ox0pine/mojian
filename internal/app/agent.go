@@ -254,7 +254,7 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			return
 		}
 		ui.Column(c).Padding(10).Gap(10).Children(func() {
-			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Gemini CLI or Goose — in the background, and notifies you when it finishes, fails or asks for permission.").
+			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Codex, Gemini CLI, Goose and others — in the background, and notifies you when it finishes, fails or asks for permission.").
 				FontSize(12).TextColor(k.TextFaint)
 			if ui.PrimaryButton(c, "Run").Clicked() {
 				submit = true

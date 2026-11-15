@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -214,5 +215,22 @@ func TestStartAnyReportsWhenNoAgentIsInstalled(t *testing.T) {
 	}
 	if want := "no ACP agent found"; !strings.Contains(err.Error(), want) {
 		t.Fatalf("error = %q, want it to mention %q", err, want)
+	}
+}
+
+func TestStartAnySkipsAProgramThatIsNotAnACPAgent(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fake-acp")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := Agents
+	Agents = []Agent{{Name: "Fake", Command: []string{script}}}
+	defer func() { Agents = old }()
+	_, _, err := StartAny(context.Background(), t.TempDir(), nil)
+	if err == nil {
+		t.Fatal("a program that exits without speaking ACP should not start")
+	}
+	if !strings.Contains(err.Error(), "Fake") {
+		t.Fatalf("error = %q, want it to name the failed agent", err)
 	}
 }
