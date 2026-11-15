@@ -98,6 +98,9 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   inset and shadow for all of them), `menuHeader`, `menuChoice` (36 tall, with a leading check on
   the current entry), `menuAction`, `menuNote` and `menuList` (scrolls after nine rows). A menu
   adds its own rows only; a new menu takes the same pieces rather than a fourth set of metrics.
+- A pane's body is one of four kinds, chosen by `paneCardMode`: a note, an asset, a terminal, or an
+  agent. The agent body keeps its session and transcript in `pane.Agent` and posts background
+  events through `(*app).uiPoster`, the same way terminals reach the window.
 - Every list row in a window is one row: `internal/app/style.go` holds `rowH` (34), `rowPadX`
   (10), `rowGap` (10), `rowTitle` (13), `rowDetail` (12), aliased from `internal/app/widgets`,
   which draws the one file row the pickers use. Quick open, a blank pane's picker, the Explorer's

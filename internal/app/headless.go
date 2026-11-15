@@ -17,7 +17,12 @@ import (
 var headlessFonts sync.Once
 
 // Headless is an app state whose views an MCP client can render.
-type Headless struct{ a *app }
+type Headless struct {
+	a *app
+
+	mu      sync.Mutex
+	pending []func()
+}
 
 // OpenStoreAt opens dir as a project for a headless fixture.
 func OpenStoreAt(dir string) (*project.Store, error) { return openStoreAt(dir) }
@@ -36,15 +41,39 @@ func NewHeadless(s *project.Store, settingsPath, layoutPath string) *Headless {
 	a.shellStarter = func() (*termTab, error) {
 		return nil, errors.New("the UI harness does not start terminals")
 	}
+	h := &Headless{}
+	a.uiPost = h.post
+	h.a = a
 	a.focusFirstNote()
 	if n := s.ByRelPath("Welcome.md"); n != nil && a.currentNote() != n {
 		a.openNote(n)
 	}
-	return &Headless{a: a}
+	return h
+}
+
+// post queues work from a pane's background goroutine; WindowView runs it
+// before the frame, so the harness sees the same order the window does.
+func (h *Headless) post(fn func()) {
+	h.mu.Lock()
+	h.pending = append(h.pending, fn)
+	h.mu.Unlock()
+}
+
+func (h *Headless) drain() {
+	h.mu.Lock()
+	fns := h.pending
+	h.pending = nil
+	h.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
 }
 
 // WindowView renders the main window.
-func (h *Headless) WindowView(c *ui.Context) { h.a.view(c) }
+func (h *Headless) WindowView(c *ui.Context) {
+	h.drain()
+	h.a.view(c)
+}
 
 // SettingsView renders the Settings window.
 func (h *Headless) SettingsView(c *ui.Context) { h.a.settingsWindowView(c) }

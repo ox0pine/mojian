@@ -46,6 +46,8 @@ that produce both files, and the environment overrides that move them.
   `zoom`, `vertical`, `share`, `a`, `b`, `pane`, `id`, `note`, `asset`, `preview`, `terminal`,
   `sid`, `host`, `server`. Legacy `columns`/`panes` are still read through `restoreColumns` so old
   layouts survive.
+- Agent panes are never written to the layout: an ACP session belongs to its process. A tab with
+  nothing else comes back empty and is dropped; a mixed tab keeps its file panes.
 - A missing layout is not a failure: `restoreLayout` reports false and the window falls back to the
   first note. A platform without terminals drops every terminal pane; a local-only build such as
   Windows drops SSH and remote-server panes but keeps local terminals.

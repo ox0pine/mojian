@@ -120,6 +120,10 @@ type app struct {
 	// harness marks the headless fixtures of cmd/harness: no native
 	// windows or session servers, only the fixture's disposable project.
 	harness bool
+	// uiPost hands work from a background goroutine to the UI thread.
+	// The window sets it through uiPoster; the headless harness queues
+	// the work for its next render.
+	uiPost func(func())
 
 	paletteOpen  bool
 	paletteQuery string

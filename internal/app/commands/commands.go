@@ -73,6 +73,7 @@ var Palette = []*Command{
 	{ID: "palette", Title: "Command Palette…", Accel: "CmdOrCtrl+Shift+P", Glyph: "command"},
 	{ID: "toggle-tree", Title: "Toggle File Tree", Accel: "CmdOrCtrl+B", Glyph: "panel-left"},
 	{ID: "toggle-terminal", Title: "Toggle Terminal", Accel: "Ctrl+`", Glyph: "square-terminal"},
+	{ID: "new-agent", Title: "New Agent Pane", Glyph: "bot"},
 	{ID: "git", Title: "Git Diff", Accel: "Ctrl+Shift+G", Glyph: "git-branch"},
 	{ID: "switch-branch", Title: "Switch Branch…", Accel: "CmdOrCtrl+Shift+B", Glyph: "git-branch"},
 	{ID: "settings", Title: "Settings…", Accel: "CmdOrCtrl+,", Glyph: "settings"},

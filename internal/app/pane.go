@@ -118,8 +118,12 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		a.paneHeader(c, k, t, p, width, overlay)
 		body := ui.Box(c).Grow(1).MinHeight(0).Padding(0, 0, 6, 0)
 		body.Children(func() {
-			if p.Note == nil && p.Asset == nil && p.Term == nil {
+			if p.Note == nil && p.Asset == nil && p.Term == nil && p.Agent == nil {
 				a.emptyPaneBody(c, k, t, p)
+				return
+			}
+			if p.Agent != nil {
+				a.agentBody(c, k, t, p)
 				return
 			}
 			if p.Term != nil {
@@ -381,6 +385,11 @@ func paneName(p *pane) string {
 		return p.Asset.Name
 	case p.Term != nil:
 		return p.Term.Spec.title()
+	case p.Agent != nil:
+		if p.Agent.agent != "" {
+			return p.Agent.agent
+		}
+		return "Agent"
 	default:
 		return "New Pane"
 	}
@@ -399,6 +408,8 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 		name, ic = p.Asset.Name, icons.FileIcon(p.Asset.Path)
 	case p.Term != nil:
 		name, ic = p.Term.Spec.title(), icons.Icon("square-terminal")
+	case p.Agent != nil:
+		name, ic = paneName(p), icons.Icon("bot")
 	}
 	hpad, hgap := float32(12), float32(7)
 	btn, isize := float32(iconBtnMd), float32(iconGlyphMd)

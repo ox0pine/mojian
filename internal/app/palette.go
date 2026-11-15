@@ -40,6 +40,7 @@ var (
 	cmdNotes       = commands.ByID("open-file")
 	cmdTree        = commands.ByID("toggle-tree")
 	cmdTerminal    = commands.ByID("toggle-terminal")
+	cmdNewAgent    = commands.ByID("new-agent")
 	cmdGit         = commands.ByID("git")
 	cmdBranch      = commands.ByID("switch-branch")
 	cmdSettings    = commands.ByID("settings")

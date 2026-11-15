@@ -10,6 +10,7 @@ import (
 
 // pane is one editor view of a file, a picture, or a terminal.
 type pane struct {
+	Agent *agentPane
 	ID    string
 	Note  *note
 	Asset *assetFile

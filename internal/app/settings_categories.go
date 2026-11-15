@@ -13,6 +13,7 @@ const (
 	settingsAppearance = settings.Appearance
 	settingsEditor     = settings.Editor
 	settingsTerminal   = settings.Terminal
+	settingsAgent      = settings.Agent
 	settingsKeyboard   = settings.Keyboard
 	settingsHosts      = settings.Hosts
 	settingsAdvanced   = settings.Advanced
