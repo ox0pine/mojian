@@ -8,7 +8,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.4
 	github.com/auron-labs/mygo-mcp v0.1.0
 	github.com/creack/pty v1.1.21
-	github.com/egoist/mygo v0.9.0
+	github.com/egoist/mygo v0.9.1
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.49.0
 )

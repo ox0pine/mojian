@@ -86,7 +86,7 @@ build. `go tool mygo migrate-ui .` previews UI API migrations for MyGo version b
   `go generate ./internal/remotebin` produces those, so never hand-edit them, and after a MyGo
   upgrade copy the Linux `libghostty-vt-*.so` files with their SHA-256 checked against the pinned
   MyGo's `plugins/terminal/mygo-plugin.json`.
-- MyGo is `v0.9.0`; check the pinned source at `$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)`
+- MyGo is `v0.9.1`; check the pinned source at `$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)`
   before using an API, especially `ui/doc.go` and the widget's implementation comments.
 - There is no pull-request CI: `.github/workflows/release.yml` runs `go test ./...` on tag pushes, so
   verification is local. Run before yielding: `go test ./...` and `go tool mygo vet .`; for a visible
