@@ -1,51 +1,55 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
-	"mojian/internal/acp"
+	"mojian/internal/fs"
+	"mojian/internal/project"
 )
 
-func TestAgentPaneMergesToolUpdates(t *testing.T) {
-	ag := &agentPane{tools: map[string]*agentItem{}}
-	ag.applyTool(&acp.Tool{ID: "t1", Title: "Run the tests", Kind: acp.ToolExecute, Status: acp.StatusInProgress})
-	ag.applyTool(&acp.Tool{ID: "t1", Status: acp.StatusFailed})
-	if len(ag.items) != 1 {
-		t.Fatalf("%d rows, want one", len(ag.items))
+func TestAgentNotificationBodyCondensesTheAnswer(t *testing.T) {
+	long := strings.Repeat("word ", 100)
+	body := agentNotificationBody(long, "do it")
+	if r := []rune(body); len(r) != 160 || r[159] != '…' {
+		t.Fatalf("body length = %d, want 160 ending in an ellipsis", len(r))
 	}
-	item := ag.items[0]
-	if item.kind != itemTool || item.tool == nil {
-		t.Fatalf("row = %+v, want a tool call", item)
+	if body != strings.Join(strings.Fields(body), " ") {
+		t.Errorf("body kept line breaks: %q", body)
 	}
-	if item.tool.Title != "Run the tests" || item.tool.Kind != acp.ToolExecute {
-		t.Errorf("update dropped the earlier fields: %+v", item.tool)
-	}
-	if item.tool.Status != acp.StatusFailed {
-		t.Errorf("status = %q, want failed", item.tool.Status)
+	if body := agentNotificationBody("  ", "do the thing"); body != "Finished: do the thing" {
+		t.Errorf("empty answer body = %q", body)
 	}
 }
 
-func TestAgentPaneAppendsStreamedText(t *testing.T) {
-	ag := &agentPane{tools: map[string]*agentItem{}}
-	ag.appendText(itemAgent, "hello ")
-	ag.appendText(itemAgent, "world")
-	ag.appendText(itemThought, "thinking")
-	ag.appendText(itemAgent, "again")
-	if len(ag.items) != 3 {
-		t.Fatalf("%d rows, want three", len(ag.items))
-	}
-	if ag.items[0].text != "hello world" {
-		t.Errorf("first message = %q, want %q", ag.items[0].text, "hello world")
-	}
-	if ag.items[1].kind != itemThought || ag.items[2].text != "again" {
-		t.Errorf("rows = %+v, want thought then a new message", ag.items)
-	}
-}
-
-func TestNewAgentNeedsAProjectOnDisk(t *testing.T) {
+func TestOpenAgentTaskNeedsAProjectOnDisk(t *testing.T) {
 	a := &app{workspace: &workspace{}}
-	a.newAgent()
+	a.openAgentTask()
 	if a.err == "" {
-		t.Fatal("a memory or missing project should be refused with a message")
+		t.Fatal("a missing project should be refused with a message")
+	}
+	if a.agentOpen {
+		t.Error("the sheet opened without a project")
+	}
+}
+
+func TestOpenAgentTaskShowsTheRunningTask(t *testing.T) {
+	store := project.New(fs.NewDirect(t.TempDir()))
+	a := &app{workspace: &workspace{store: store}, agentTask: &agentTask{prompt: "sort the notes"}}
+	a.openAgentTask()
+	if !a.agentOpen {
+		t.Fatal("the sheet did not open for the running task")
+	}
+	if a.err != "" {
+		t.Errorf("opening the running task reported %q", a.err)
+	}
+}
+
+func TestStopAgentTaskClearsIt(t *testing.T) {
+	task := &agentTask{prompt: "sort the notes"}
+	a := &app{workspace: &workspace{}, agentTask: task, agentOpen: true}
+	a.stopAgentTask()
+	if a.agentTask != nil || a.agentOpen {
+		t.Fatalf("task = %+v, open = %v after stop", a.agentTask, a.agentOpen)
 	}
 }

@@ -41,6 +41,7 @@ func (a *app) view(c *ui.Context) {
 	a.sshPicker(c, k)
 	a.palette(c, k)
 	a.quickOpenModal(c, k)
+	a.agentSheet(c, k)
 	a.remoteBusyView(c, k)
 	if !a.remoteBusy {
 		a.shortcuts(c)

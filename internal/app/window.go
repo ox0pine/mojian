@@ -146,6 +146,7 @@ func (a *app) windowClosed() {
 	// A connection task belongs to the window that opened it: its result
 	// would update a closed window, so cancel it or the next window opens
 	// on a loading card that never clears.
+	a.stopAgentTask()
 	a.cancelRemoteTask()
 	if a.layoutTimer != nil {
 		a.layoutTimer.Stop()

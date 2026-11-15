@@ -38,7 +38,7 @@ func (a *app) initCommands() {
 	r.Bind("open-file", func() { a.openQuickOpen() })
 	r.Bind("toggle-tree", func() { a.toggleTree() })
 	r.Bind("toggle-terminal", func() { a.toggleTerminal() })
-	r.Bind("new-agent", func() { a.newAgent() })
+	r.Bind("run-agent-task", func() { a.openAgentTask() })
 	r.Bind("git", func() { a.toggleGit() })
 	r.Bind("switch-branch", func() { a.openBranchPicker() })
 	r.Bind("settings", func() { openSettingsCommand(a) })

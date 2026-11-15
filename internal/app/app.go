@@ -125,6 +125,13 @@ type app struct {
 	// the work for its next render.
 	uiPost func(func())
 
+	// agentTask is the one background ACP task this window runs; it has
+	// no pane, so its sheet is the only place to ask for a prompt or a
+	// permission.
+	agentTask  *agentTask
+	agentOpen  bool
+	agentInput string
+
 	paletteOpen  bool
 	paletteQuery string
 	paletteSel   int

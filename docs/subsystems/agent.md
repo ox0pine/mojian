@@ -1,65 +1,68 @@
-# Agent panes
+# Background agent tasks
 
 ## Responsibilities
 
-One agent pane talks to one [Agent Client Protocol](https://agentclientprotocol.com) agent over
-stdio: it starts the agent in the project folder, opens a session, streams the turn's messages and
-tool calls into the pane, answers the agent's permission questions, and tells the user when a turn
-ends, a tool fails or the agent needs an answer. The window is the ACP *client*; the agent keeps
-its own tools, files and model access.
+An agent task runs one [Agent Client Protocol](https://agentclientprotocol.com) prompt in the
+project folder without opening a pane. There is no transcript: the user asks for the task in a
+small sheet, leaves it running, and hears from the system notification when the turn ends, a tool
+fails, or the agent asks for permission. The window is the ACP *client*; the agent is a child
+process that lives only as long as its task.
 
 ## Source of truth
 
-- [`internal/acp/`](../../internal/acp) — the protocol side: `Start` runs the agent, negotiates
-  `initialize`, opens a session and returns a `Session`; `Prompt`, `Cancel` and `Close` are the
-  only calls the window makes. Events cross the package boundary as `acp.Event`.
-- [`internal/app/agent.go`](../../internal/app/agent.go) — `agentPane`, `newAgent`, `startAgent`,
-  `agentEvent`, the transcript, the composer and the permission card.
-- [`internal/app/model.go`](../../internal/app/model.go) — `pane.Agent`.
-- [`internal/app/pane.go`](../../internal/app/pane.go) — the card's body switch, header icon and
-  `paneName`.
-- [`internal/prefs/prefs.go`](../../internal/prefs/prefs.go) — `AgentCommand` and `NotifyAgent`.
+- [`internal/acp/`](../../internal/acp) — the protocol side. `Start` runs the command over stdio
+  (default `omp acp`), sends `initialize` advertising no file-system, terminal or auth help,
+  opens a session in the project directory, and reports typed events. `Prompt` blocks until the
+  turn ends; `Cancel` ends it; `Close` kills the process. The agent's stderr keeps its last lines
+  for an error message.
+- [`internal/app/agent.go`](../../internal/app/agent.go) — `agentTask`, `openAgentTask`,
+  `startAgentTask`, `agentTaskEvent`, `agentSheet`, `agentPermission`, `notifyAgentTask`,
+  `finishAgentTask` and `stopAgentTask`.
+- [`internal/app/app.go`](../../internal/app/app.go) — `agentTask`, `agentOpen`, `agentInput`.
+- [`internal/app/view.go`](../../internal/app/view.go) — `agentSheet` joins the modal stack.
+- [`internal/app/workspace.go`](../../internal/app/workspace.go) — `closeModals` also closes the
+  sheet.
+- [`internal/prefs/prefs.go`](../../internal/prefs/prefs.go) — `AgentCommand` (empty means
+  `omp acp`) and `NotifyAgent`.
+- [`internal/settings/schema.go`](../../internal/settings/schema.go) — the Agent page.
 
 ## Runtime path
 
-1. View › New Agent Pane (`new-agent`) adds a pane at the right edge of the active tab, like a
-   terminal, and calls `startAgent`. A memory store or a remote project is refused with a message:
-   the agent runs on this machine, in `a.store.Dir`.
-2. `startAgent` runs `acp.Start` on a goroutine with the command in `AgentCommand` (empty means
-   `omp acp`). Each event goes through the poster captured on the UI thread:
-   `Window.Update` in the window, and the `Headless` queue in the harness.
-3. `Initialize` advertises no file-system, terminal or auth help, so the agent never asks the
-   window to read, write, spawn or authenticate. The session's `cwd` is the project folder.
-4. A prompt is one `session/prompt` turn. `Prompt` blocks on a goroutine; chunks arrive through
-   `session/update`, become transcript rows (or update a tool row by `toolCallId`), and the turn's
-   response emits `KindTurnDone` with the stop reason.
-5. A permission request blocks the agent until one of its options is answered, the turn is
-   cancelled, or the session closes; a cancelled answer is `cancelled`.
-6. Closing the pane, its tab, the window or the app closes the session and kills the process.
-   Agent panes are not written to the layout: a session belongs to a process, so a restored tab
-   keeps its files and drops its agent panes.
+1. View › Run Agent Task… (`run-agent-task`) or the palette calls `openAgentTask`. A memory store
+   or a remote project is refused: the agent runs on this machine, in `a.store.Dir`. While a task
+   runs, the command either reopens the sheet on a pending permission or reports that a task is
+   already running.
+2. The sheet takes one line and Enter or Run calls `startAgentTask`. The sheet closes, the task is
+   stored on `*app`, and `acp.Start` runs on a goroutine with the command from `AgentCommand`.
+3. Events reach the window through `(*app).uiPoster`: `Window.Update` in a real window, the
+   `Headless` queue in the harness. The task is identified by pointer, so events of a cancelled
+   task are dropped.
+4. Agent text is kept for the completion notification, capped at 8 KB. `tool_call_update` with
+   status `failed` notifies at once and leaves the task running.
+5. `session/request_permission` stores the request on the task, opens the sheet and notifies. The
+   sheet answers with an option ID; Reject or closing the window answers cancelled.
+6. `session/prompt` returning (or failing) notifies `Agent finished` / `Agent error` and closes
+   the session. The notification body is the answer's first 160 characters, or the prompt when the
+   answer was empty.
+7. Closing the window, Stop or a new project stops the task and kills the agent.
 
 ## Contracts and failure behavior
 
-- The agent is a child process of the window; it never outlives the pane the way a terminal owned
-  by the session server does. `closeWorkspaces` ends the agents of every cached workspace.
-- `notifyAgent` mirrors the terminal's notifications: only when the window is not focused, only
-  when `NotifyAgent` is on, never in the harness, and never while quitting. Titles are
-  `Agent finished`, `Agent tool failed` and `Agent needs permission`; the body names the project,
-  the tool or the question.
-- Agent text is plain text in the transcript; the pane does not render Markdown. A tool row keeps
-  the first title and kind it saw and changes only on later updates.
-- A refused start (no `omp`, no ACP answer) shows the command, the error and the agent's last
-  stderr line, with Start Again. A turn error is a red row and the pane stays usable.
-- The composer sends on Enter and turns into Stop while a turn runs; Stop answers a pending
-  permission with `cancelled` and cancels the prompt.
-- Notifications are not OS banners in the harness; the headless fixture renders the same pane
-  state and can run a real agent through its queue.
+- One task per window. Its process never outlives the window, unlike a terminal's session server.
+- Notifications are the only result: `NotifyAgent` on, never in the harness, never while quitting,
+  no focus gate (a background task has no in-app output to watch). Titles: `Agent finished`,
+  `Agent tool failed`, `Agent needs permission`, `Agent error`, `Agent could not start`.
+- Permissions block the agent until the sheet is answered; the notification still fires first, and
+  the command reopens the sheet later.
+- The task is not persisted: a launch starts with no agent. A missing `omp` or a protocol error is
+  reported in the start notification, with the agent's last stderr line when it wrote one.
+- Settings › Agent edits the command and the notification toggle; no pane, no transcript and no
+  Markdown rendering exist by design.
 
 ## Verification
 
 ```sh
 go test ./internal/acp ./internal/app
 go tool mygo vet .
-go run ./cmd/harness   # palette → New Agent Pane → type a prompt
+go run ./cmd/harness   # the sheet, without a real notification
 ```

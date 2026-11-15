@@ -2,7 +2,9 @@
 
 Mojian is a quiet text editor for plain files: Go and MyGo's native UI, no webview, no cgo, no
 JavaScript build. One binary draws its own window; a tab is a workspace, a pane edits a file,
-previews an image or PDF, or runs a terminal, and a project is just a folder. Version, bundle id and
+previews an image or PDF, runs a terminal, or runs a background ACP agent task, and a project
+is just a
+folder. Version, bundle id and
 the macOS minimum live in `mygo.json`; nothing here repeats them.
 
 ## Where to read first
@@ -15,6 +17,7 @@ the authority, and it changes in the same commit as the behavior.
 | window, tabs, panes, frame conventions | [ui-shell.md](docs/subsystems/ui-shell.md) |
 | project store, `fs.Backend`, save path | [projects-and-storage.md](docs/subsystems/projects-and-storage.md) |
 | terminals, session server, SSH hosts | [session-and-remote.md](docs/subsystems/session-and-remote.md) |
+| background agent tasks, ACP notifications | [agent.md](docs/subsystems/agent.md) |
 | the Git page | [git-page.md](docs/subsystems/git-page.md) |
 | settings, layouts, workspace cache | [persistence-and-layout.md](docs/subsystems/persistence-and-layout.md) |
 | colors and themes | [theme.md](docs/subsystems/theme.md) |
@@ -36,6 +39,7 @@ Tests: [docs/testing.md](docs/testing.md). Driving the UI headlessly: [docs/harn
 | `internal/fs/` | Project storage: `Backend`, `Direct`, `Memory`, `Server`, path guards, atomic writes and cached-file names. |
 | `internal/session/` | PTY server and client, wire protocol, remote file ops, spawn/lock, platform stubs. |
 | `internal/git/` | Working-tree diff page and branches: status/diff reading, parsing, branch read and switch, view. |
+| `internal/acp/` | One Agent Client Protocol session over stdio: process, initialize, session, prompt, cancel, events. |
 | `internal/gitenv/` | The environment Git commands run in, without redirect variables. |
 | `internal/theme/` | The ten color themes and their derivation, `Colors`, `Radius`, background painting, editor and terminal themes, font registration. |
 | `internal/motion/` | `ui.ElementTransition` values (`Page`, `Tab`, `Tree`, `Row`, `Pane`, `Colors`), springs for interruptible changes. |

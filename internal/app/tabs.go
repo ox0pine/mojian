@@ -280,8 +280,6 @@ func (a *app) tiles(c *ui.Context, k *colors, t *tab) {
 				ic = icons.FileIcon(t.Focus.Note.Path)
 			case t.Focus.Term != nil:
 				ic = icons.Icon("square-terminal")
-			case t.Focus.Agent != nil:
-				ic = icons.Icon("bot")
 			}
 		}
 		p.Icon(ic, ui.Rect{

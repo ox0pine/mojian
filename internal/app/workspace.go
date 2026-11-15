@@ -149,6 +149,7 @@ func (a *app) closeModals() {
 	a.serverOpen = false
 	a.projectPicker = false
 	a.paletteOpen = false
+	a.agentOpen = false
 	a.quickOpen = false
 	a.sshPick = false
 	a.remotePicker = false
@@ -211,32 +212,10 @@ func (a *app) closeWorkspaces() {
 	}
 	for _, ws := range a.workspaces {
 		closeWorkspaceTerminals(ws)
-		closeWorkspaceAgents(ws)
 	}
 	a.hostService().CloseAll()
 	a.remotePickHost = ""
 	a.remoteOpening = false
-}
-
-// closeWorkspaceAgents stops the agents of the workspaces leaving with
-// the window; their processes belong to the panes that started them.
-func closeWorkspaceAgents(ws *workspace) {
-	if ws == nil {
-		return
-	}
-	for _, t := range ws.tabs {
-		for _, p := range t.panes() {
-			if p.Agent == nil {
-				continue
-			}
-			if p.Agent.perm != nil {
-				p.Agent.perm.Answer("")
-			}
-			if p.Agent.sess != nil {
-				p.Agent.sess.Close()
-			}
-		}
-	}
 }
 
 func closeWorkspaceTerminals(ws *workspace) {

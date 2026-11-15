@@ -142,7 +142,7 @@ func (a *app) openNote(n *note) {
 		return
 	}
 	p := t.Focus
-	if p != nil && (p.Term != nil || p.Agent != nil) {
+	if p != nil && p.Term != nil {
 		p = t.firstEditorPane()
 		if p == nil {
 			a.openNoteInTab(n)
@@ -152,7 +152,7 @@ func (a *app) openNote(n *note) {
 	if p == nil {
 		p = firstPane(t.Root)
 	}
-	if p != nil && (p.Term != nil || p.Agent != nil) {
+	if p != nil && p.Term != nil {
 		// A tab can hold only terminals and agents. A note needs an
 		// editor pane, so give it a tab instead of replacing a shell.
 		if editor := t.firstEditorPane(); editor != nil {
@@ -244,13 +244,13 @@ func (a *app) openAsset(f *assetFile) {
 		return
 	}
 	p := t.Focus
-	if p != nil && (p.Term != nil || p.Agent != nil) {
+	if p != nil && p.Term != nil {
 		p = t.firstEditorPane()
 	}
 	if p == nil {
 		p = firstPane(t.Root)
 	}
-	if p != nil && (p.Term != nil || p.Agent != nil) {
+	if p != nil && p.Term != nil {
 		// A tab can hold only terminals and agents. A picture or PDF
 		// needs a viewer pane, so give it a tab instead of replacing a
 		// shell.
@@ -294,7 +294,6 @@ func (a *app) closeTab(t *tab) {
 	}
 	for _, p := range t.panes() {
 		a.endTerminalPane(p, true)
-		a.endAgent(p)
 		releaseAsset(p)
 	}
 	a.tabs = append(a.tabs[:i], a.tabs[i+1:]...)
@@ -395,7 +394,6 @@ func (a *app) finishPaneOverlay(p *pane, kind paneCopy) {
 		return
 	}
 	a.endTerminalPane(p, true)
-	a.endAgent(p)
 	releaseAsset(p)
 	p.closing = false
 	p.closeStarted = false
@@ -434,7 +432,6 @@ func (a *app) closePaneNow(t *tab, p *pane) {
 	}
 	a.unzoom(t)
 	a.endTerminalPane(p, true)
-	a.endAgent(p)
 	releaseAsset(p)
 	if !t.closePane(p) {
 		a.closeTab(t)
