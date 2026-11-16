@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.6
 
 - The Git page shows one empty state instead of repeating the same error in
   both columns, keeps a selected change's status badge readable on the
