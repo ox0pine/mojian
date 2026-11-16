@@ -13,9 +13,9 @@ import (
 // own state, instead of the title bar's menu. Switching still runs through
 // the window, so the notes it reloads and the title bar agree.
 const (
-	branchMenuW = 264
-	branchRowH  = 32
-	branchMaxH  = 300
+	branchMenuW = 288
+	branchRowH  = 34
+	branchMaxH  = 338
 )
 
 // ToggleBranchMenu opens the page's branch menu under its chip, or closes

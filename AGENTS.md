@@ -86,10 +86,11 @@ build. `go tool mygo migrate-ui .` previews UI API migrations for MyGo version b
 - Anything user-visible on disk goes through `fs.WriteFileAtomic`, never in place.
 - No cgo anywhere, no linter or formatter config (`gofmt` and `go vet` are the standard), and no new
   test framework.
-- Do not commit `/build/`, `/.mygo/`, the root `mojian` binary or `internal/remotebin` artifacts;
-  `go generate ./internal/remotebin` produces those, so never hand-edit them, and after a MyGo
-  upgrade copy the Linux `libghostty-vt-*.so` files with their SHA-256 checked against the pinned
-  MyGo's `plugins/terminal/mygo-plugin.json`.
+- Do not commit `/build/`, `/.mygo/` or the root `mojian` binary. `internal/remotebin` keeps the
+  Linux servers checked in because `//go:embed` needs them to compile a fresh clone; regenerate
+  them with `go generate ./internal/remotebin` after a server/protocol or MyGo change, never
+  hand-edit them, and after a MyGo upgrade copy the Linux `libghostty-vt-*.so` files with their
+  SHA-256 checked against the pinned MyGo's `plugins/terminal/mygo-plugin.json`.
 - MyGo is `v0.9.1`; check the pinned source at `$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)`
   before using an API, especially `ui/doc.go` and the widget's implementation comments.
 - There is no pull-request CI: `.github/workflows/release.yml` runs `go test ./...` on tag pushes, so

@@ -71,6 +71,13 @@ jobs:
             test "${got%% *}" = "$sha" || { echo "::error::$name is not the expected file"; exit 1; }
             echo "cached $dir/$name"
           done
+      - &generate-remote
+        name: Regenerate the embedded remote server
+        # The server embeds the pinned MyGo terminal code; rebuilding it
+        # here keeps a release from shipping a stale Linux binary. The
+        # artifacts stay checked in because //go:embed needs them to
+        # compile a fresh clone.
+        run: go generate ./internal/remotebin
       - name: Test
         run: go test ./...
       - name: Build
@@ -106,6 +113,7 @@ jobs:
           go-version-file: go.mod
       - *check-tag
       - *seed-native
+      - *generate-remote
       - name: Test
         run: go test ./...
       - name: Build
@@ -165,6 +173,7 @@ jobs:
           fi
       - *check-tag
       - *seed-native
+      - *generate-remote
       - name: Test
         run: go test ./...
       - name: Build

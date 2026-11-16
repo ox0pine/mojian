@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- The Git page shows one empty state instead of repeating the same error in
+  both columns, keeps a selected change's status badge readable on the
+  accent fill, and drops the duplicate file count from its header.
+- Floating surfaces — the command palette, title-bar menus, the Git branch
+  menu and the font picker — are opaque; text behind them no longer shows
+  through.
+- The Appearance page's Mode description follows the chosen mode, the
+  Welcome page's action rows use the shared 34-pixel height, and long
+  project paths in Settings keep the folder name.
+- The Git page's branch menu takes the same width and row height as the
+  title-bar menus.
+- Release builds regenerate the embedded Linux server, so remote terminals
+  run the pinned MyGo.
+
 ## 0.4.5
 
 - The Git page has a History tab: the newest commits that touched the

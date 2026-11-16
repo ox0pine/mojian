@@ -521,7 +521,7 @@ func (u *UI) settingsInfoRow(c *ui.Context, k *colors, title, value string) {
 		ui.Text(c, title).FontSize(13).TextColor(k.Text).Shrink(0)
 		ui.Spacer(c)
 		ui.Text(c, value).FontSize(12).TextColor(k.TextMuted).SingleLine().
-			Ellipsis("…").MaxWidth(360).Shrink(1).MinWidth(0).
+			TruncateStart().MaxWidth(360).Shrink(1).MinWidth(0).
 			TextAlign(ui.End).Tooltip(value)
 	})
 }

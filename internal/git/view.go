@@ -23,12 +23,48 @@ func (p *Page) View(c *ui.Context, k *theme.Colors, h Host) {
 	card.Children(func() {
 		p.header(c, k)
 		ui.Divider(c)
+		if p.pageState(c, k) {
+			return
+		}
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			p.files(c, k)
 			ui.Box(c).Width(1).FillHeight().Background(k.PanelBorder)
 			p.diffPane(c, k)
 		})
 	})
+}
+
+// pageState draws the one state a page shows when it has no list to put
+// beside the diff: a read error, a clean tree, an empty history, or the
+// first read. It is deliberately above the two-column body, so the same
+// error cannot appear in both columns.
+func (p *Page) pageState(c *ui.Context, k *theme.Colors) bool {
+	if p.Mode == ModeHistory {
+		switch {
+		case p.HistoryErr != "":
+			p.state(c, k, "git-branch", k.Danger, "History unavailable", p.HistoryErr)
+		case len(p.Commits) > 0:
+			return false
+		case p.HistoryLoad:
+			p.state(c, k, "git-branch", k.TextFaint, "Reading history…", "")
+		default:
+			p.state(c, k, "git-branch", k.TextFaint, "No commits",
+				"This project has no history yet.")
+		}
+		return true
+	}
+	switch {
+	case p.Err != "" && len(p.Changes) == 0:
+		p.state(c, k, "git-branch", k.Danger, "Changes unavailable", p.Err)
+	case len(p.Changes) > 0:
+		return false
+	case p.Loading:
+		p.state(c, k, "git-branch", k.TextFaint, "Reading changes…", "")
+	default:
+		p.state(c, k, "check", k.DiffAdd, "Working tree clean",
+			"There are no changes to review.")
+	}
+	return true
 }
 
 func (p *Page) header(c *ui.Context, k *theme.Colors) {
@@ -44,13 +80,6 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 					p.branchChip(c, k)
 				}
 			})
-		if p.Mode == ModeHistory {
-			if n := len(p.Commits); n > 0 {
-				ui.Text(c, commitCount(n)).FontSize(11).TextColor(k.TextFaint)
-			}
-		} else if n := len(p.Changes); n > 0 {
-			ui.Text(c, fileCount(n)).FontSize(11).TextColor(k.TextFaint)
-		}
 		ui.Spacer(c)
 		if p.Loading || p.DiffLoad || p.HistoryLoad {
 			ui.Text(c, "Reading…").FontSize(11).TextColor(k.TextFaint)
@@ -135,20 +164,6 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 	})
 }
 
-func fileCount(n int) string {
-	if n == 1 {
-		return "1 file"
-	}
-	return fmt.Sprintf("%d files", n)
-}
-
-func commitCount(n int) string {
-	if n == 1 {
-		return "1 commit"
-	}
-	return fmt.Sprintf("%d commits", n)
-}
-
 func (p *Page) files(c *ui.Context, k *theme.Colors) {
 	ui.Column(c).Width(248).Shrink(0).FillHeight().Children(func() {
 		ui.Row(c).Height(headerH).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
@@ -166,26 +181,6 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 		ui.Divider(c)
 		if p.Mode == ModeHistory {
 			p.commits(c, k)
-			return
-		}
-		if p.Err != "" {
-			ui.Column(c).Fill().Center().Padding(16).Gap(8).Children(func() {
-				ui.Icon(c, icons.Icon("git-branch")).Size(20, 20).TextColor(k.TextFaint)
-				ui.Text(c, "Changes unavailable").FontSize(13).FontWeight(600).
-					TextColor(k.Text).TextAlign(ui.Center)
-				ui.Text(c, p.Err).FontSize(12).TextColor(k.TextFaint).
-					TextAlign(ui.Center).MaxWidth(210)
-			})
-			return
-		}
-		if len(p.Changes) == 0 {
-			ui.Column(c).Fill().Center().Padding(16).Gap(8).Children(func() {
-				ui.Icon(c, icons.Icon("check")).Size(20, 20).TextColor(k.DiffAdd)
-				ui.Text(c, "No changes").FontSize(13).FontWeight(600).TextColor(k.Text)
-				if p.Loading {
-					ui.Text(c, "Reading…").FontSize(12).TextColor(k.TextFaint)
-				}
-			})
 			return
 		}
 		p.list.Selected = &p.Sel
@@ -216,7 +211,7 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 							SingleLine().TruncateStart()
 					}
 				})
-				p.statusBadge(c, k, ch.Status)
+				p.statusBadge(c, k, ch.Status, i == p.Sel)
 			})
 		}).Grow(1).MinHeight(0).Padding(6, 7).Gap(4)
 		if list.Changed() {
@@ -231,29 +226,6 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 }
 
 func (p *Page) commits(c *ui.Context, k *theme.Colors) {
-	if p.HistoryErr != "" {
-		ui.Column(c).Fill().Center().Padding(16).Gap(8).Children(func() {
-			ui.Icon(c, icons.Icon("git-branch")).Size(20, 20).TextColor(k.TextFaint)
-			ui.Text(c, "History unavailable").FontSize(13).FontWeight(600).
-				TextColor(k.Text).TextAlign(ui.Center)
-			ui.Text(c, p.HistoryErr).FontSize(12).TextColor(k.TextFaint).
-				TextAlign(ui.Center).MaxWidth(210)
-		})
-		return
-	}
-	if len(p.Commits) == 0 {
-		ui.Column(c).Fill().Center().Padding(16).Gap(8).Children(func() {
-			ui.Icon(c, icons.Icon("git-branch")).Size(20, 20).TextColor(k.TextFaint)
-			ui.Text(c, "No commits").FontSize(13).FontWeight(600).TextColor(k.Text)
-			detail := "This project has no history yet."
-			if p.HistoryLoad {
-				detail = "Reading…"
-			}
-			ui.Text(c, detail).FontSize(12).TextColor(k.TextFaint).
-				TextAlign(ui.Center).MaxWidth(210)
-		})
-		return
-	}
 	p.historyList.Selected = &p.CommitSel
 	p.historyList.Key = func(i int) any { return p.Commits[i].Hash }
 	list := ui.List(c, &p.historyList, len(p.Commits), func(i int) {
@@ -327,10 +299,18 @@ func (p *Page) changeStatus() string {
 	return ""
 }
 
-func (p *Page) statusBadge(c *ui.Context, k *theme.Colors, status string) {
+func (p *Page) statusBadge(c *ui.Context, k *theme.Colors, status string, selected bool) {
 	col := statusColor(status, k)
+	fg, bg := col, col.Alpha(0.11)
+	if selected {
+		// The accent fill replaces the page's background, so a status
+		// tint would disappear into it. Take the row's own text color and
+		// a translucent chip instead.
+		fg = c.Theme().AccentText
+		bg = fg.Alpha(0.16)
+	}
 	ui.Text(c, statusLabel(status)).FontSize(10).FontWeight(700).
-		TextColor(col).Padding(2, 5).Radius(theme.Radius).Background(col.Alpha(0.11)).
+		TextColor(fg).Padding(2, 5).Radius(theme.Radius).Background(bg).
 		Shrink(0).Tooltip(statusLabel(status))
 }
 
@@ -363,7 +343,7 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 		}
 		ui.Spacer(c)
 		if status := p.changeStatus(); status != "" {
-			p.statusBadge(c, k, status)
+			p.statusBadge(c, k, status, false)
 		}
 		if add, del := DiffStat(p.Diff); add > 0 || del > 0 {
 			ui.Text(c, fmt.Sprintf("+%d", add)).FontSize(11).FontWeight(600).
@@ -549,7 +529,7 @@ func (p *Page) fileHeading(c *ui.Context, k *theme.Colors, file FileDiff) {
 				TextColor(k.DiffDel).Shrink(0)
 		}
 		if file.Status != "M" {
-			p.statusBadge(c, k, file.Status)
+			p.statusBadge(c, k, file.Status, false)
 		}
 	})
 }

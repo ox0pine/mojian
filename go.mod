@@ -7,6 +7,7 @@ tool github.com/egoist/mygo/cmd/mygo
 require (
 	github.com/Microsoft/go-winio v0.6.4
 	github.com/auron-labs/mygo-mcp v0.1.0
+	github.com/coder/acp-go-sdk v0.13.5
 	github.com/creack/pty v1.1.21
 	github.com/egoist/mygo v0.9.1
 	golang.org/x/net v0.59.0
@@ -16,7 +17,6 @@ require (
 require (
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/cloudflare/circl v1.6.2 // indirect
-	github.com/coder/acp-go-sdk v0.13.5 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect

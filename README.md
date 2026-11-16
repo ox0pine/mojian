@@ -137,7 +137,7 @@ Press `Shift+Cmd+P` / `Ctrl+Shift+P` to search commands, files, and tabs with fu
 
 ### Settings
 
-Press `Cmd+,` / `Ctrl+,` to open the separate Settings window. It includes General, Appearance, Editor, Terminal, Shell, Notifications, Keyboard, Hosts, Git, Advanced, and Updates.
+Press `Cmd+,` / `Ctrl+,` to open the separate Settings window. Its pages are General, Appearance, Editor, Terminal, Keyboard, Hosts, Advanced, and About; shell, notification, Git and update options live inside those pages.
 
 Search finds preferences by name or keyword, and `Cmd+F` focuses the search field. Mojian follows the system appearance by default; **View › Appearance** overrides it, and the Appearance page's theme grid picks one of ten color themes (Petal, Mist, Meadow, Dusk, Tide, Apricot, Aurora, Dune, Paper, Plain) for the window, the editor and terminals.
 

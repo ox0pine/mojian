@@ -95,7 +95,7 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   that turns `k.TabActive` with the active tab's shadows while its menu is open, so the open chip
   reads as the raised tab above its popover.
 - The three title-bar popovers share `internal/app/context_menu.go`: `menuSurface` (one width,
-  inset and shadow for all of them), `menuHeader`, `menuChoice` (36 tall, with a leading check on
+  inset and shadow for all of them), `menuHeader`, `menuChoice` (34 tall, with a leading check on
   the current entry), `menuAction`, `menuNote` and `menuList` (scrolls after nine rows). A menu
   adds its own rows only; a new menu takes the same pieces rather than a fourth set of metrics.
 - A pane's body is one of three kinds, chosen by `paneCardMode`: a note, an asset, or a terminal.

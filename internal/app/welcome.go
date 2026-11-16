@@ -84,7 +84,7 @@ func (a *app) welcomePage(c *ui.Context, k *colors, vw, vh float32) {
 }
 
 func (a *app) welcomeAction(c *ui.Context, k *colors, glyph, title string, cmd *commands.Command, run func()) {
-	row := ui.ButtonBase(c).Height(38).Padding(0, 14).Gap(rowGap).
+	row := ui.ButtonBase(c).Height(rowH).Padding(0, 14).Gap(rowGap).
 		Justify(ui.Start).Cursor(ui.CursorPointer).Label(title)
 	if row.Hovered() {
 		row.Background(k.Hover)

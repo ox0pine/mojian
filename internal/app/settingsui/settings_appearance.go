@@ -14,9 +14,15 @@ var themeLabels = []string{"System", "Light", "Dark"}
 // it is a choice of two worlds rather than a look, and the look itself as a
 // grid of themes, each drawn the way the window would be.
 func (u *UI) settingsAppearancePage(c *ui.Context, k *colors) {
+	modeDetail := "Follow this Mac's light or dark appearance."
+	switch u.Appearance {
+	case 1:
+		modeDetail = "Always use the light appearance."
+	case 2:
+		modeDetail = "Always use the dark appearance."
+	}
 	u.settingsSection(c, k, "", func() {
-		u.settingsChoiceRow(c, k, "appearance-mode", "Mode",
-			"System follows this Mac's light or dark appearance.",
+		u.settingsChoiceRow(c, k, "appearance-mode", "Mode", modeDetail,
 			func() int { return u.Appearance }, func(n int) { u.setAppearance(n) }, themeLabels)
 	})
 	u.settingsSection(c, k, "THEME", func() {

@@ -77,7 +77,7 @@ var lightColors = Colors{
 	DiffDel:   ui.Hex("#cf222e"),
 	DiffHunk:  ui.Hex("#0969da"),
 
-	Panel:       ui.RGBA(251, 249, 251, 0.97),
+	Panel:       ui.Hex("#fbf9fb"),
 	Sheet:       ui.Hex("#fbfafc"),
 	PanelBorder: ui.RGBA(28, 18, 28, 0.08),
 	PanelSel:    ui.RGBA(168, 78, 124, 0.12),
@@ -120,7 +120,7 @@ var darkColors = Colors{
 	DiffDel:   ui.Hex("#ff7b72"),
 	DiffHunk:  ui.Hex("#79c0ff"),
 
-	Panel:       ui.RGBA(35, 32, 38, 0.97),
+	Panel:       ui.Hex("#232026"),
 	Sheet:       ui.Hex("#1c1a1f"),
 	PanelBorder: ui.RGBA(255, 255, 255, 0.10),
 	PanelSel:    ui.RGBA(232, 135, 182, 0.18),
