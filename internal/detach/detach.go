@@ -1,4 +1,7 @@
-package main
+// Package detach leaves the terminal that launched Mojian: a terminal
+// launch re-runs the binary in its own session, so the shell returns at
+// once and the window outlives it.
+package detach
 
 import "os"
 

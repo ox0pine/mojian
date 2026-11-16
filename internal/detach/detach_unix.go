@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package main
+package detach
 
 import (
 	"fmt"
@@ -14,8 +14,8 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// detachFromTerminal re-runs this binary in a new session when it was
-// started from a terminal, and reports whether this process should exit.
+// FromTerminal re-runs this binary in a new session when it was started
+// from a terminal, and reports whether this process should exit.
 // The shell gets its prompt back at once, closing the terminal or pressing
 // Ctrl+C no longer reaches the window, and the window outlives the shell.
 //
@@ -26,7 +26,7 @@ import (
 // MyGo consumes that variable in its own init; mygo.IsDev is the exported
 // check and is also true for a plain go build, which should keep its log
 // in the terminal while it is being developed.
-func detachFromTerminal() bool {
+func FromTerminal() bool {
 	if !shouldDetach(stdinIsTerminal(), mygo.IsDev()) {
 		return false
 	}

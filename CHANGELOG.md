@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.7
+
+- A save refuses to overwrite a file changed outside Mojian: it stops with
+  the file named in the error banner, and the local edits stay in the
+  buffer for copying elsewhere.
+- Saving keeps a file's CRLF line endings instead of rewriting it with LF;
+  the editor still works on LF-normalized text.
+- Refreshing a project reloads a changed clean note in place, so an open
+  pane shows the external edit; a dirty note keeps its edits and the
+  baseline it was loaded from.
+
 ## 0.4.6
 
 - The Git page shows one empty state instead of repeating the same error in

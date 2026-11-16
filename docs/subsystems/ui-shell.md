@@ -33,11 +33,13 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   [`internal/app/palette.go`](../../internal/app/palette.go) — static command metadata, the
   per-window run registry and the command table used by menu, palette and browser shortcuts.
 - [`internal/motion/`](../../internal/motion) — the spring transitions the view animates with.
+- [`internal/detach/`](../../internal/detach) — `FromTerminal` leaves the terminal a launch came
+  from: it re-runs the binary in its own session and appends the copy's output to `app.log`.
 
 ## Runtime path
 
 1. `main` validates the command line with `app.ParseStartup` and, when standard input is a
-   terminal, `detachFromTerminal` re-runs the binary in its own session and exits the parent: the
+   terminal, `detach.FromTerminal` re-runs the binary in its own session and exits the parent: the
    shell returns at once, and closing the terminal or pressing Ctrl+C does not end the window. A
    launch without a terminal (Finder, LaunchServices) stays in place, `mygo dev` keeps its child
    attached, and the detached copy appends stdout and stderr to `app.log` under `session.Dir()`.

@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"mojian/internal/app"
+	"mojian/internal/detach"
 	"mojian/internal/session"
 
 	"github.com/egoist/mygo"
@@ -55,7 +56,7 @@ func main() {
 	// A launch from a terminal leaves it: re-run in our own session so the
 	// shell returns at once and closing the terminal or pressing Ctrl+C no
 	// longer ends the window. Errors from here on go to app.log.
-	if detachFromTerminal() {
+	if detach.FromTerminal() {
 		return
 	}
 	app.Run(startup)
