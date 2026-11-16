@@ -163,16 +163,9 @@ func (s *Store) Reload() error {
 	if err != nil {
 		return err
 	}
-	reset := func(n *Note, body string) {
-		n.Saved = body
-		n.Title = NoteTitle(body, n.Path)
-		if n.Buf != nil {
-			n.Buf.Reset(body)
-		}
-	}
 	for rel, body := range bodies {
 		if n := s.ByRel[rel]; n != nil && n.Loaded && !n.Dirty() && n.Saved != body {
-			reset(n, body)
+			n.load(body)
 		}
 	}
 	// A body the listing left out, such as a file over its size cap,
@@ -188,7 +181,7 @@ func (s *Store) Reload() error {
 		if err != nil || string(data) == n.Saved {
 			continue
 		}
-		reset(n, string(data))
+		n.load(string(data))
 	}
 	s.Apply(entries, bodies)
 	return nil
