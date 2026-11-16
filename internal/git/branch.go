@@ -29,20 +29,13 @@ func ReadBranches(r Runner, project string) BranchData {
 	if r == nil {
 		r = LocalRunner{}
 	}
-	if resolved, err := r.RealPath(project); err == nil && resolved != "" {
-		project = resolved
-	}
 	var d BranchData
-	root, err := r.Run(project, "rev-parse", "--show-toplevel")
-	if err != nil {
+	root, _, ok := repoRoot(r, project)
+	if !ok {
 		d.Err = "This folder is not a Git repository."
 		return d
 	}
-	d.Root = strings.TrimSpace(root)
-	if d.Root == "" {
-		d.Err = "This folder is not a Git repository."
-		return d
-	}
+	d.Root = root
 	if name, err := r.Run(d.Root, "symbolic-ref", "--short", "HEAD"); err == nil {
 		d.Current = strings.TrimSpace(name)
 	}

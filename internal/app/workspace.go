@@ -82,8 +82,10 @@ func (a *app) stashActiveWorkspace() {
 	// A Git refresh from this project must not land in the next one.
 	a.git.Seq++
 	a.git.DiffSeq++
+	a.git.HistorySeq++
 	a.git.Loading = false
 	a.git.DiffLoad = false
+	a.git.HistoryLoad = false
 	// A branch read from this project must not land in the next one.
 	a.branch.seq++
 	a.branch.loading = false
@@ -113,8 +115,10 @@ func (a *app) activateWorkspace(ws *workspace) {
 	// A refresh from the project that was on screen must not land here.
 	a.git.Seq++
 	a.git.DiffSeq++
+	a.git.HistorySeq++
 	a.git.Loading = false
 	a.git.DiffLoad = false
+	a.git.HistoryLoad = false
 	a.closeTransientUI()
 	// A cut is a pending one-shot action for the project it was made in.
 	a.fileCut = false

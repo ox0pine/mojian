@@ -125,7 +125,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// The machine, project and branch of the frame sit in a track
 		// that matches the tabs: the same height, radius and border, and
 		// the chip whose menu is open lifts to the active tab's face.
-		ui.Row(c).Height(tabH+4).Padding(2).Gap(2).Radius(radius).
+		ui.Row(c).Height(tabH+4).Padding(2).Gap(4).Radius(radius).
 			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(0).
 			Children(func() {
 				if terminalsSupported() {
@@ -179,13 +179,17 @@ func (a *app) tip(label string, cmd *commands.Command) string {
 // tab-sized, so the machine, project and branch read as a group, and
 // filled like the active tab while its menu is open.
 func titleChip(c *ui.Context, k *colors, open bool) ui.Element {
-	e := ui.ButtonBase(c).Height(tabH).Gap(6).Padding(0, 8, 0, 6).Radius(radius).
+	e := ui.ButtonBase(c).Height(tabH-4).Gap(6).Padding(0, 8, 0, 6).Radius(radius - 2).
 		Justify(ui.Start).Cursor(ui.CursorPointer).Shrink(0).ClipX().
 		Transition(motion.Colors)
 	switch {
 	case open:
 		e.Background(k.TabActive).Shadow(0, 1, 2, 0, k.Shadow).Shadow(0, 2, 8, 0, k.Shadow)
 	case e.Hovered():
+		e.Background(k.Pressed)
+	default:
+		// A resting fill gives each chip an edge, so the track's gaps
+		// read as gaps instead of one continuous run of icons and text.
 		e.Background(k.Hover)
 	}
 	return e

@@ -178,7 +178,7 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 			ui.Row(c).Padding(12, 18).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Row(c).Grow(1).Height(32).Padding(0, 9).Gap(7).Radius(radius).
 					Background(k.Hover).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, icons.FolderIcon()).Size(14, 14).TextColor(k.TextFaint)
+					ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextFaint)
 					in := ui.TextInputBase(c, &a.remoteQuery).Grow(1).FontSize(13).
 						Placeholder("Server project path…").AutoFocus()
 					if in.Submitted() {

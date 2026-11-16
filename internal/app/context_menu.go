@@ -8,8 +8,8 @@ import (
 
 const (
 	menuW     = 288 // the width every title bar menu opens with
-	menuRowH  = 36  // one choice in it
-	menuMaxH  = 324 // nine choices, then the list scrolls
+	menuRowH  = 34  // one choice in it, the height of a list row
+	menuMaxH  = 338 // nine choices with their gaps, then the list scrolls
 	menuInset = 8   // the left and right padding of a row
 )
 
@@ -85,6 +85,8 @@ func menuNote(c *ui.Context, k *colors, text string, danger bool) {
 }
 
 // menuList scrolls a menu's choices once they would run past the window.
+// Its rows keep the 34-pixel height and 4-pixel gap of the window's lists,
+// so a menu row and a list row are the same shape.
 func menuList(c *ui.Context, body func()) {
-	ui.Scroll(c).MaxHeight(menuMaxH).Children(body)
+	ui.Scroll(c).MaxHeight(menuMaxH).Gap(4).Children(body)
 }

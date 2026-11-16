@@ -4,16 +4,24 @@
 
 The working-tree page: reading status and diffs for the open project, parsing Git's output, the page
 state and its view, and the two runners that reach Git (a local command or the project's session
-server). It also reads, switches and creates the project's branches and reloads open notes after a
-checkout.
+server). A second mode lists the repository's commits and shows the patch of the one selected. It
+also reads, switches and creates the project's branches and reloads open notes after a checkout.
 
 ## Source of truth
 
-- [`internal/git/git.go`](../../internal/git/git.go) — `Runner`, `LocalRunner`, `Host`, `Page`
-  (`Seq`, `DiffSeq`, `Loading`, `DiffLoad`, `Changes`, `Sel`, `Diff`), `StatusData`, `Toggle`,
-  `Refresh`, `applyStatus`, `Select`, `loadDiff`, `applyDiff`.
-- [`internal/git/parse.go`](../../internal/git/parse.go) — `ReadStatus`, `parseStatus`,
-  `statusLetter`, `ReadDiff`, `untrackedDiff`, `runGit`, `ParseDiff`, `DiffStat`.
+- [`internal/git/git.go`](../../internal/git/git.go) — `Runner`, `LocalRunner`, `Host`, `PageMode`,
+  `Page` (`Seq`, `DiffSeq`, `HistorySeq`, `Loading`, `DiffLoad`, `HistoryLoad`, `Mode`, `Changes`,
+  `Sel`, `Commits`, `CommitSel`, `Diff`), `StatusData`, `Toggle`, `Refresh`, `ShowHistory`,
+  `ShowChanges`, `applyStatus`, `Select`, `loadDiff`, `applyDiff`, `loadHistory`, `applyHistory`,
+  `selectCommit`.
+- [`internal/git/parse.go`](../../internal/git/parse.go) — `repoRoot`, `ReadStatus`, `parseStatus`,
+  `statusLetter`, `ReadDiff`, `untrackedDiff`, `runGit`, `ParseDiff`, `DiffStat`, `FileDiff`,
+  `SplitDiff`.
+- [`internal/git/history.go`](../../internal/git/history.go) — `Commit`, `HistoryData`,
+  `ReadHistory`, `parseHistory`, `ReadCommitDiff`.
+- [`internal/git/branch_menu.go`](../../internal/git/branch_menu.go) — `ToggleBranchMenu`,
+  `CloseBranchMenu`, `loadBranches`, `applyBranches`, `chooseBranch`, `makeBranch`,
+  `branchMenuBody`, `branchMenuRow`, `newBranchBody`.
 - [`internal/git/view.go`](../../internal/git/view.go) — `(*Page).View`: header, file list, diff
   pane and its empty/loading/error states.
 - [`internal/gitenv/gitenv.go`](../../internal/gitenv/gitenv.go) — `Env`, the environment Git runs
@@ -58,6 +66,15 @@ checkout.
 7. `stashActiveWorkspace` and `activateWorkspace` bump `branch.seq`, so a read from the project
    that was on screen cannot land in the next one; activation reads the branch again, since a
    terminal may have moved it while the project was away.
+8. `Page.ShowHistory` swaps the left list for the repository's commits. `ReadHistory` runs in the
+   background under `HistorySeq` and lands through `applyHistory`; the selected commit's patch is
+   `ReadCommitDiff`, landing through `applyDiff` under the same `DiffSeq` as a working-tree diff
+   and split per file by `SplitDiff`. `ShowChanges` switches back and refreshes the status. One
+   track holds `Changes`, `History` and the branch chip, as the title bar's track holds its own
+   chips; the branch chip opens the page's menu under itself (`ToggleBranchMenu`), which
+   lists the branches, checks out the one chosen through `Host.SwitchBranch`, and creates a typed
+   one through `Host.CreateBranch`. The left header names the list it holds (`WORKING TREE` or
+   `RECENT COMMITS`).
 
 ## Contracts and failure behavior
 
@@ -66,6 +83,10 @@ checkout.
 - A change row is the window's list row: 34 tall, a 15-pixel file icon, 13-pixel name, 12-pixel
   directory and the status badge at 10. The panel's two headers are `headerH` tall, like the
   Explorer's and a pane's.
+- A change row takes its double click from the list's `Submitted`, never from `DoubleClicked` read
+  inside the row builder: that call applies the pending pointer input mid build and swallows the
+  row's own click, so a single click changed nothing. `Clicked` inside the builder has the same
+  effect.
 - `Change.Path` stays relative to the repository root so Git commands keep working; `OldPath` keeps
   a rename's source so Git can pair it; `Display` is relative to the project for people.
 - A project nested inside a repository reports changes with `Display` relative to the project and
@@ -93,6 +114,27 @@ checkout.
   branch's: a file only the branch has appears, one it lacks leaves (a dirty note stays). It runs on
   the UI thread, as `Apply` does. A tab open on a file the branch does not have keeps its old text;
   saving it writes the file into the new branch, as with any file deleted outside the app.
+- A status refresh that lands while the page shows history updates `Changes` but never replaces the
+  commit's patch: the selected commit is what the pane shows until the list is read again or another
+  commit is picked.
+- The page's branch menu reads the branches again when it opens, so a branch added in a terminal
+  appears without a refresh. It never opens the title bar's menu: its popover anchors to the page's
+  chip and its state is the page's. A checkout is refused while a note holds unsaved edits, and the
+  menu keeps the reason in its footer.
+- A commit row keeps the file row's frame — 34 tall, 15-pixel icon, 13-pixel subject, 12-pixel
+  second line — with `git-commit` in the icon column and the short hash and relative date under the
+  subject; the author stays in the row's tooltip.
+- Both lists space their rows 6 pixels apart (`List(...).Gap(6)`), so a chosen row is its own pill
+  and a hovered row's fill never meets the accent of the chosen one.
+- History lists at most `historyLimit` (100) commits that touched the project, newest first, from
+  `git log -z` with `%h`, `%an`, `%cr` and `%s`. A repository without commits is an empty list, not
+  a failure.
+- `ReadCommitDiff` runs `git show --format= --patch <hash>` scoped to the project's prefix, with
+  `-c core.quotePath=false` so a non-ASCII path is the path itself instead of C-quoted. A merge
+  commit leaves no single patch; the page says so rather than showing an empty diff.
+- `SplitDiff` gives each file of a patch its own heading. `new file mode`, `deleted file mode` and
+  `rename from` set `A`, `D` and `R`; a binary or mode-only section names its file from the
+  `diff --git` line because it has no `+++` header.
 - Branch names typed into the menu pass `git check-ref-format --branch` before `git switch -c`;
   empty names and names starting with `-` are refused before Git sees them.
 - The switch is refused while any note is dirty and it writes no note itself: a refusal leaves HEAD
@@ -103,7 +145,9 @@ checkout.
 
 ```sh
 go test ./internal/git
+go test ./internal/git -run 'History|SplitDiff' -v
 go test ./internal/git -run 'Branch' -v
 go test ./internal/app -run '^TestGitPage$' -v
+go test ./internal/app -run '^TestGitHistoryPage$' -v
 go test ./internal/app -run 'Branch' -v
 ```

@@ -117,3 +117,77 @@ func TestRenameDiffKeepsTheRename(t *testing.T) {
 		t.Fatalf("rename diff: %q", diff)
 	}
 }
+
+func TestHistoryReadsCommitsAndPatches(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{
+		"a.md":    "# A\n\nold\n",
+		"中文 名.md": "x\n",
+	})
+	testutil.InitRepo(t, dir)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n\nnew\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, "中文 名.md"), filepath.Join(dir, "改名.md")); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "-A")
+	run("commit", "-qm", "second 中文")
+
+	data := git.ReadHistory(git.LocalRunner{}, dir)
+	if data.Err != "" || data.Root == "" {
+		t.Fatalf("history: %+v", data)
+	}
+	if len(data.Commits) != 2 {
+		t.Fatalf("commits: %+v", data.Commits)
+	}
+	newest := data.Commits[0]
+	if newest.Subject != "second 中文" || newest.Short == "" || newest.Hash == "" ||
+		newest.Author != "Mojian Test" || newest.When == "" {
+		t.Fatalf("newest: %+v", newest)
+	}
+	if data.Commits[1].Subject != "initial" {
+		t.Fatalf("oldest: %+v", data.Commits[1])
+	}
+
+	diff, err := git.ReadCommitDiff(git.LocalRunner{}, data.Root, data.Prefix, newest.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(diff, "+new") || !strings.Contains(diff, "rename to 改名.md") {
+		t.Fatalf("patch: %q", diff)
+	}
+	files := git.SplitDiff(diff)
+	status := map[string]string{}
+	for _, f := range files {
+		status[f.Path] = f.Status
+	}
+	if len(files) != 2 || status["a.md"] != "M" || status["改名.md"] != "R" {
+		t.Fatalf("files: %+v", files)
+	}
+}
+
+func TestHistoryOfAnEmptyRepository(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	data := git.ReadHistory(git.LocalRunner{}, dir)
+	if data.Err != "" || len(data.Commits) != 0 {
+		t.Fatalf("history: %+v", data)
+	}
+}

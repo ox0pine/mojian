@@ -109,3 +109,76 @@ func TestDiffLineTextCapsABinaryLine(t *testing.T) {
 		t.Fatalf("blank row: %q", blank)
 	}
 }
+
+func TestSplitDiffReadsEveryFile(t *testing.T) {
+	diff := `diff --git a/a.txt b/a.txt
+index 111..222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++two
+diff --git a/new.txt b/new.txt
+new file mode 100644
+index 000..111
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1 @@
++hi
+diff --git a/gone.txt b/gone.txt
+deleted file mode 100644
+index 111..000
+--- a/gone.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-bye
+diff --git a/old.txt b/renamed.txt
+similarity index 100%
+rename from old.txt
+rename to renamed.txt
+diff --git a/blob.bin b/blob.bin
+new file mode 100644
+index 000..222
+Binary files /dev/null and b/blob.bin differ
+`
+	files := SplitDiff(diff)
+	if len(files) != 5 {
+		t.Fatalf("files: %+v", files)
+	}
+	want := []struct {
+		path, status string
+		add, del     int
+	}{
+		{"a.txt", "M", 1, 1},
+		{"new.txt", "A", 1, 0},
+		{"gone.txt", "D", 0, 1},
+		{"renamed.txt", "R", 0, 0},
+		{"blob.bin", "A", 0, 0},
+	}
+	for i, w := range want {
+		got := files[i]
+		if got.Path != w.path || got.Status != w.status || got.Add != w.add || got.Del != w.del {
+			t.Errorf("file %d: %+v, want %s %s +%d -%d", i, got, w.path, w.status, w.add, w.del)
+		}
+	}
+	if len(files[0].Lines) == 0 || files[0].Lines[1].text != "-one" {
+		t.Fatalf("first file lines: %+v", files[0].Lines)
+	}
+}
+
+func TestParseHistoryStopsAtTheLastRecord(t *testing.T) {
+	out := "h1\x00s1\x00A\x002 days ago\x00first\x00h2\x00s2\x00B\x001 hour ago\x00second\x00"
+	commits := parseHistory(out)
+	if len(commits) != 2 {
+		t.Fatalf("commits: %+v", commits)
+	}
+	if commits[0] != (Commit{Hash: "h1", Short: "s1", Author: "A", When: "2 days ago", Subject: "first"}) {
+		t.Fatalf("first: %+v", commits[0])
+	}
+	if commits[1].Subject != "second" || commits[1].Hash != "h2" {
+		t.Fatalf("second: %+v", commits[1])
+	}
+	if len(parseHistory("")) != 0 {
+		t.Fatal("an empty log has no commits")
+	}
+}

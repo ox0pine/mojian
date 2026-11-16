@@ -95,3 +95,39 @@ func (a *app) HasPath(rel string) bool {
 func (a *app) OpenPath(rel string) { a.openRel(rel) }
 
 func (a *app) FileMenu(m *ui.Menu, rel string) { a.nodeMenu(m, rel, false) }
+
+// SwitchBranch checks out a branch chosen in the Git page's own menu, then
+// reloads every clean note from the files the branch holds.
+func (a *app) SwitchBranch(root, name string) error {
+	if err := a.branchReady(root); err != nil {
+		return err
+	}
+	a.runBranchChange("switching to "+name, func(r gitpage.Runner) error {
+		return gitpage.SwitchBranch(r, root, name)
+	})
+	return nil
+}
+
+// CreateBranch creates a branch at HEAD from the Git page's menu and
+// checks it out.
+func (a *app) CreateBranch(root, name string) error {
+	if err := a.branchReady(root); err != nil {
+		return err
+	}
+	a.runBranchChange("creating "+name, func(r gitpage.Runner) error {
+		return gitpage.CreateBranch(r, root, name)
+	})
+	return nil
+}
+
+// branchReady refuses a checkout while a note holds unsaved edits, since
+// the branch would overwrite the file those edits belong to.
+func (a *app) branchReady(root string) error {
+	if root == "" {
+		return errors.New("This folder is not a Git repository.")
+	}
+	if a.dirtyNotes() > 0 {
+		return errors.New("Save or discard your edits before switching branches.")
+	}
+	return nil
+}

@@ -61,7 +61,22 @@ type Host interface {
 	HasPath(string) bool
 	OpenPath(string)
 	FileMenu(*ui.Menu, string)
+	// SwitchBranch checks out name at root and reloads the notes the new
+	// branch holds; it refuses while a note has unsaved edits.
+	SwitchBranch(root, name string) error
+	// CreateBranch creates name at HEAD in root and checks it out.
+	CreateBranch(root, name string) error
 }
+
+// PageMode is what the page's left list holds.
+type PageMode int
+
+const (
+	// ModeChanges lists the working tree's changed files.
+	ModeChanges PageMode = iota
+	// ModeHistory lists the repository's commits.
+	ModeHistory
+)
 
 // Page is the working-tree diff: its state and its view.
 type Page struct {
@@ -82,8 +97,38 @@ type Page struct {
 	DiffScroll ui.ScrollState
 	list       ui.ListState
 
+	// Mode picks the left list: the working tree's changes, or the
+	// repository's commits. Commits and CommitSel carry the history, and
+	// patch is the selected commit's diff split per file.
+	Mode        PageMode
+	Commits     []Commit
+	CommitSel   int
+	HistoryLoad bool
+	HistoryErr  string
+	HistorySeq  int
+	historyList ui.ListState
+	patch       []FileDiff
+
+	// BranchMenu is the page's own popover under the branch chip; it
+	// reads the branches again each time it opens.
+	BranchMenu bool
+	Branches   BranchData
+	branchLoad bool
+	branchSeq  int
+	branchErr  string
+	branchNew  bool
+	branchName string
+
 	h      Host
 	runner Runner
+}
+
+// Title names the page for the window.
+func (p *Page) Title() string {
+	if p.Mode == ModeHistory {
+		return "History"
+	}
+	return "Changes"
 }
 
 type StatusData struct {
@@ -111,6 +156,7 @@ func (p *Page) Toggle(h Host) {
 	p.Sel = -1
 	p.Diff = ""
 	p.DiffPath = ""
+	p.patch = nil
 	p.Err = ""
 	p.Loading = true
 	p.Refresh()
@@ -128,6 +174,9 @@ func (p *Page) Refresh() {
 	p.Seq++
 	seq := p.Seq
 	root := mustDir(h)
+	if p.Mode == ModeHistory {
+		p.loadHistory()
+	}
 	if h.Window() == nil {
 		p.applyStatus(seq, ReadStatus(p.runner, root))
 		return
@@ -156,11 +205,21 @@ func (p *Page) applyStatus(seq int, data StatusData) {
 	p.Err = data.Err
 	if len(data.Changes) == 0 {
 		p.Sel = -1
+		if p.Mode == ModeHistory {
+			// The commit the page shows is not the working tree's to
+			// replace.
+			return
+		}
 		p.Diff = ""
 		p.DiffPath = ""
+		p.patch = nil
 		return
 	}
 	sel := min(max(p.Sel, 0), len(data.Changes)-1)
+	if p.Mode == ModeHistory {
+		p.Sel = sel
+		return
+	}
 	if sel != p.Sel || p.DiffPath != data.Changes[sel].Display ||
 		p.Diff == "" && p.DiffErr == "" && !p.DiffLoad {
 		p.Sel = sel
@@ -170,14 +229,148 @@ func (p *Page) applyStatus(seq int, data StatusData) {
 	p.Sel = sel
 }
 
+// ShowHistory switches the left list to the repository's commits.
+func (p *Page) ShowHistory() {
+	if p.Mode == ModeHistory || p.h == nil {
+		return
+	}
+	p.Mode = ModeHistory
+	p.clearDiff()
+	p.loadHistory()
+	p.h.Invalidate()
+}
+
+// ShowChanges switches the left list back to the working tree.
+func (p *Page) ShowChanges() {
+	if p.Mode == ModeChanges || p.h == nil {
+		return
+	}
+	p.Mode = ModeChanges
+	p.clearDiff()
+	p.Refresh()
+	p.h.Invalidate()
+}
+
+// clearDiff forgets the shown patch and drops its read.
+func (p *Page) clearDiff() {
+	p.Diff = ""
+	p.DiffPath = ""
+	p.DiffErr = ""
+	p.DiffLoad = false
+	p.DiffSeq++
+	p.patch = nil
+}
+
+func (p *Page) loadHistory() {
+	h := p.h
+	if h == nil || !hasProject(h) {
+		return
+	}
+	p.runner = h.GitRunner()
+	p.HistoryLoad = true
+	p.HistoryErr = ""
+	p.HistorySeq++
+	seq := p.HistorySeq
+	dir := mustDir(h)
+	if h.Window() == nil {
+		p.applyHistory(seq, ReadHistory(p.runner, dir))
+		return
+	}
+	win := h.Window()
+	go func() {
+		data := ReadHistory(p.runner, dir)
+		win.Update(func() {
+			if seq == p.HistorySeq {
+				p.applyHistory(seq, data)
+				h.Invalidate()
+			}
+		})
+	}()
+}
+
+func (p *Page) applyHistory(seq int, data HistoryData) {
+	if seq != p.HistorySeq {
+		return
+	}
+	p.HistoryLoad = false
+	p.HistoryErr = data.Err
+	p.Root, p.Prefix = data.Root, data.Prefix
+	shown := ""
+	if p.CommitSel >= 0 && p.CommitSel < len(p.Commits) {
+		shown = p.Commits[p.CommitSel].Hash
+	}
+	p.Commits = data.Commits
+	if len(p.Commits) == 0 {
+		p.CommitSel = -1
+		p.clearDiff()
+		return
+	}
+	sel := 0
+	if shown != "" {
+		for i := range p.Commits {
+			if p.Commits[i].Hash == shown {
+				sel = i
+				break
+			}
+		}
+	}
+	// A refresh that leaves the same commit selected keeps its patch.
+	if shown == p.Commits[sel].Hash && p.Diff != "" && p.DiffErr == "" && !p.DiffLoad {
+		p.CommitSel = sel
+		return
+	}
+	p.selectCommit(sel)
+}
+
+// selectCommit shows one commit's patch in the diff pane.
+func (p *Page) selectCommit(i int) {
+	h := p.h
+	if h == nil || i < 0 || i >= len(p.Commits) {
+		return
+	}
+	p.CommitSel = i
+	commit := p.Commits[i]
+	p.clearDiff()
+	p.DiffLoad = true
+	p.DiffScroll = ui.ScrollState{}
+	seq := p.DiffSeq
+	root, prefix := p.Root, p.Prefix
+	if h.Window() == nil {
+		diff, err := ReadCommitDiff(p.runner, root, prefix, commit.Hash)
+		p.applyDiff(seq, diff, err)
+		return
+	}
+	win := h.Window()
+	go func() {
+		diff, err := ReadCommitDiff(p.runner, root, prefix, commit.Hash)
+		win.Update(func() {
+			if seq == p.DiffSeq {
+				p.applyDiff(seq, diff, err)
+				h.Invalidate()
+			}
+		})
+	}()
+}
+
+// selectedCommit is the commit whose patch the diff pane shows.
+func (p *Page) selectedCommit() (Commit, bool) {
+	if p.CommitSel < 0 || p.CommitSel >= len(p.Commits) {
+		return Commit{}, false
+	}
+	return p.Commits[p.CommitSel], true
+}
+
 // Reset drops the page's in-flight reads, for a project switch.
 func (p *Page) Reset() {
 	p.Loading = false
 	p.DiffLoad = false
 	p.Err = ""
 	p.DiffErr = ""
+	p.HistoryLoad = false
+	p.HistoryErr = ""
 	p.Seq++
 	p.DiffSeq++
+	p.HistorySeq++
 }
 
 func (p *Page) Select(i int) {
@@ -192,13 +385,14 @@ func (p *Page) Select(i int) {
 
 func (p *Page) loadDiff(i int) {
 	h := p.h
-	if i < 0 || i >= len(p.Changes) {
+	if h == nil || p.Mode == ModeHistory || i < 0 || i >= len(p.Changes) {
 		return
 	}
 	change := p.Changes[i]
 	p.DiffPath = change.Display
 	p.Diff = ""
 	p.DiffErr = ""
+	p.patch = nil
 	p.DiffLoad = true
 	p.DiffScroll = ui.ScrollState{}
 	p.DiffSeq++
@@ -227,7 +421,13 @@ func (p *Page) applyDiff(seq int, diff string, err error) {
 	}
 	p.DiffLoad = false
 	p.Diff = diff
+	p.DiffErr = ""
+	p.patch = nil
 	if err != nil {
 		p.DiffErr = err.Error()
+		return
+	}
+	if p.Mode == ModeHistory {
+		p.patch = SplitDiff(diff)
 	}
 }

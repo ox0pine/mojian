@@ -17,25 +17,39 @@ import (
 	"mojian/internal/platform"
 )
 
+// repoRoot resolves the project's symlinks and finds the repository that
+// holds it, with the project's path inside it. ok is false outside one.
+func repoRoot(r Runner, project string) (root, prefix string, ok bool) {
+	if resolved, err := r.RealPath(project); err == nil && resolved != "" {
+		project = resolved
+	}
+	out, err := r.Run(project, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", "", false
+	}
+	root = strings.TrimSpace(out)
+	if root == "" {
+		return "", "", false
+	}
+	if rel, err := filepath.Rel(root, project); err == nil && rel != "." && rel != "" {
+		prefix = filepath.ToSlash(rel)
+	}
+	return root, prefix, true
+}
+
 // ReadStatus reads the repository's branch and changed files under
 // the project.
 func ReadStatus(r Runner, project string) StatusData {
 	if r == nil {
 		r = LocalRunner{}
 	}
-	if resolved, err := r.RealPath(project); err == nil && resolved != "" {
-		project = resolved
-	}
 	d := StatusData{Root: project}
-	out, err := r.Run(project, "rev-parse", "--show-toplevel")
-	if err != nil {
+	root, prefix, ok := repoRoot(r, project)
+	if !ok {
 		d.Err = "This folder is not a Git repository."
 		return d
 	}
-	d.Root = strings.TrimSpace(out)
-	if r, err := filepath.Rel(d.Root, project); err == nil && r != "." && r != "" {
-		d.Prefix = filepath.ToSlash(r)
-	}
+	d.Root, d.Prefix = root, prefix
 	if branch, err := r.Run(d.Root, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
 		d.Branch = strings.TrimSpace(branch)
 	} else if branch, err := r.Run(d.Root, "symbolic-ref", "--short", "HEAD"); err == nil {
@@ -227,6 +241,114 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 		_, _ = b.Buffer.Write(p[:n])
 	}
 	return len(p), nil
+}
+
+// FileDiff is one file's part of a patch that touched several.
+type FileDiff struct {
+	Path   string // the file's path in the repository
+	Status string // M, A, D or R
+	Add    int
+	Del    int
+	Lines  []gitDiffLine
+}
+
+// SplitDiff splits a patch into one part per file. A working tree diff
+// holds one file; a commit's patch holds every file it touched, which is
+// what the page's history shows.
+func SplitDiff(diff string) []FileDiff {
+	var files []FileDiff
+	var section []string
+	flush := func() {
+		if len(section) > 0 {
+			files = append(files, buildFileDiff(section))
+			section = nil
+		}
+	}
+	for _, line := range strings.Split(strings.TrimRight(diff, "\n"), "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			flush()
+		} else if section == nil {
+			// Text before the first file header belongs to no file.
+			continue
+		}
+		section = append(section, line)
+	}
+	flush()
+	return files
+}
+
+// buildFileDiff reads one file's section: its path, what happened to it,
+// and the lines the diff pane draws.
+func buildFileDiff(section []string) FileDiff {
+	file := FileDiff{Status: "M"}
+	oldPath, newPath := "", ""
+	for _, line := range section {
+		if strings.HasPrefix(line, "@@") {
+			break
+		}
+		switch {
+		case strings.HasPrefix(line, "+++ "):
+			newPath = diffPath(line[4:], "b/")
+		case strings.HasPrefix(line, "--- "):
+			oldPath = diffPath(line[4:], "a/")
+		case strings.HasPrefix(line, "rename to "):
+			newPath, file.Status = unquotePath(line[len("rename to "):]), "R"
+		case strings.HasPrefix(line, "copy to "):
+			newPath, file.Status = unquotePath(line[len("copy to "):]), "A"
+		case strings.HasPrefix(line, "rename from "):
+			file.Status = "R"
+		case strings.HasPrefix(line, "copy from "):
+			file.Status = "A"
+		case strings.HasPrefix(line, "new file mode "):
+			file.Status = "A"
+		case strings.HasPrefix(line, "deleted file mode "):
+			file.Status = "D"
+		}
+	}
+	file.Path = newPath
+	if file.Path == "" {
+		file.Path = oldPath
+	}
+	if file.Path == "" {
+		// A binary file or a mode change carries no +++ header.
+		file.Path = diffGitPath(section[0])
+	}
+	file.Lines = ParseDiff(strings.Join(section, "\n"))
+	file.Add, file.Del = DiffStat(strings.Join(section, "\n"))
+	return file
+}
+
+// diffPath reads one side of a header: /dev/null is no path, and the
+// a/ or b/ prefix is Git's, not the file's.
+func diffPath(s, dir string) string {
+	s = unquotePath(s)
+	if s == "/dev/null" {
+		return ""
+	}
+	return strings.TrimPrefix(s, dir)
+}
+
+// unquotePath undoes Git's C-style quoting, which it applies to a path
+// carrying a quote, a backslash or a control character.
+func unquotePath(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		if u, err := strconv.Unquote(s); err == nil {
+			return u
+		}
+	}
+	return s
+}
+
+// diffGitPath reads the new path off a "diff --git a/x b/y" line, for a
+// section that has no +++ header to name the file.
+func diffGitPath(line string) string {
+	rest := strings.TrimPrefix(line, "diff --git ")
+	for _, cut := range []string{` "b/`, " b/"} {
+		if i := strings.LastIndex(rest, cut); i >= 0 {
+			return strings.TrimPrefix(unquotePath(rest[i+1:]), "b/")
+		}
+	}
+	return ""
 }
 
 var gitHunkPattern = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)

@@ -12,7 +12,7 @@ func (a *app) updateTitle() {
 	title := "Mojian"
 	switch {
 	case a.git.Open:
-		title = "Changes"
+		title = a.git.Title()
 	case a.tab() != nil:
 		name, _ := a.tab().label()
 		title = name
