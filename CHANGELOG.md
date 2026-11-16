@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.5
+
+- The Git page has a History tab: the newest commits that touched the
+  project, newest first, and the chosen commit's patch split per file with
+  its own heading, +/− counts and Added, Deleted or Renamed badges. A
+  merge or an empty commit says so, and a repository without commits is an
+  empty list instead of an error.
+- The branch chip in the Git page opens its own menu under the chip: list,
+  switch or create a branch without leaving the page. A switch still
+  reloads every clean note and the page's diff.
+- Clicking another changed file in the Git page changes the diff. The row
+  read `DoubleClicked` inside the list's row builder, which applied the
+  pending pointer input and swallowed the single click; the double click
+  now comes from the list's `Submitted`.
+- List rows breathe: the title-bar menus and the Git page's lists share
+  34-pixel rows with a 4-pixel gap, and every chip has a resting fill, so a
+  hovered row never touches the chosen accent. The branch menu slides and
+  fades in like the title-bar menus.
+- The app icon follows the macOS icon grid — an 824-pixel body in a
+  1024-pixel canvas — so Finder and the Dock draw it at the size of other
+  apps.
+
 ## 0.4.4
 
 - Agent tasks run in the background: View → Run Agent Task… takes one
