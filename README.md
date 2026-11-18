@@ -4,13 +4,13 @@
 
 <p>
   <a href="https://awesomemygo.dev/apps/mojian"><img src="https://awesomemygo.dev/badge.svg" alt="Listed on Awesome MyGo" height="22"></a>
-  <a href="https://mygo.run/zh/showcase#:~:text=Mojian"><img src="https://img.shields.io/badge/MyGo%20showcase-listed-D24A2B?style=flat&amp;labelColor=1F1B16" alt="Listed on the MyGo showcase" height="22"></a>
-  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/v/release/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="Latest release" height="22"></a>
-  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/downloads/ox0pine/mojian/total?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="Total downloads" height="22"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=1F1B16" alt="MIT license" height="22"></a>
+  <a href="https://mygo.run/zh/showcase#:~:text=Mojian"><img src="https://img.shields.io/badge/MyGo%20showcase-listed-D24A2B?style=flat&amp;labelColor=1F1B16" alt="Listed on the MyGo showcase" width="104" height="22"></a>
+  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/v/release/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="Latest release" width="104" height="22"></a>
+  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/downloads/ox0pine/mojian/total?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="Total downloads" width="110" height="22"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=1F1B16" alt="MIT license" width="86" height="22"></a>
 </p>
 
-Mojian is a native plain-text editor for ordinary folders. Edit files, preview images and PDFs, run persistent terminals, and inspect Git diffs in tiled workspaces. No database, account, webview, or cgo. Runs on macOS 13+, Linux, and Windows 10 1809+. Windows is a local-only client: SSH and remote projects are not available there.
+Mojian is a native plain-text editor for ordinary folders. Edit files, preview images and PDFs, run persistent terminals, and inspect Git diffs in tiled workspaces. No database, account, webview, or cgo. Runs on macOS 13+, Linux, and Windows 10 1809+.
 
 [Download the latest release](https://github.com/ox0pine/mojian/releases) · [简体中文](README.zh-CN.md) · [Build from source](#build-from-source)
 
