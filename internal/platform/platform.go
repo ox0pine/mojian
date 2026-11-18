@@ -13,9 +13,10 @@ func TerminalsSupported() bool {
 }
 
 // RemoteSupported reports whether this build can reach SSH hosts and
-// remote projects. Windows is a local-only client.
+// remote projects. Every platform Mojian runs on can: the transport is
+// the stdio of an ssh command, so Windows needs only its OpenSSH client.
 func RemoteSupported() bool {
-	return runtime.GOOS == "darwin" || runtime.GOOS == "linux"
+	return runtime.GOOS == "darwin" || runtime.GOOS == "linux" || runtime.GOOS == "windows"
 }
 
 // NativeKeys writes a shortcut of the command tables, which use the Mac's

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0
+
+- Remote hosts work on Windows: the app reaches a host's server over the
+  stdio of a plain `ssh` command, through the OpenSSH client Windows ships,
+  instead of an SSH forward that needs a local socket. A missing `ssh.exe`
+  says so in one sentence.
+- One framed, multiplexed connection replaces the old line protocol: the
+  control requests and every terminal share it, so a stalled terminal no
+  longer holds up the others or the app, and reopening a terminal still
+  brings its screen back.
+- Several devices can run the app against the same host: each opens its own
+  connection to the one detached server, whose terminals keep running when
+  an app or its SSH connection goes away.
+- A host still running a server from an older build says so and asks for
+  Stop Server in Settings › Hosts instead of quietly ending its terminals;
+  a local server from an older build is replaced at the next launch.
+- A new file in a remote project saves the first time instead of failing
+  with "file changed outside Mojian".
+
 ## 0.4.8
 
 - MyGo 0.10.0: the app runs the newer native UI, and the embedded Linux

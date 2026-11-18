@@ -30,9 +30,8 @@ import (
 const (
 	scrollback  = 8 << 20
 	resyncDelay = 150 * time.Millisecond
-	// maxLine bounds one JSON request or response, and readFileLimit the
-	// bytes of a file sent in one.
-	maxLine        = 64 << 20
+	// readFileLimit bounds a file sent in one request, and
+	// writeFileLimit one written in one.
 	readFileLimit  = 32 << 20
 	writeFileLimit = 32 << 20
 )
@@ -113,7 +112,7 @@ func Serve() error {
 			}
 			return err
 		}
-		go func() { s.handle(conn) }()
+		go s.serveConn(conn)
 	}
 }
 
@@ -148,58 +147,90 @@ func (s *Server) pruneExited() {
 	}
 }
 
-func (s *Server) handle(conn net.Conn) {
-	r := bufio.NewReaderSize(conn, 64<<10)
-	first, err := readLine(r, maxLine)
-	if err != nil {
+// serveConn answers a connection's hello and then hands every frame to
+// dispatch. One connection carries the control requests and all streams.
+func (s *Server) serveConn(conn net.Conn) {
+	r := bufio.NewReaderSize(conn, 1<<20)
+	f, err := readFrame(r)
+	if err != nil || f.typ != frameHello {
 		_ = conn.Close()
 		return
 	}
-	var a Attach
-	if json.Unmarshal(first, &a) == nil && a.Op == "attach" {
-		s.mu.Lock()
-		ss := s.sessions[a.SID]
-		s.mu.Unlock()
-		if ss == nil {
-			_, _ = conn.Write([]byte(`{"ok":false,"error":"no such session"}` + "\n"))
-			_ = conn.Close()
-			return
-		}
-		_, _ = conn.Write([]byte(`{"ok":true}` + "\n"))
-		if n := r.Buffered(); n > 0 {
-			b, _ := r.Peek(n)
-			ss.input(b)
-		}
-		ss.attach(conn, a.Cols, a.Rows)
+	var hello Hello
+	if json.Unmarshal(f.payload, &hello) != nil {
+		_ = conn.Close()
 		return
 	}
-	s.control(conn, r, first)
+	if hello.Version != ProtocolVersion {
+		msg, _ := json.Marshal(map[string]string{
+			"code":    "protocol",
+			"message": fmt.Sprintf("server protocol %d, client wants %d", ProtocolVersion, hello.Version),
+		})
+		_ = writeFrame(conn, frame{typ: frameError, payload: msg})
+		_ = conn.Close()
+		return
+	}
+	m := newMux(conn, r)
+	reply, _ := json.Marshal(Hello{
+		Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Role: "server",
+	})
+	// The handshake reply goes out directly: it is the first frame, and
+	// writing it here keeps a client that closes at once from racing the
+	// writer loop for it.
+	if err := writeFrame(conn, frame{typ: frameHello, payload: reply}); err != nil {
+		_ = conn.Close()
+		return
+	}
+	m.start(func(f frame) { s.dispatch(m, f) })
 }
 
-func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte) {
-	defer conn.Close()
-	var wmu sync.Mutex
-	reply := func(res Response) {
-		b, _ := json.Marshal(res)
-		wmu.Lock()
-		_, _ = conn.Write(append(b, '\n'))
-		wmu.Unlock()
-	}
-	line := first
-	for {
+func (s *Server) dispatch(m *mux, f frame) {
+	switch f.typ {
+	case frameRequest:
 		var req Request
-		if json.Unmarshal(line, &req) != nil {
-			// A frame the server cannot read leaves the caller waiting
+		if json.Unmarshal(f.payload, &req) != nil {
+			// A request the server cannot read leaves the caller waiting
 			// for an answer that will never come: end the connection,
 			// which reports the lost connection to every pending call.
+			m.shutdown(errors.New("session: malformed request"))
 			return
 		}
-		reply(s.request(req))
-		var err error
-		line, err = readLine(r, maxLine)
+		b, _ := json.Marshal(s.request(req))
+		_ = m.writeControl(frameResponse, b)
+	case frameOpen:
+		var o openRequest
+		if json.Unmarshal(f.payload, &o) != nil {
+			return
+		}
+		ss, err := s.session(o.SID)
+		reply := openReply{OK: err == nil}
+		var ms *muxStream
 		if err != nil {
+			reply.Error = err.Error()
+		} else {
+			// Register the stream before the ack, so a data frame that
+			// follows at once still finds it.
+			ms = m.openStream(f.stream)
+		}
+		b, _ := json.Marshal(reply)
+		_ = m.writeFrame(frame{typ: frameOpen, stream: f.stream, payload: b})
+		if ms != nil {
+			go ss.attach(ms, o.Cols, o.Rows)
+		}
+	case frameData:
+		ms := m.stream(f.stream)
+		if ms == nil {
 			return
 		}
+		if !ms.push(f.payload) {
+			ms.finish(errors.New("session: stream is too slow"))
+		}
+	case frameClose:
+		if ms := m.stream(f.stream); ms != nil {
+			ms.finish(io.EOF)
+		}
+	case frameError:
+		m.shutdown(errors.New("session: the client reported an error"))
 	}
 }
 
@@ -225,8 +256,6 @@ func (s *Server) session(id string) (*session, error) {
 
 func (s *Server) do(req Request) (any, error) {
 	switch req.Op {
-	case "hello":
-		return Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started}, nil
 	case "list":
 		s.pruneExited()
 		s.mu.Lock()
@@ -390,32 +419,14 @@ type session struct {
 }
 
 type attached struct {
-	conn net.Conn
-	out  chan []byte
-	once sync.Once
+	st *muxStream
 }
 
-func (a *attached) send(p []byte) bool {
-	select {
-	case a.out <- p:
-		return true
-	default:
-		return false
-	}
-}
+func (a *attached) send(p []byte) bool { return a.st.enqueue(p) }
 
-func (a *attached) finish() { a.once.Do(func() { close(a.out) }) }
-
-func (a *attached) writer() {
-	for p := range a.out {
-		if _, err := a.conn.Write(p); err != nil {
-			break
-		}
-	}
-	_ = a.conn.Close()
-	for range a.out {
-	}
-}
+// finish ends the stream and tells the client, so its read sees EOF
+// instead of waiting for the connection to die.
+func (a *attached) finish() { _ = a.st.Close() }
 
 func newSession(id string, o CreateOptions) (*session, error) {
 	argv, name, err := commandArgs(o.Command)
@@ -538,8 +549,8 @@ func (s *session) read() {
 	}
 }
 
-func (s *session) attach(conn net.Conn, cols, rows int) {
-	a := &attached{conn: conn, out: make(chan []byte, 4096)}
+func (s *session) attach(ms *muxStream, cols, rows int) {
+	a := &attached{st: ms}
 	s.mu.Lock()
 	if cols > 0 && rows > 0 {
 		s.cols, s.rows = cols, rows
@@ -549,16 +560,20 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 	if title := s.vt.Title(); title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
 	}
-	a.out <- snap
+	// Queue the snapshot before joining the clients, so live output
+	// cannot reach the stream ahead of the screen it belongs on.
+	full := !a.send(snap)
 	exited := s.exited
 	if !exited {
 		s.clients[a] = struct{}{}
 	}
 	s.mu.Unlock()
-	go a.writer()
+	if full {
+		ms.finish(errors.New("session: stream is too slow"))
+		return
+	}
 	if exited {
 		a.finish()
-		_ = conn.Close()
 		return
 	}
 	if cols > 0 && rows > 0 {
@@ -566,7 +581,7 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 	}
 	buf := make([]byte, 32<<10)
 	for {
-		n, err := conn.Read(buf)
+		n, err := ms.Read(buf)
 		if n > 0 {
 			s.input(buf[:n])
 		}
@@ -575,11 +590,12 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 		}
 	}
 	s.mu.Lock()
-	if _, ok := s.clients[a]; ok {
-		delete(s.clients, a)
+	_, joined := s.clients[a]
+	delete(s.clients, a)
+	s.mu.Unlock()
+	if joined {
 		a.finish()
 	}
-	s.mu.Unlock()
 }
 
 func (s *session) input(p []byte) {

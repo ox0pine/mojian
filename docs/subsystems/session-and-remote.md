@@ -3,22 +3,28 @@
 ## Responsibilities
 
 The process that owns terminals and project files: the Unix-socket or Windows named-pipe PTY
-server, its JSON-lines protocol, spawn/reattach/detach, the SSH provisioning of a remote server,
-the forwarded socket, and the host list and connection pool the app keeps. Windows is a local-only
-client: it runs the terminal-only part of this server and never uploads or controls a remote one.
+server, its framed protocol, spawn/reattach/detach, the SSH provisioning of a remote server, the
+stdio bridge that carries a remote connection, and the host list and connection pool the app
+keeps. Windows runs both parts: its local server owns terminals, and it reaches SSH hosts through
+its bundled `ssh.exe`.
 
 ## Source of truth
 
-- [`internal/session/proto.go`](../../internal/session/proto.go) — the wire types,
+- [`internal/session/proto.go`](../../internal/session/proto.go) — the frames, the wire types,
   `ProtocolVersion`, `ProtocolError`, and the directory helpers `Dir`, `RuntimeDir`, `SocketPathIn`.
+- [`internal/session/mux.go`](../../internal/session/mux.go) — `mux` and `muxStream`: one reader and
+  one writer goroutine per connection, a control queue and one queue per terminal stream.
+- [`internal/session/stdio_unix.go`](../../internal/session/stdio_unix.go) and
+  [`internal/session/stdio_windows.go`](../../internal/session/stdio_windows.go) — `Bridge`, which
+  turns stdio into the server's socket for an SSH client.
 - [`internal/session/socket_unix.go`](../../internal/session/socket_unix.go) and
   [`internal/session/socket_windows.go`](../../internal/session/socket_windows.go) — `SocketPath`,
   listen/dial and socket cleanup for a Unix socket or a per-user named pipe.
-- [`internal/session/server.go`](../../internal/session/server.go) — `Serve`, the request loop,
-  `session` and `attached` streams, `listTree`.
-- [`internal/session/client.go`](../../internal/session/client.go) — `Connect`, `ConnectAt`, `Ready`,
-  `Client`, `Stream`, `Stop`, and the file operations (`ListTree`, `ReadFile`, `WriteFile`,
-  `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`, `Stat`).
+- [`internal/session/server.go`](../../internal/session/server.go) — `Serve`, `serveConn` and
+  `dispatch`, `session` and `attached` streams, `listTree`.
+- [`internal/session/client.go`](../../internal/session/client.go) — `NewClient`, `Connect`,
+  `ConnectAt`, `Ready`, `Client`, `Stream`, `Stop`, and the file operations (`ListTree`,
+  `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`, `Stat`).
 - [`internal/session/pty.go`](../../internal/session/pty.go), `pty_unix.go` and `pty_windows.go` —
   the process seam: `creack/pty` on macOS/Linux, a ConPTY implementation with a job object on
   Windows.
@@ -28,7 +34,7 @@ client: it runs the terminal-only part of this server and never uploads or contr
   starts the server as a detached process of this binary, with a Unix `flock` or a Windows
   `LockFileEx` lock.
 - [`internal/remote/remote.go`](../../internal/remote/remote.go) — `Dial`, `Provision`, `Install`
-  (upload, start, forward, stop), `Conn`, `Close`.
+  (probe, upload, stdio connect, stop), `Conn`, `Close`, `ErrNeedsRestart`.
 - [`internal/remotehost/`](../../internal/remotehost) — `Service`: the host list, remembered remote
   projects and the pool of `*remote.Conn` keyed by host.
 - [`internal/app/remote_project.go`](../../internal/app/remote_project.go) — opening, reconnecting
@@ -48,16 +54,21 @@ client: it runs the terminal-only part of this server and never uploads or contr
    when set, otherwise `Mojian` inside `os.UserConfigDir()`. macOS and Linux use a Unix socket; a
    long path's socket moves to a hashed name through `SocketPathIn`. Windows uses a per-user named
    pipe (`\\.\pipe\mojian-<hash>`) protected by an owner-only SDDL. A remote server sets
-   `MOJIAN_RUNTIME_DIR` to a path sshd can reach with stream-local forwarding.
-2. A terminal pane connects with `session.Connect`, asks for a `session.Stream` on its session id and
-   attaches. Quitting the app closes the client, not the PTY: reopening reattaches to the same
-   session by id, and each layout terminal records `Server` (`local` or an SSH host) so it
-   reattaches to the server that owns it.
+   `MOJIAN_RUNTIME_DIR` to its own runtime directory, which the stdio bridge reads back.
+2. A connection is framed and multiplexed (`ProtocolVersion` 4): a 9-byte header of payload
+   length, type and stream, then the payload. One connection carries every control request and
+   every terminal stream, so the transport only has to be a byte stream. A terminal pane asks
+   `Client.Stream` for a stream id on the connection it already has, and the server answers on
+   that stream before replaying the session's screen. Quitting the app closes the connection, not
+   the PTY: reopening reattaches to the same session by id, and each layout terminal records
+   `Server` (`local` or an SSH host) so it reattaches to the server that owns it.
 3. A remote host is provisioned once: `remote.Provision` uploads the binaries from
-   `internal/remotebin` (comparing hashes first), starts `mojian-server` with `nohup` when its socket is
-   not there, and opens `ssh -N -L` so a local temporary socket reaches the remote one. `remote.Dial`
-   talks to the server through that socket; `Provision` returns the live `Conn` it ended with, and the
-   app keeps it in the pool.
+   `internal/remotebin` (comparing both hashes in one ssh call), then runs
+   `ssh <host> -- mojian-server stdio`. The bridge dials the server socket, starting a detached
+   `mojian-server` when none runs, and copies stdio to it; the client speaks v4 through that pipe.
+   `remote.Dial` does the same, `Provision` returns the live `Conn` it ended with, and the app
+   keeps it in the pool. Nothing is forwarded and no local socket is created, which is why Windows
+   needs only `ssh.exe`.
 4. The remote server stays alive while any of its sessions exists, so a dropped SSH connection does
    not end its shells. It never stops on its own: Settings › Hosts offers **Start Server** and
    **Stop Server** for each configured host, and a stop asks before ending its terminals.
@@ -66,13 +77,21 @@ client: it runs the terminal-only part of this server and never uploads or contr
 ## Contracts and failure behavior
 
 - A server of another build answers with a different version; the client returns
-  `session.ProtocolError{Server, Client}` and the app does not attach.
+  `session.ProtocolError{Server, Client}` and the app does not attach. A local server from an
+  older build is stopped through the pre-v4 one-line shutdown and replaced. A remote one cannot
+  be stopped safely behind the user's back (its terminals and agents would end), so `Dial` reports
+  `remote.ErrNeedsRestart` and the host's row asks for Stop Server instead.
 - One socket and one server per data directory: a client dials the socket first and spawns a server
   only when nothing answers, and `server.lock` (an exclusive `flock` or Windows `LockFileEx`) makes
   a server that loses the race exit instead of binding a second socket.
-- Windows local projects keep files and Git on `fs.Direct`; its session server only owns terminals.
-  `exec` and all remote-host operations are unavailable there, and the app hides SSH and remote
-  project UI.
+- Windows local projects keep files and Git on `fs.Direct`; its local session server owns
+  terminals only, so the local `exec` op is unavailable. Remote hosts work on Windows the same way
+  as elsewhere, because the transport is `ssh.exe` over pipes: remote projects use the remote
+  server for files, Git and terminals, and the host UI is shown. A missing `ssh` surfaces as
+  "ssh was not found; install the OpenSSH client".
+- Every device that reaches a host gets its own connection to the same detached server, so several
+  apps can use one host at once. Opening another device's terminal would need a session picker,
+  which the app does not have; the protocol itself opens any session by id.
 - Remote connections are pooled by host and kept while a loaded project uses them, and after
   `Set Up Server` until the last project on that host is removed (`closeRemoteProject`); `CloseAll`
   ends them at quit. Choosing a server that is not the one on screen resumes its most recently
@@ -91,10 +110,10 @@ client: it runs the terminal-only part of this server and never uploads or contr
   cannot block the window. The card's Cancel button cancels the task's context, which kills the
   `ssh` commands it waits on and closes the card at once; a result the cancelled task still
   produces is dropped, and a folder-picker connection made only for that attempt is released.
-  The `ssh -N` forward is deliberately not tied to that context: a connection handed to the pool
-  outlives the task, and only a dial still in progress is killed by a cancel. Closing the window
-  cancels a task that is still running, since its result would update a window that no longer
-  exists; the next window starts a fresh connection instead of inheriting its card.
+  The ssh child is deliberately not tied to that context once a connection is handed to the pool:
+  the child outlives the task, and only a connect still in progress is killed by a cancel. Closing
+  the window cancels a task that is still running, since its result would update a window that no
+  longer exists; the next window starts a fresh connection instead of inheriting its card.
 - A restored terminal on the project on screen waits for the project's connection instead of
   showing Try Again; `installRemoteConn` clears the waiting state and the pane attaches. A failed
   reconnect puts the connection error behind Try Again.

@@ -32,6 +32,9 @@ func (c *Client) Stream(string, int, int) *Stream           { return &Stream{} }
 // ConnectAt is unavailable where the session server does not run.
 func ConnectAt(string) (*Client, error) { return nil, errUnsupported }
 
+// NewClient is unavailable where the session server does not run.
+func NewClient(io.ReadWriteCloser) (*Client, error) { return nil, errUnsupported }
+
 func (c *Client) ListTree(string) ([]FileEntry, error)      { return nil, errUnsupported }
 func (c *Client) ListTreeFresh(string) ([]FileEntry, error) { return nil, errUnsupported }
 func (c *Client) ListDirs(string) ([]FileEntry, error)      { return nil, errUnsupported }

@@ -61,7 +61,7 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 		})
 	})
 	if remoteSupported() {
-		a.settings.Note(c, k, "Set Up Server uploads mojian-server and libghostty-vt to ~/.local/share/mojian on the host, using your SSH key. No root, no service and no open port: the app reaches it through an SSH forward. A server keeps running when Mojian or the SSH connection disconnects and never stops on its own: Stop Server ends it and its terminals, and Start Server brings it back. The Local row controls this machine's server the same way.")
+		a.settings.Note(c, k, "Set Up Server uploads mojian-server and libghostty-vt to ~/.local/share/mojian on the host, using your SSH key. No root, no service and no open port: the app reaches it over the stdio of a plain SSH command. A server keeps running when Mojian or the SSH connection disconnects and never stops on its own: Stop Server ends it and its terminals, and Start Server brings it back. The Local row controls this machine's server the same way.")
 	} else {
 		a.settings.Note(c, k, "The Local row controls this machine's session server.")
 	}

@@ -5,10 +5,12 @@ package session
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,28 +18,85 @@ import (
 	"mojian/internal/filekind"
 )
 
-// readLine reads one newline-terminated frame, refusing one longer than
-// max bytes, so a peer cannot make the server or the app allocate without
-// bound.
-func readLine(r *bufio.Reader, max int) ([]byte, error) {
-	var out []byte
-	for {
-		frag, err := r.ReadSlice('\n')
-		if len(out)+len(frag) > max {
-			return nil, errors.New("session: frame too long")
-		}
-		out = append(out, frag...)
-		if err == nil {
-			return out, nil
-		}
-		if err != bufio.ErrBufferFull {
-			return out, err
-		}
-	}
+// ProtocolVersion changes when the wire protocol does. Version 4 frames
+// every message and multiplexes control requests and terminal streams
+// over one connection, so it rides any byte stream, including the stdio
+// of an SSH command.
+const ProtocolVersion = 4
+
+// The frame types. A connection starts with a frameHello each way; after
+// that the client sends requests, opens streams and writes data, and the
+// server answers and pushes both.
+const (
+	frameHello    byte = 1
+	frameRequest  byte = 2
+	frameResponse byte = 3
+	frameOpen     byte = 4
+	frameData     byte = 5
+	frameClose    byte = 6
+	frameError    byte = 7
+)
+
+// frameHeaderSize is the u32 payload length, u8 type and u32 stream of
+// every frame, all big-endian.
+const frameHeaderSize = 9
+
+// maxFrame bounds one frame's payload, so a peer cannot make the server
+// or the app allocate without bound.
+const maxFrame = 64 << 20
+
+type frame struct {
+	typ     byte
+	stream  uint32
+	payload []byte
 }
 
-// ProtocolVersion changes when the wire protocol does.
-const ProtocolVersion = 3
+// writeFrame writes one frame without copying its payload.
+func writeFrame(w io.Writer, f frame) error {
+	var hdr [frameHeaderSize]byte
+	binary.BigEndian.PutUint32(hdr[0:4], uint32(len(f.payload)))
+	hdr[4] = f.typ
+	binary.BigEndian.PutUint32(hdr[5:9], f.stream)
+	if err := writeAll(w, hdr[:]); err != nil {
+		return err
+	}
+	return writeAll(w, f.payload)
+}
+
+// writeAll writes p, retrying the short writes a socket may return.
+func writeAll(w io.Writer, p []byte) error {
+	for len(p) > 0 {
+		n, err := w.Write(p)
+		p = p[n:]
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+	}
+	return nil
+}
+
+// readFrame reads one frame, refusing a payload longer than maxFrame.
+func readFrame(r *bufio.Reader) (frame, error) {
+	var hdr [frameHeaderSize]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return frame{}, err
+	}
+	n := binary.BigEndian.Uint32(hdr[0:4])
+	if n > maxFrame {
+		return frame{}, errors.New("session: frame too long")
+	}
+	f := frame{typ: hdr[4], stream: binary.BigEndian.Uint32(hdr[5:9])}
+	if n > 0 {
+		f.payload = make([]byte, n)
+		if _, err := io.ReadFull(r, f.payload); err != nil {
+			return frame{}, err
+		}
+	}
+	return f, nil
+}
 
 // ProtocolError says a running server speaks another protocol version.
 type ProtocolError struct{ Server, Client int }
@@ -114,19 +173,15 @@ type ExecResult struct {
 	Code   int    `json:"code,omitempty"`
 }
 
-// Hello is the answer to "hello".
+// Hello is the first frame each way: the client's says which protocol it
+// wants, the server's answers with the running version.
 type Hello struct {
 	Version int       `json:"version"`
 	PID     int       `json:"pid"`
 	Started time.Time `json:"started"`
-}
-
-// Attach is the first line of a connection attached to a session.
-type Attach struct {
-	Op   string `json:"op"` // "attach"
-	SID  string `json:"sid"`
-	Cols int    `json:"cols"`
-	Rows int    `json:"rows"`
+	// Role is "client" or "server", so a log or a probe can tell them
+	// apart.
+	Role string `json:"role,omitempty"`
 }
 
 // Dir returns the directory of the server's socket and log.
@@ -142,9 +197,9 @@ func Dir() string {
 }
 
 // RuntimeDir is where the server keeps its socket and lock. A remote
-// server sets MOJIAN_RUNTIME_DIR to a path sshd may reach with stream
-// local forwarding, such as one under XDG_RUNTIME_DIR; locally it is the
-// data directory.
+// server sets MOJIAN_RUNTIME_DIR to a short path in the user's runtime
+// directory, which the bridge on the host can reach without the socket
+// living in the home directory; locally it is the data directory.
 func RuntimeDir() string {
 	if d := os.Getenv("MOJIAN_RUNTIME_DIR"); d != "" {
 		return d
@@ -153,7 +208,7 @@ func RuntimeDir() string {
 }
 
 // SocketPathIn returns the socket a server started with dir would bind,
-// so a forwarded socket and the server agree even when the path is long.
+// so a remote bridge and the server agree even when the path is long.
 func SocketPathIn(dir string, uid ...int) string {
 	p := filepath.Join(dir, "sessions.sock")
 	if len(p) < 100 {

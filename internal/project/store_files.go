@@ -24,6 +24,11 @@ func (s *Store) NewFileIn(rel, name, body string) (*Note, error) {
 		return nil, err
 	}
 	if n := s.ByRelPath(rel); n != nil {
+		// A server listing carries no bodies, so the note this call just
+		// created has no saved text yet: it is what was written.
+		if !n.Loaded {
+			n.load(body)
+		}
 		return n, nil
 	}
 	n := &Note{Rel: rel, Path: s.AbsFor(rel), Title: NoteTitle(body, rel), Saved: body, Mod: time.Now(), Loaded: true}

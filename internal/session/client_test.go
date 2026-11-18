@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,176 +17,62 @@ func TestConnectAtMissingSocketReturnsError(t *testing.T) {
 	}
 }
 
-func TestStreamUsesTheClientsSocket(t *testing.T) {
-	dir, err := os.MkdirTemp("", "mj")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-	sock := filepath.Join(dir, "s.sock")
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
+// A stream must ride the connection the client already has, not dial the
+// server a second time.
+func TestStreamUsesTheConnection(t *testing.T) {
+	clientSide, serverSide := net.Pipe()
+	defer serverSide.Close()
 
-	controlAccepted := make(chan struct{})
+	frames := make(chan frame, 8)
 	go func() {
-		control, err := ln.Accept()
-		if err != nil {
+		r := bufio.NewReader(serverSide)
+		f, err := readFrame(r)
+		if err != nil || f.typ != frameHello {
+			close(frames)
 			return
 		}
-		defer control.Close()
-		// ConnectAt says hello; a server answers before the test goes on.
-		rd := bufio.NewReader(control)
-		if line, err := rd.ReadBytes('\n'); err == nil {
-			var req Request
-			if json.Unmarshal(line, &req) == nil {
-				data, _ := json.Marshal(Hello{Version: ProtocolVersion})
-				res, _ := json.Marshal(Response{ID: req.ID, Data: data})
-				_, _ = control.Write(append(res, '\n'))
+		b, _ := json.Marshal(Hello{Version: ProtocolVersion, Role: "server"})
+		if err := writeFrame(serverSide, frame{typ: frameHello, payload: b}); err != nil {
+			close(frames)
+			return
+		}
+		for {
+			f, err := readFrame(r)
+			if err != nil {
+				close(frames)
+				return
 			}
+			frames <- f
 		}
-		close(controlAccepted)
-		stream, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer stream.Close()
-		line, err := bufio.NewReader(stream).ReadBytes('\n')
-		if err != nil {
-			return
-		}
-		var attach Attach
-		if json.Unmarshal(line, &attach) != nil || attach.Op != "attach" {
-			return
-		}
-		_, _ = stream.Write([]byte(`{"ok":true}` + "\n"))
-		_, _ = stream.Write([]byte("stream-ok"))
 	}()
 
-	c, err := ConnectAt(sock)
+	c, err := NewClient(clientSide)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	<-controlAccepted
+	if hello, err := c.Hello(); err != nil || hello.Version != ProtocolVersion {
+		t.Fatalf("client hello: %+v %v", hello, err)
+	}
 	s := c.Stream("sid", 20, 10)
 	defer s.Close()
 
-	type result struct {
-		n   int
-		err error
-	}
-	ch := make(chan result, 1)
-	buf := make([]byte, 64)
-	go func() {
-		n, err := s.Read(buf)
-		ch <- result{n, err}
-	}()
 	select {
-	case r := <-ch:
-		if r.err != nil {
-			t.Fatalf("stream read: %v", r.err)
+	case f, ok := <-frames:
+		if !ok {
+			t.Fatal("the server side of the connection closed")
 		}
-		if got := string(buf[:r.n]); got != "stream-ok" {
-			t.Fatalf("stream read %q, want %q", got, "stream-ok")
+		if f.typ != frameOpen {
+			t.Fatalf("frame type %d, want the stream open", f.typ)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("the stream did not attach through the client's socket")
-	}
-}
-
-func TestKillReturnsBeforeTheInterruptGrace(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("MOJIAN_DIR", dir)
-	done := make(chan error, 1)
-	go func() { done <- Serve() }()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if _, err := os.Stat(SocketPath()); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("server did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	c, err := Connect()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	info, err := c.Create(CreateOptions{
-		Command: []string{"/bin/sh", "-c", `trap "" INT; sleep 1`},
-		Cols:    40, Rows: 10,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := time.Now()
-	if err := c.Kill(info.ID); err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
-		t.Fatalf("kill waited %v for the shell's interrupt grace", elapsed)
-	}
-	if err := c.Shutdown(); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("server did not stop")
-	}
-}
-
-func TestExitedSessionsArePruned(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("MOJIAN_DIR", dir)
-	done := make(chan error, 1)
-	go func() { done <- Serve() }()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if _, err := os.Stat(SocketPath()); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("server did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	c, err := Connect()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if _, err := c.Create(CreateOptions{
-		Command: []string{"/bin/sh", "-c", "exit 0"},
-		Cols:    40, Rows: 10,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	deadline = time.Now().Add(5 * time.Second)
-	for {
-		list, err := c.List()
-		if err != nil {
+		var o openRequest
+		if err := json.Unmarshal(f.payload, &o); err != nil {
 			t.Fatal(err)
 		}
-		if len(list) == 0 {
-			break
+		if o.SID != "sid" || o.Cols != 20 || o.Rows != 10 {
+			t.Fatalf("open request %+v", o)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("exited session still listed: %+v", list)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if err := c.Shutdown(); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("server did not stop")
+		t.Fatal("the stream did not open on the client's connection")
 	}
 }

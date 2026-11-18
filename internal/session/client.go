@@ -14,16 +14,15 @@ import (
 	"time"
 )
 
-// Client is a control connection to the session server.
+// Client is a framed, multiplexed connection to the session server: one
+// control channel and every terminal stream share it.
 type Client struct {
-	conn   net.Conn
-	socket string // the Unix socket this client talks to
+	mux   *mux
+	hello Hello
 
-	wmu     sync.Mutex
 	mu      sync.Mutex
 	nextID  int64
 	pending map[int64]chan Response
-	err     error
 	closed  chan struct{}
 }
 
@@ -33,61 +32,123 @@ func Connect() (*Client, error) {
 	return connectAt(SocketPath(), true)
 }
 
-// ConnectAt connects to a server at an explicit Unix socket, without
-// starting one.
+// ConnectAt connects to a server at an explicit socket, without starting
+// one.
 func ConnectAt(path string) (*Client, error) {
 	return connectAt(path, false)
 }
 
-func connectAt(path string, spawn bool) (*Client, error) {
-	c, err := dialAt(path, spawn)
-	if err != nil {
+// NewClient starts the framed protocol on rw: it sends this build's
+// hello and requires the server's. rw is closed when this returns an
+// error or the connection later ends.
+func NewClient(rw io.ReadWriteCloser) (*Client, error) {
+	r := bufio.NewReaderSize(rw, 1<<20)
+	b, _ := json.Marshal(Hello{Version: ProtocolVersion, Role: "client"})
+	if err := writeFrame(rw, frame{typ: frameHello, payload: b}); err != nil {
+		_ = rw.Close()
 		return nil, err
 	}
-	h, helloErr := c.Hello()
-	if helloErr == nil && h.Version == ProtocolVersion {
-		return c, nil
+	f, err := readHandshake(r, rw)
+	if err != nil {
+		_ = rw.Close()
+		return nil, err
 	}
-	// A detached server from an older build (or one whose hello failed)
-	// cannot be trusted with this build's protocol. A local server can be
-	// replaced; a remote one is left for its caller to restart.
-	if spawn {
-		// The old server may need a moment to release its lock and socket;
-		// ask it to stop and try a fresh one a few times.
-		for attempt := 0; attempt < 3; attempt++ {
-			_ = c.Shutdown()
-			_ = c.Close()
-			time.Sleep(100 * time.Millisecond)
-			next, err := dialAt(path, true)
-			if err != nil {
-				if attempt == 2 {
-					return nil, err
-				}
-				continue
-			}
-			h, helloErr := next.Hello()
-			if helloErr == nil && h.Version == ProtocolVersion {
-				return next, nil
-			}
-			c = next
-			if helloErr == nil {
-				helloErr = &ProtocolError{Server: h.Version, Client: ProtocolVersion}
-			}
-			if attempt == 2 {
-				_ = next.Close()
-				return nil, helloErr
-			}
+	if f.typ == frameError {
+		var e struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(f.payload, &e)
+		_ = rw.Close()
+		if e.Message != "" {
+			return nil, errors.New(e.Message)
+		}
+		return nil, errors.New("session: the server refused the connection")
+	}
+	if f.typ != frameHello {
+		_ = rw.Close()
+		return nil, fmt.Errorf("session: unexpected handshake frame %d", f.typ)
+	}
+	var h Hello
+	if err := json.Unmarshal(f.payload, &h); err != nil {
+		_ = rw.Close()
+		return nil, err
+	}
+	if h.Version != ProtocolVersion {
+		_ = rw.Close()
+		return nil, &ProtocolError{Server: h.Version, Client: ProtocolVersion}
+	}
+	m := newMux(rw, r)
+	c := &Client{
+		mux: m, hello: h,
+		pending: map[int64]chan Response{}, closed: make(chan struct{}),
+	}
+	m.start(c.onFrame)
+	go func() {
+		<-m.quit
+		c.mu.Lock()
+		for id, ch := range c.pending {
+			ch <- Response{ID: id, Error: "session server connection lost"}
+			delete(c.pending, id)
+		}
+		c.mu.Unlock()
+		close(c.closed)
+	}()
+	return c, nil
+}
+
+// readHandshake reads the server's hello, giving up on a peer that
+// speaks another protocol and waits for a newline that never comes.
+func readHandshake(r *bufio.Reader, rw io.Closer) (frame, error) {
+	type result struct {
+		f   frame
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		f, err := readFrame(r)
+		ch <- result{f, err}
+	}()
+	select {
+	case res := <-ch:
+		return res.f, res.err
+	case <-time.After(5 * time.Second):
+		_ = rw.Close()
+		return frame{}, errors.New("session: the server did not answer the handshake")
+	}
+}
+
+func connectAt(path string, spawn bool) (*Client, error) {
+	conn, err := dialAt(path, spawn)
+	if err == nil {
+		var c *Client
+		if c, err = NewClient(conn); err == nil {
+			return c, nil
 		}
 	}
-	_ = c.Close()
-	if helloErr != nil {
-		return nil, helloErr
+	if !spawn {
+		return nil, err
 	}
-	return nil, &ProtocolError{Server: h.Version, Client: ProtocolVersion}
+	// A detached server from an older build holds the socket and cannot
+	// read frames; the old one-line shutdown is the only way to stop it.
+	for attempt := 0; attempt < 3; attempt++ {
+		_ = legacyShutdown(path)
+		time.Sleep(100 * time.Millisecond)
+		conn, derr := dialAt(path, true)
+		if derr != nil {
+			err = derr
+			continue
+		}
+		var c *Client
+		if c, err = NewClient(conn); err == nil {
+			return c, nil
+		}
+	}
+	return nil, err
 }
 
 // dialAt connects, starting a local server first when spawn is set.
-func dialAt(path string, spawn bool) (*Client, error) {
+func dialAt(path string, spawn bool) (net.Conn, error) {
 	conn, err := dial(path)
 	if err != nil && spawn {
 		deadline := time.Now().Add(8 * time.Second)
@@ -100,7 +161,7 @@ func dialAt(path string, spawn bool) (*Client, error) {
 				time.Sleep(30 * time.Millisecond)
 				conn, err = dial(path)
 				if err == nil {
-					goto connected
+					return conn, nil
 				}
 			}
 			if time.Now().After(deadline) {
@@ -108,39 +169,34 @@ func dialAt(path string, spawn bool) (*Client, error) {
 			}
 		}
 	}
-connected:
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{
-		conn: conn, socket: path,
-		pending: map[int64]chan Response{}, closed: make(chan struct{}),
-	}
-	go c.read()
-	return c, nil
+	return conn, nil
 }
 
-// Closed closes when the control connection is lost.
+// legacyShutdown stops a pre-v4 server at path, whose protocol is one
+// JSON line per request. It is the only thing that build understands.
+func legacyShutdown(path string) error {
+	conn, err := dial(path)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	_, err = conn.Write([]byte(`{"id":1,"op":"shutdown"}` + "\n"))
+	return err
+}
+
+// Closed closes when the connection, and every stream on it, is gone.
 func (c *Client) Closed() <-chan struct{} { return c.closed }
 
-func (c *Client) read() {
-	r := bufio.NewReaderSize(c.conn, 1<<20)
-	for {
-		line, err := readLine(r, maxLine)
-		if err != nil {
-			c.mu.Lock()
-			c.err = err
-			for id, ch := range c.pending {
-				ch <- Response{ID: id, Error: "session server connection lost"}
-				delete(c.pending, id)
-			}
-			c.mu.Unlock()
-			close(c.closed)
-			return
-		}
+// onFrame routes one frame from the server. It never blocks.
+func (c *Client) onFrame(f frame) {
+	switch f.typ {
+	case frameResponse:
 		var res Response
-		if json.Unmarshal(line, &res) != nil {
-			continue
+		if json.Unmarshal(f.payload, &res) != nil {
+			return
 		}
 		c.mu.Lock()
 		ch := c.pending[res.ID]
@@ -149,25 +205,47 @@ func (c *Client) read() {
 		if ch != nil {
 			ch <- res
 		}
+	case frameOpen:
+		s := c.mux.stream(f.stream)
+		if s == nil {
+			return
+		}
+		var reply openReply
+		if json.Unmarshal(f.payload, &reply) != nil {
+			s.finish(errors.New("session: bad open reply"))
+			return
+		}
+		if !reply.OK {
+			s.finish(errors.New(reply.Error))
+		}
+	case frameData:
+		if s := c.mux.stream(f.stream); s != nil {
+			if !s.push(f.payload) {
+				s.finish(errors.New("session: stream is too slow"))
+			}
+		}
+	case frameClose:
+		if s := c.mux.stream(f.stream); s != nil {
+			s.finish(io.EOF)
+		}
 	}
 }
 
 func (c *Client) call(req Request, out any) error {
 	ch := make(chan Response, 1)
 	c.mu.Lock()
-	if c.err != nil {
+	select {
+	case <-c.closed:
 		c.mu.Unlock()
 		return errors.New("session: connection to the server lost")
+	default:
 	}
 	c.nextID++
 	req.ID = c.nextID
 	c.pending[req.ID] = ch
 	c.mu.Unlock()
 	b, _ := json.Marshal(req)
-	c.wmu.Lock()
-	_, err := c.conn.Write(append(b, '\n'))
-	c.wmu.Unlock()
-	if err != nil {
+	if err := c.mux.writeControl(frameRequest, b); err != nil {
 		c.mu.Lock()
 		delete(c.pending, req.ID)
 		c.mu.Unlock()
@@ -190,7 +268,9 @@ func (c *Client) call(req Request, out any) error {
 	}
 }
 
-func (c *Client) Hello() (h Hello, err error) { err = c.call(Request{Op: "hello"}, &h); return }
+// Hello reports the handshake the server answered, without a round trip.
+func (c *Client) Hello() (Hello, error) { return c.hello, nil }
+
 func (c *Client) List() (out []SessionInfo, err error) {
 	err = c.call(Request{Op: "list"}, &out)
 	return
@@ -204,7 +284,12 @@ func (c *Client) Resize(sid string, cols, rows int) error {
 	return c.call(Request{Op: "resize", SID: sid, Cols: cols, Rows: rows}, nil)
 }
 func (c *Client) Shutdown() error { return c.call(Request{Op: "shutdown"}, nil) }
-func (c *Client) Close() error    { return c.conn.Close() }
+
+// Close drops the connection. The server and its terminals keep running.
+func (c *Client) Close() error {
+	c.mux.shutdown(nil)
+	return nil
+}
 
 // Ready reports whether a server answers at the standard path.
 func Ready() bool {
@@ -219,160 +304,76 @@ func Ready() bool {
 // Stop asks the server at the standard socket to shut down. A missing
 // socket means no server is running, which is already the wanted state.
 func Stop() error {
-	conn, err := dialTimeout(SocketPath(), time.Second)
-	if err != nil {
+	if c, err := ConnectAt(SocketPath()); err == nil {
+		defer c.Close()
+		if err := c.Shutdown(); err == nil {
+			return nil
+		}
+	}
+	// An older server cannot answer a request; stop it the old way.
+	if err := legacyShutdown(SocketPath()); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
-	defer conn.Close()
-	_, err = conn.Write([]byte(`{"id":1,"op":"shutdown"}` + "\n"))
-	return err
-}
-
-// Stream is a terminal's connection attached to a session.
-type Stream struct {
-	c   *Client
-	sid string
-
-	mu       sync.Mutex
-	cond     *sync.Cond
-	conn     net.Conn
-	err      error
-	closed   bool
-	cols     int
-	rows     int
-	sentCols int
-	sentRows int
-}
-
-// Stream attaches to the session sid.
-func (c *Client) Stream(sid string, cols, rows int) *Stream {
-	s := &Stream{c: c, sid: sid, cols: cols, rows: rows}
-	s.cond = sync.NewCond(&s.mu)
-	go s.attach()
-	return s
-}
-
-func (s *Stream) attach() {
-	s.mu.Lock()
-	cols, rows := s.cols, s.rows
-	s.mu.Unlock()
-	socket := s.c.socket
-	if socket == "" {
-		socket = SocketPath()
-	}
-	conn, err := dial(socket)
-	if err == nil {
-		b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows})
-		_, err = conn.Write(append(b, '\n'))
-		if err == nil {
-			err = readOK(conn)
-		}
-		if err != nil {
-			_ = conn.Close()
-		}
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		if conn != nil {
-			_ = conn.Close()
-		}
-		return
-	}
-	if err != nil {
-		s.err = err
-	} else {
-		s.conn, s.sentCols, s.sentRows = conn, cols, rows
-	}
-	s.cond.Broadcast()
-}
-
-func readOK(conn net.Conn) error {
-	var line []byte
-	b := make([]byte, 1)
-	for {
-		if _, err := conn.Read(b); err != nil {
-			return err
-		}
-		if b[0] == '\n' {
-			break
-		}
-		line = append(line, b[0])
-		if len(line) > 4096 {
-			return errors.New("session: bad answer")
-		}
-	}
-	var res struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal(line, &res); err != nil {
-		return err
-	}
-	if !res.OK {
-		return errors.New(res.Error)
-	}
 	return nil
 }
 
-func (s *Stream) wait() (net.Conn, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for s.conn == nil && s.err == nil && !s.closed {
-		s.cond.Wait()
-	}
-	if s.closed {
-		return nil, io.EOF
-	}
-	return s.conn, s.err
+// Stream is a terminal's byte stream attached to a session.
+type Stream struct {
+	c   *Client
+	ms  *muxStream
+	sid string
+
+	mu   sync.Mutex
+	cols int
+	rows int
 }
 
-func (s *Stream) Read(p []byte) (int, error) {
-	conn, err := s.wait()
-	if err != nil {
-		return 0, err
-	}
-	return conn.Read(p)
+// openRequest asks the server to attach a new stream to a session.
+type openRequest struct {
+	SID  string `json:"sid"`
+	Cols int    `json:"cols,omitempty"`
+	Rows int    `json:"rows,omitempty"`
 }
 
-func (s *Stream) Write(p []byte) (int, error) {
-	conn, err := s.wait()
-	if err != nil {
-		return 0, err
-	}
-	return conn.Write(p)
+// openReply answers an openRequest on the same stream.
+type openReply struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
 }
 
-// Resize tells the session the terminal's size.
+// Stream attaches to the session sid. It returns at once; the server's
+// reply and the screen arrive on the stream.
+func (c *Client) Stream(sid string, cols, rows int) *Stream {
+	id := c.mux.newStreamID()
+	ms := c.mux.openStream(id)
+	s := &Stream{c: c, ms: ms, sid: sid, cols: cols, rows: rows}
+	b, _ := json.Marshal(openRequest{SID: sid, Cols: cols, Rows: rows})
+	if err := c.mux.writeFrame(frame{typ: frameOpen, stream: id, payload: b}); err != nil {
+		ms.finish(err)
+	}
+	return s
+}
+
+func (s *Stream) Read(p []byte) (int, error)  { return s.ms.Read(p) }
+func (s *Stream) Write(p []byte) (int, error) { return s.ms.Write(p) }
+
+// Resize tells the session the terminal's size when it changed.
 func (s *Stream) Resize(cols, rows int) error {
 	s.mu.Lock()
+	changed := cols != s.cols || rows != s.rows
 	s.cols, s.rows = cols, rows
-	conn, sentCols, sentRows := s.conn, s.sentCols, s.sentRows
 	s.mu.Unlock()
-	if conn == nil {
-		return nil
-	}
-	if cols == sentCols && rows == sentRows {
+	if !changed {
 		return nil
 	}
 	return s.c.Resize(s.sid, cols, rows)
 }
 
 // Close detaches; the session keeps running.
-func (s *Stream) Close() error {
-	s.mu.Lock()
-	s.closed = true
-	conn := s.conn
-	s.cond.Broadcast()
-	s.mu.Unlock()
-	if conn != nil {
-		return conn.Close()
-	}
-	return nil
-}
+func (s *Stream) Close() error { return s.ms.Close() }
 
 func (c *Client) ListTree(root string) (out []FileEntry, err error) {
 	err = c.call(Request{Op: "listTree", Path: root}, &out)

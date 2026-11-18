@@ -15,7 +15,7 @@ import (
 )
 
 // newRemoteApp opens root through a local session server, as a remote
-// project would through its forward.
+// project would through its connection.
 func newRemoteApp(t *testing.T, client *session.Client, root string) *app {
 	t.Helper()
 	s, err := openServerStore(client, root, t.TempDir(), false)

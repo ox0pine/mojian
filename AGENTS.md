@@ -97,7 +97,8 @@ build. `go tool mygo migrate-ui .` previews UI API migrations for MyGo version b
 - There is no pull-request CI: `.github/workflows/release.yml` runs `go test ./...` on tag pushes, so
   verification is local. Run before yielding: `go test ./...` and `go tool mygo vet .`; for a visible
   change also `go tool mygo dev` with a screenshot or the running app, not just a green test.
-- Windows is a local-only client: no SSH hosts, no remote projects and no Windows server binary.
+- Windows is a full client: its local server owns terminals, and it reaches SSH hosts through its
+  own `ssh.exe`. Remote hosts are Linux, so there is no Windows server binary to upload.
 - A release is a tag: the steps, artifacts and update-key handling are in [RELEASING.md](RELEASING.md).
 
 ## Decisions and traps

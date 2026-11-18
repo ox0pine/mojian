@@ -15,7 +15,7 @@ import (
 )
 
 // TestRemoteServerSetupFedora exercises the real upload, server start,
-// forward and file operations against a host named in
+// stdio bridge and file operations against a host named in
 // MOJIAN_REMOTE_TEST_HOST. It is skipped unless that variable is set:
 //
 //	MOJIAN_REMOTE_TEST_HOST=user@host go test ./internal/app -run TestRemoteServerSetupFedora -v -timeout 10m
@@ -112,7 +112,7 @@ func TestRemoteServerSetupFedora(t *testing.T) {
 }
 
 // The loading card cancels its task context when the connection lands;
-// the live SSH forward must outlive that context.
+// the live SSH connection must outlive that context.
 func TestRemoteConnectionSurvivesItsTaskContext(t *testing.T) {
 	host := os.Getenv("MOJIAN_REMOTE_TEST_HOST")
 	if host == "" {
@@ -128,7 +128,7 @@ func TestRemoteConnectionSurvivesItsTaskContext(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if !rc.Healthy() {
-			t.Fatal("the SSH forward died with the task context")
+			t.Fatal("the SSH connection died with the task context")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

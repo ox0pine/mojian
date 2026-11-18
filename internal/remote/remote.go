@@ -1,6 +1,6 @@
 // Package remote provisions Mojian's session server on an SSH host and
-// keeps the forwarded control connection to it. The UI and the pool stay
-// in internal/app.
+// keeps a framed connection to it. The UI and the pool stay in
+// internal/app.
 package remote
 
 import (
@@ -10,18 +10,23 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
-	"os"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"mojian/internal/fs"
+	"mojian/internal/platform"
 	"mojian/internal/remotebin"
 	"mojian/internal/session"
 )
+
+// ErrNeedsRestart says the host runs a server from another build, which
+// cannot speak this protocol. The user stops it in Settings › Hosts,
+// because stopping it also ends its terminals and agents.
+var ErrNeedsRestart = errors.New("the server on the host is an older build; stop it in Settings › Hosts, then open the project again")
 
 // Install is where a host keeps the server this build needs. It is
 // probed over SSH before the binaries are compared and uploaded.
@@ -36,10 +41,8 @@ type Install struct {
 }
 
 // upload puts the server and the viewer library in place, skipping a file
-// whose hash matches unless force is set: force replaces both even when
-// they match, for a server that speaks another protocol. It reports
-// whether it uploaded anything.
-func (i *Install) upload(ctx context.Context, host string, force bool) (bool, error) {
+// whose hash matches. It reports whether it uploaded anything.
+func (i *Install) upload(ctx context.Context, host string) (bool, error) {
 	bin, err := remotebin.Binary(i.arch)
 	if err != nil {
 		return false, err
@@ -55,9 +58,16 @@ func (i *Install) upload(ctx context.Context, host string, force bool) (bool, er
 		{i.binPath, "755", "the session server", bin},
 		{i.libPath, "644", "libghostty-vt", lib},
 	}
+	// One ssh call hashes both files; a missing file makes the command
+	// fail, which simply uploads both.
+	hashes := map[string]string{}
+	if got, err := remoteHashes(ctx, host, i.binPath, i.libPath); err == nil {
+		hashes = got
+	}
 	uploaded := false
 	for _, f := range files {
-		if !force && remoteHashEqual(ctx, host, f.path, f.data) {
+		want := sha256.Sum256(f.data)
+		if strings.EqualFold(hashes[f.path], hex.EncodeToString(want[:])) {
 			continue
 		}
 		if err := uploadRemote(ctx, host, f.path, f.data, f.mode); err != nil {
@@ -68,87 +78,81 @@ func (i *Install) upload(ctx context.Context, host string, force bool) (bool, er
 	return uploaded, nil
 }
 
-// start launches the server if it is not already running. The server
-// outlives the app: its terminals and files stay usable after the SSH
-// connection drops. Stop it with `mojian-server -stop`.
-func (i *Install) start(ctx context.Context, host string) error {
-	cmd := "MOJIAN_DIR=" + shellQuote(i.dir) + " MOJIAN_RUNTIME_DIR=" + shellQuote(i.runtimeDir) +
-		" nohup " +
-		shellQuote(i.binPath) + " >>" + shellQuote(i.dir+"/server.log") + " 2>&1 &"
-	if _, err := SSHOutputContext(ctx, host, cmd); err != nil {
-		return err
+// connect runs the server's stdio bridge over SSH and hands its pipes to
+// a framed client. The bridge starts a detached server when none runs, so
+// the connection survives the SSH session and several devices can talk to
+// the same one.
+func (i *Install) connect(ctx context.Context, host string) (*Conn, error) {
+	ssh, err := sshPath()
+	if err != nil {
+		return nil, err
 	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(250 * time.Millisecond):
+	cmd := exec.Command(ssh, append(sshCommon(), "--", host,
+		"MOJIAN_DIR="+shellQuote(i.dir)+" MOJIAN_RUNTIME_DIR="+shellQuote(i.runtimeDir)+
+			" exec "+shellQuote(i.binPath)+" stdio")...)
+	platform.HideConsole(cmd)
+	var stderr syncBuffer
+	cmd.Stderr = &stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
 	}
-	return nil
-}
-
-// forward opens the local end of the SSH forward to the server socket and
-// connects a control client through it.
-func (i *Install) forward(ctx context.Context, host string) (*Conn, error) {
-	local := filepath.Join(os.TempDir(), "mojian-"+fs.ShortHash(host)+".sock")
-	_ = os.Remove(local)
-	args := append([]string{"-N"}, sshCommon()...)
-	args = append(args, "-o", "ExitOnForwardFailure=yes",
-		"-L", local+":"+i.sock, "--", host)
-	// The forward outlives the call: canceling the task context after
-	// Dial returns must not kill it. The wait loop below checks ctx and
-	// kills the process itself while the dial is still in progress.
-	fwd := exec.Command("ssh", args...)
-	var ferr bytes.Buffer
-	fwd.Stderr = &ferr
-	if err := fwd.Start(); err != nil {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 	fail := func(err error) (*Conn, error) {
-		_ = fwd.Process.Kill()
-		_, _ = fwd.Process.Wait()
-		_ = os.Remove(local)
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, fmt.Errorf("ssh %s: %s", host, msg)
 		}
 		return nil, err
 	}
-	deadline := time.Now().Add(20 * time.Second)
-	for {
+	type result struct {
+		client *session.Client
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		c, err := session.NewClient(pipe{r: stdout, w: stdin})
+		done <- result{c, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err != nil {
+			return fail(r.err)
+		}
 		if err := ctx.Err(); err != nil {
+			_ = r.client.Close()
 			return fail(err)
 		}
-		conn, err := net.DialTimeout("unix", local, 200*time.Millisecond)
-		if err == nil {
-			_ = conn.Close()
-			break
-		}
-		if time.Now().After(deadline) {
-			return fail(fmt.Errorf("the SSH forward failed: %v %s", err, strings.TrimSpace(ferr.String())))
-		}
-		select {
-		case <-ctx.Done():
-			return fail(ctx.Err())
-		case <-time.After(50 * time.Millisecond):
-		}
+		return &Conn{Host: host, Path: i.binPath, ssh: cmd, Client: r.client}, nil
+	case <-ctx.Done():
+		return fail(ctx.Err())
+	case <-time.After(30 * time.Second):
+		return fail(errors.New("the SSH connection timed out"))
 	}
-	client, err := session.ConnectAt(local)
-	if err != nil {
-		// A server from another build cannot answer this protocol.
-		var pe *session.ProtocolError
-		if errors.As(err, &pe) {
-			shutdownAt(local)
-		}
-		return fail(err)
-	}
-	if err := ctx.Err(); err != nil {
-		_ = client.Close()
-		return fail(err)
-	}
-	return &Conn{Host: host, Socket: local, forward: fwd, Client: client}, nil
 }
 
-// Setup is what provisioning a host found: whether this run
-// uploaded the binaries and where the server lives.
+// dial connects, turning a failure on a host that still has a socket into
+// ErrNeedsRestart: an older server there can never answer this protocol.
+func (i *Install) dial(ctx context.Context, host string) (*Conn, error) {
+	rc, err := i.connect(ctx, host)
+	if err == nil {
+		return rc, nil
+	}
+	if i.socketExists(ctx, host) {
+		return nil, fmt.Errorf("%s: %w", host, ErrNeedsRestart)
+	}
+	return nil, err
+}
+
+// Setup is what provisioning a host found: whether this run uploaded the
+// binaries and where the server lives.
 type Setup struct {
 	Uploaded bool
 	Path     string
@@ -171,6 +175,16 @@ func sshCommon() []string {
 	}
 }
 
+// sshPath finds the OpenSSH client, which Windows ships as an optional
+// feature; there is no built-in fallback.
+func sshPath() (string, error) {
+	p, err := exec.LookPath("ssh")
+	if err != nil {
+		return "", errors.New("ssh was not found; install the OpenSSH client")
+	}
+	return p, nil
+}
+
 // SSHOutput runs a command over SSH with the user's config and agent.
 func SSHOutput(host, command string) (string, error) {
 	return SSHOutputContext(context.Background(), host, command)
@@ -178,8 +192,13 @@ func SSHOutput(host, command string) (string, error) {
 
 // SSHOutputContext is SSHOutput that stops the command when ctx is done.
 func SSHOutputContext(ctx context.Context, host, command string) (string, error) {
+	ssh, err := sshPath()
+	if err != nil {
+		return "", err
+	}
 	args := append(append(sshCommon(), "--"), host, command)
-	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd := exec.CommandContext(ctx, ssh, args...)
+	platform.HideConsole(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -198,35 +217,30 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// probe reads the host's home, architecture and runtime directory,
-// and makes sure the install and socket folders exist.
+// probe reads the host's home, architecture, user id and runtime
+// directory, and makes sure the install and socket folders exist.
 func probe(ctx context.Context, host string) (*Install, error) {
-	home, err := SSHOutputContext(ctx, host, `printf %s "$HOME"`)
+	// One ssh call: a socket under the home directory is not always
+	// reachable through sshd, and SELinux labels it data_home_t on
+	// Fedora, so the server's socket goes in the user's runtime
+	// directory, passed to it as MOJIAN_RUNTIME_DIR.
+	script := `d="$HOME/.local/share/mojian"; r="${XDG_RUNTIME_DIR:-/tmp}/mojian-$(id -u)";` +
+		` mkdir -p "$d" "$r" && chmod 700 "$d" "$r" &&` +
+		` printf '%s\n%s\n%s\n%s\n' "$HOME" "$(uname -m)" "$(id -u)" "$r"`
+	out, err := SSHOutputContext(ctx, host, script)
 	if err != nil {
 		return nil, err
 	}
-	arch, err := SSHOutputContext(ctx, host, "uname -m")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 4 {
+		return nil, fmt.Errorf("ssh %s: unexpected probe output %q", host, out)
+	}
+	home, arch, uidText, runtimeDir := lines[0], lines[1], lines[2], lines[3]
+	uid, err := strconv.Atoi(strings.TrimSpace(uidText))
 	if err != nil {
-		return nil, err
+		uid = -1
 	}
 	dir := home + "/.local/share/mojian"
-	// A socket under the home directory is not always reachable through
-	// sshd's stream-local forwarding (SELinux labels it data_home_t on
-	// Fedora). Put the socket in the user's runtime directory instead,
-	// and tell the server where with MOJIAN_RUNTIME_DIR.
-	uid := -1
-	if out, err := SSHOutputContext(ctx, host, "id -u"); err == nil {
-		uid, _ = strconv.Atoi(strings.TrimSpace(out))
-	}
-	runtimeDir, err := SSHOutputContext(ctx, host, `printf %s "${XDG_RUNTIME_DIR:-/tmp}/mojian-$(id -u)"`)
-	if err != nil || strings.TrimSpace(runtimeDir) == "" {
-		runtimeDir = "/tmp/mojian-" + strconv.Itoa(uid)
-	}
-	runtimeDir = strings.TrimSpace(runtimeDir)
-	if _, err := SSHOutputContext(ctx, host, "mkdir -p "+shellQuote(dir)+" "+shellQuote(runtimeDir)+
-		" && chmod 700 "+shellQuote(dir)+" "+shellQuote(runtimeDir)); err != nil {
-		return nil, err
-	}
 	return &Install{
 		home:       home,
 		arch:       arch,
@@ -256,47 +270,10 @@ func DialContext(ctx context.Context, host string) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := info.upload(ctx, host, false); err != nil {
+	if _, err := info.upload(ctx, host); err != nil {
 		return nil, err
 	}
-	running := info.socketExists(ctx, host)
-	if !running {
-		if err := info.start(ctx, host); err != nil {
-			return nil, err
-		}
-	}
-	rc, err := info.forward(ctx, host)
-	if err == nil {
-		return rc, nil
-	}
-	var pe *session.ProtocolError
-	if !errors.As(err, &pe) {
-		if running {
-			// The socket outlived its server: start this build and try
-			// the forward once more.
-			if startErr := info.start(ctx, host); startErr != nil {
-				return nil, err
-			}
-			if rc, retryErr := info.forward(ctx, host); retryErr == nil {
-				return rc, nil
-			}
-		}
-		return nil, err
-	}
-	// The running server was another protocol. Stop it through its own
-	// command, wait for its socket and lock to go, then put this build in
-	// place and start it before trying the forward again.
-	if stopErr := info.stop(ctx, host); stopErr != nil {
-		return nil, stopErr
-	}
-	info.waitStopped(ctx, host)
-	if _, err := info.upload(ctx, host, true); err != nil {
-		return nil, err
-	}
-	if err := info.start(ctx, host); err != nil {
-		return nil, err
-	}
-	return info.forward(ctx, host)
+	return info.dial(ctx, host)
 }
 
 // Provision installs the server and checks that it answers. The returned
@@ -315,41 +292,24 @@ func ProvisionContext(ctx context.Context, host string, existing *Conn) (*Setup,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	connected := false
-	if existing.Healthy() {
+	if existing != nil && existing.Healthy() {
 		if hello, err := existing.Client.Hello(); err == nil && hello.Version == session.ProtocolVersion {
-			connected = true
+			return &Setup{Path: existing.Path, Protocol: session.ProtocolVersion, Conn: existing}, nil
 		}
 	}
 	info, err := probe(ctx, host)
 	if err != nil {
 		return nil, err
 	}
-	uploaded, err := info.upload(ctx, host, false)
+	uploaded, err := info.upload(ctx, host)
 	if err != nil {
 		return nil, err
 	}
-	if connected {
-		// The binaries are current; the running server keeps its image
-		// until it next starts.
-		return &Setup{Uploaded: uploaded, Path: info.binPath, Protocol: session.ProtocolVersion, Home: info.home, Conn: existing}, nil
-	}
-	// Dial also upgrades a running server that speaks another
-	// protocol: it shuts it down, uploads this build and starts again.
-	rc, err := DialContext(ctx, host)
+	rc, err := info.dial(ctx, host)
 	if err != nil {
 		return nil, err
 	}
-	hello, helloErr := rc.Client.Hello()
-	if helloErr != nil {
-		Close(rc)
-		return nil, helloErr
-	}
-	if hello.Version != session.ProtocolVersion {
-		Close(rc)
-		return nil, &session.ProtocolError{Server: hello.Version, Client: session.ProtocolVersion}
-	}
-	return &Setup{Uploaded: uploaded, Path: info.binPath, Protocol: hello.Version, Home: info.home, Conn: rc}, nil
+	return &Setup{Uploaded: uploaded, Path: info.binPath, Protocol: session.ProtocolVersion, Home: info.home, Conn: rc}, nil
 }
 
 // StopServer asks the server on host to exit. Its terminals and the
@@ -393,7 +353,7 @@ func ServerRunning(ctx context.Context, host string) (bool, error) {
 }
 
 // socketExists reports whether the server socket is already on the host,
-// so Dial can connect to a running server instead of starting another.
+// so dial can tell an old server from an absent one.
 func (i *Install) socketExists(ctx context.Context, host string) bool {
 	_, err := SSHOutputContext(ctx, host, "test -S "+shellQuote(i.sock))
 	return err == nil
@@ -408,55 +368,51 @@ func (i *Install) stop(ctx context.Context, host string) error {
 }
 
 // waitStopped waits for a remote server socket to disappear after its
-// shutdown request, so the next process can take the lock.
+// shutdown request, so the next process can take the lock. One ssh call
+// polls on the host instead of one connection per check.
 func (i *Install) waitStopped(ctx context.Context, host string) {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if ctx.Err() != nil {
-			return
-		}
-		if _, err := SSHOutputContext(ctx, host, "test -S "+shellQuote(i.sock)); err != nil {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
+	_, _ = SSHOutputContext(ctx, host, "for i in $(seq 50); do test -S "+
+		shellQuote(i.sock)+" || exit 0; sleep 0.1; done")
 }
 
-// shutdownAt asks a server at a local socket to stop without a client.
-func shutdownAt(socket string) {
-	conn, err := net.DialTimeout("unix", socket, time.Second)
-	if err != nil {
-		return
+// remoteHashes reads the hashes of the files on host that exist, in one
+// ssh call.
+func remoteHashes(ctx context.Context, host string, paths ...string) (map[string]string, error) {
+	args := make([]string, len(paths))
+	for j, p := range paths {
+		args[j] = shellQuote(p)
 	}
-	_, _ = conn.Write([]byte(`{"id":1,"op":"shutdown"}` + "\n"))
-	_ = conn.Close()
-}
-
-// remoteHashEqual reports whether the file on host already has data.
-func remoteHashEqual(ctx context.Context, host, path string, data []byte) bool {
-	want := sha256.Sum256(data)
-	sum, err := SSHOutputContext(ctx, host, "if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "+shellQuote(path)+
-		"; else shasum -a 256 -- "+shellQuote(path)+"; fi")
+	list := strings.Join(args, " ")
+	script := "if command -v sha256sum >/dev/null 2>&1; then sha256sum -- " + list +
+		"; else shasum -a 256 -- " + list + "; fi"
+	out, err := SSHOutputContext(ctx, host, script)
 	if err != nil {
-		return false
+		return nil, err
 	}
-	fields := strings.Fields(sum)
-	return len(fields) > 0 && strings.EqualFold(fields[0], hex.EncodeToString(want[:]))
+	hashes := make(map[string]string, len(paths))
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		hashes[fields[len(fields)-1]] = strings.ToLower(fields[0])
+	}
+	return hashes, nil
 }
 
 // uploadRemote writes data to path on host through SSH, atomically.
 func uploadRemote(ctx context.Context, host, path string, data []byte, mode string) error {
-	tmp := path + ".tmp"
-	cmd := exec.CommandContext(ctx, "ssh", append(sshCommon(), "--", host,
-		"mkdir -p "+shellQuote(filepath.Dir(path))+" && cat > "+shellQuote(tmp)+
-			" && chmod "+mode+" "+shellQuote(tmp)+" && mv "+shellQuote(tmp)+" "+shellQuote(path))...)
+	ssh, err := sshPath()
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host,
+		"mkdir -p "+shellQuote(filepath.Dir(path))+" && cat > "+shellQuote(path+".tmp")+
+			" && chmod "+mode+" "+shellQuote(path+".tmp")+" && mv "+shellQuote(path+".tmp")+" "+shellQuote(path))...)
 	cmd.Stdin = bytes.NewReader(data)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	platform.HideConsole(cmd)
 	if err := cmd.Run(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -466,8 +422,8 @@ func uploadRemote(ctx context.Context, host, path string, data []byte, mode stri
 	return nil
 }
 
-// Close closes the control client and the SSH forward without
-// stopping the server or its terminals on the host.
+// Close drops the connection and the SSH process without stopping the
+// server or its terminals on the host.
 func Close(rc *Conn) {
 	if rc == nil {
 		return
@@ -477,20 +433,20 @@ func Close(rc *Conn) {
 		// next connection.
 		_ = rc.Client.Close()
 	}
-	if rc.forward != nil && rc.forward.Process != nil {
-		_ = rc.forward.Process.Kill()
-		_, _ = rc.forward.Process.Wait()
+	if rc.ssh != nil && rc.ssh.Process != nil {
+		_ = rc.ssh.Process.Kill()
+		_, _ = rc.ssh.Process.Wait()
 	}
-	_ = os.Remove(rc.Socket)
 }
 
-// Conn is a bridge to one remote session server: an SSH forward to its
-// Unix socket, and the control connection through it.
+// Conn is a bridge to one remote session server: the stdio of an SSH
+// command, and the framed control connection through it.
 type Conn struct {
-	Host    string
-	Socket  string
-	forward *exec.Cmd
-	Client  *session.Client
+	Host string
+	// Path is the server binary on the host.
+	Path   string
+	ssh    *exec.Cmd
+	Client *session.Client
 }
 
 // Healthy reports whether the connection still has a live control client.
@@ -504,4 +460,37 @@ func (c *Conn) Healthy() bool {
 	default:
 		return true
 	}
+}
+
+// pipe is one SSH child's stdio, so a framed client can own both ends as
+// one stream.
+type pipe struct {
+	r io.ReadCloser
+	w io.WriteCloser
+}
+
+func (p pipe) Read(b []byte) (int, error)  { return p.r.Read(b) }
+func (p pipe) Write(b []byte) (int, error) { return p.w.Write(b) }
+func (p pipe) Close() error {
+	_ = p.w.Close()
+	return p.r.Close()
+}
+
+// syncBuffer collects the child's stderr while another goroutine may
+// still be filling it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

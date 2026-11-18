@@ -44,7 +44,7 @@ func (u *UI) settingsAdvancedPage(c *ui.Context, k *colors) {
 				u.settingsInfoRow(c, k, "Remote project", u.serverAlias()+":"+u.remotePath())
 			}
 			if rc := u.activeRemote(); rc != nil {
-				u.settingsInfoRow(c, k, "Remote server", rc.Host+" · "+rc.Socket)
+				u.settingsInfoRow(c, k, "Remote server", rc.Host)
 			}
 		})
 	}
