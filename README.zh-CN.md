@@ -5,9 +5,9 @@
 <p>
   <a href="https://awesomemygo.dev/apps/mojian"><img src="https://awesomemygo.dev/badge.svg" alt="Listed on Awesome MyGo" height="22"></a>
   <a href="https://mygo.run/zh/showcase#:~:text=Mojian"><img src="https://img.shields.io/badge/MyGo%20showcase-listed-D24A2B?style=flat&amp;labelColor=1F1B16" alt="Listed on the MyGo showcase" height="22"></a>
-  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/v/release/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="最新版本" width="104" height="22"></a>
-  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/downloads/ox0pine/mojian/total?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="下载次数" width="110" height="22"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=1F1B16" alt="MIT 许可证" width="86" height="22"></a>
+  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/v/release/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="最新版本" height="22"></a>
+  <a href="https://github.com/ox0pine/mojian/releases"><img src="https://img.shields.io/github/downloads/ox0pine/mojian/total?style=flat&amp;labelColor=1F1B16&amp;color=D24A2B" alt="下载次数" height="22"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=1F1B16" alt="MIT 许可证" height="22"></a>
 </p>
 
 墨间是一款直接打开普通文件夹的原生纯文本编辑器。编辑文件、预览图片与 PDF、运行常驻终端，并在平铺工作区中查看 Git diff。没有数据库、账号、WebView 或 cgo。支持 macOS 13+、Linux 与 Windows 10 1809+。
