@@ -40,7 +40,7 @@ bun run typecheck
 | `src/i18n-data.ts` | the four locale dictionaries |
 | `src/i18n.ts` | language detection, title splitting |
 | `src/theme.ts` | Light / Dark / System and persistence |
-| `src/release.ts` | latest GitHub release lookup, static v0.4.6 fallback |
+| `src/release.ts` | latest GitHub release lookup, static fallback to the version paired with `mygo.json` |
 | `src/styles.css` | tokens, layout, responsive rules, reduced motion |
 | `public/` | fonts, logo, screenshots, icons, social card; copied as-is |
 

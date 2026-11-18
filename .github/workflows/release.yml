@@ -21,11 +21,22 @@ jobs:
         with:
           go-version-file: go.mod
       - &check-tag
-        name: Check the tag against mygo.json
+        name: Check the tag against every version
         run: |
+          set -euo pipefail
           version="$(jq -r .version mygo.json)"
+          site="$(sed -n 's/^const VERSION = "\(.*\)"$/\1/p' site/src/release.ts)"
+          package="$(jq -r .version site/package.json)"
           test "v$version" = "$GITHUB_REF_NAME" || {
             echo "::error::the tag $GITHUB_REF_NAME does not match mygo.json's v$version"
+            exit 1
+          }
+          test "$site" = "$version" || {
+            echo "::error::site/src/release.ts's VERSION $site does not match mygo.json's v$version"
+            exit 1
+          }
+          test "$package" = "$version" || {
+            echo "::error::site/package.json's version $package does not match mygo.json's v$version"
             exit 1
           }
       - &seed-native

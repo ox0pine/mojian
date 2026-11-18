@@ -11,12 +11,20 @@ Windows has been a release target since 0.3.0.
 
 1. Pick the version: a patch (`0.1.1` → `0.1.2`) for fixes, a minor for
    features.
-2. Set it in `mygo.json` (`"version"`).
+2. Set it everywhere it is written down, so the app, the tag and the
+   website agree:
+
+   | File | Field | What it drives |
+   |---|---|---|
+   | `mygo.json` | `"version"` | the app's version; the tag must match it |
+   | `site/src/release.ts` | `VERSION` | the website's offline download links |
+   | `site/package.json` | `"version"` | the site build's own version |
+
 3. Add its section to the top of `CHANGELOG.md`.
 4. Commit them and tag the commit:
 
    ```sh
-   git add mygo.json CHANGELOG.md
+   git add mygo.json site/src/release.ts site/package.json CHANGELOG.md
    git commit -m "Release X.Y.Z"
    git tag vX.Y.Z
    git push origin main
@@ -30,7 +38,9 @@ Windows has been a release target since 0.3.0.
    gh run watch <run id> --exit-status
    ```
 
-The workflow refuses a tag that does not match `mygo.json`, builds
+The workflow refuses a tag that does not match `mygo.json`, and a
+`site/package.json` or `site/src/release.ts` left on another version,
+before it builds anything. It builds
 `mojian-X.Y.Z-arm64.dmg`, `mojian-X.Y.Z-amd64.dmg`,
 `mojian-X.Y.Z-linux-amd64.tar.gz`, `mojian-X.Y.Z-linux-arm64.tar.gz`,
 `mojian-X.Y.Z-x86_64.rpm`, `mojian-X.Y.Z-aarch64.rpm`,
