@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.8
+
+- MyGo 0.10.0: the app runs the newer native UI, and the embedded Linux
+  server is rebuilt to match it.
+- The Explorer hides the folders the project's `.gitignore` files exclude,
+  read from the root down, so an ignored `build` or `node_modules` stays out
+  of the way while a tracked folder keeps its name. Ignored files still
+  list and open.
+- The Git page draws its diff with MyGo's diff viewer: syntax highlighting,
+  text selection and copy, `⌘F` find and go-to-line, wrapped rows with file
+  line numbers, `+`/`−` markers and change tints. A commit's patch keeps one
+  viewer per file with its heading and +/− counts.
+- The four title-bar menus — servers, projects, the branch chip and the Git
+  page's branch menu — use MyGo's drawn menu: Up/Down/Home/End, first-letter
+  type-ahead, Escape and Tab work, and assistive technology reads them as
+  menus. The look is unchanged.
+- The terminal's exit and bell notifications say which program it was and
+  what it left on screen, such as `exit 0 · Tests passed`; an agent task's
+  notification names the agent and how long it took.
+- Pictures are decoded at the size a pane can show: a 12-megapixel photo no
+  longer keeps a full-resolution bitmap in memory for the rest of the
+  session, and a PDF page or a previewed web image is capped too.
+- Settings › Editor has Keep lines around the caret: none, 1, 3, 5 or 8
+  lines kept between the caret and the pane's edge, as Vim's `scrolloff`.
+- The Git page's change and commit lists glide their rows to their places
+  as files and commits come and go, instead of jumping.
+- A screenshot test keeps the Settings window as a picture, so a layout
+  change that no text assertion catches still fails review.
+
 ## 0.4.7
 
 - A save refuses to overwrite a file changed outside Mojian: it stops with
