@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 // toggleGit shows the working-tree page or returns to the editor.
@@ -26,6 +27,21 @@ func (a *app) refreshGit() { a.git.Refresh() }
 // gitPage draws the page; the page owns its state and its view.
 func (a *app) gitPage(c *ui.Context, k *colors) {
 	a.git.View(c, k, a)
+}
+
+// EditorTheme is the code editor's theme for the page's diff, with the
+// card as its background: the editor's own theme is transparent, and the
+// diff viewer mixes change tints against the background it is given.
+func (a *app) EditorTheme(c *ui.Context) *editor.Theme {
+	th := *a.editorTheme(c)
+	th.Background = a.colorsOf(c).CardFocused
+	return &th
+}
+
+// EditorFont is the code editor's font, its line height and its tab
+// size, so the diff reads as the pane beside it.
+func (a *app) EditorFont() (ui.Font, float32, int) {
+	return a.editorFont(), float32(a.lineHeight()), a.tabSize()
 }
 
 // The Host methods give the Git page the project, a callback into the

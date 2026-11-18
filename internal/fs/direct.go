@@ -31,6 +31,7 @@ func (d *Direct) CacheDir() string        { return "" }
 func (d *Direct) List() ([]session.FileEntry, map[string]string, error) {
 	var entries []session.FileEntry
 	bodies := map[string]string{}
+	ign := filekind.NewGitIgnore(d.root)
 	err := filepath.WalkDir(d.root, func(path string, de os.DirEntry, err error) error {
 		if err != nil {
 			if path == d.root {
@@ -46,6 +47,9 @@ func (d *Direct) List() ([]session.FileEntry, map[string]string, error) {
 			rel, relErr := filepath.Rel(d.root, path)
 			if relErr != nil || rel == "." {
 				return nil
+			}
+			if ign.DirIgnored(filepath.ToSlash(rel)) {
+				return filepath.SkipDir
 			}
 			info, infoErr := de.Info()
 			if infoErr != nil {

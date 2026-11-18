@@ -3,7 +3,6 @@ package git
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"mojian/internal/icons"
@@ -11,6 +10,7 @@ import (
 	"mojian/internal/theme"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 // View draws the working-tree diff in the editor area: changes on
@@ -129,7 +129,8 @@ func (p *Page) modeTab(c *ui.Context, k *theme.Colors, label string, mode PageMo
 // same frame and type as the title bar's chip, so the three controls in
 // this header read as one row.
 func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
-	b := ui.ButtonBase(c).Height(28).Padding(0, 8, 0, 6).Radius(theme.Radius).
+	m := ui.MenuBase(c, &p.BranchMenu)
+	b := m.Trigger.Height(28).Padding(0, 8, 0, 6).Radius(theme.Radius).
 		Gap(6).Cursor(ui.CursorPointer).Label("Switch branch: " + p.Branch).
 		Tooltip("Switch branch: " + p.Branch)
 	switch {
@@ -141,9 +142,12 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 	default:
 		b.Background(k.Hover)
 	}
-	if b.Clicked() {
-		p.ToggleBranchMenu()
+	if m.Open() && !p.branchShown {
+		// Opened by the chip or by the window: read the branches again,
+		// since a terminal may have added or removed one.
+		p.openBranchMenu()
 	}
+	p.branchShown = m.Open()
 	drop := float32(0)
 	if p.BranchMenu {
 		drop = 1
@@ -155,12 +159,13 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
-	ui.PopoverBase(c, b, &p.BranchMenu, func(panel ui.Element) {
+	m.Popup(func(panel ui.Element) {
 		panel.Width(branchMenuW).Padding(6).Radius(theme.Radius).
 			Background(k.Panel).Border(1, k.PanelBorder).
 			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).Clip().
 			Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
-		p.branchMenuBody(c, k)
+		panel.Margin(4, 0, 0, 0)
+		p.branchMenuBody(c, k, m)
 	})
 }
 
@@ -185,6 +190,7 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 		}
 		p.list.Selected = &p.Sel
 		p.list.Key = func(i int) any { return p.Changes[i].Display }
+		p.list.MoveAnimation = motion.ListMove
 		list := ui.List(c, &p.list, len(p.Changes), func(i int) {
 			ch := p.Changes[i]
 			row := ui.Row(c.Key(fmt.Sprintf("git:%d", i))).Height(34).Padding(0, 10).
@@ -228,6 +234,7 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 func (p *Page) commits(c *ui.Context, k *theme.Colors) {
 	p.historyList.Selected = &p.CommitSel
 	p.historyList.Key = func(i int) any { return p.Commits[i].Hash }
+	p.historyList.MoveAnimation = motion.ListMove
 	list := ui.List(c, &p.historyList, len(p.Commits), func(i int) {
 		commit := p.Commits[i]
 		row := ui.Row(c.Key(fmt.Sprintf("git-commit:%d", i))).Height(34).Padding(0, 10).
@@ -422,13 +429,14 @@ func (p *Page) diffState(c *ui.Context, k *theme.Colors) {
 		p.state(c, k, "file-text", k.TextFaint, "No text changes",
 			"This file has no textual diff.")
 	default:
-		lines := ParseDiff(p.Diff)
-		if len(lines) == 0 {
+		p.buildDiffViews(c)
+		if p.diffView == nil {
 			p.state(c, k, "file-text", k.TextFaint, "No text changes",
 				"This file has no textual diff.")
 			return
 		}
-		p.diffLines(c, k, lines)
+		p.styleDiffView(c, p.diffView)
+		editor.DiffView(c, p.diffView).Grow(1).FillWidth()
 	}
 }
 
@@ -467,44 +475,105 @@ func (p *Page) state(c *ui.Context, k *theme.Colors, glyph string, col ui.Color,
 	})
 }
 
-// diffLines draws one file's diff, the working tree's view of it.
-func (p *Page) diffLines(c *ui.Context, k *theme.Colors, lines []gitDiffLine) {
-	const maxLines = 2500
-	truncated := len(lines) > maxLines
-	if truncated {
-		lines = lines[:maxLines]
+// buildDiffViews makes the viewer states of the loaded diff, once per
+// diff: the frame that first draws one has the window's theme and font.
+func (p *Page) buildDiffViews(c *ui.Context) {
+	if p.viewsGen == p.diffGen {
+		return
 	}
-	scroll := ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 0, 4, 0).
-		TrackScroll(&p.DiffScroll)
-	scroll.Children(func() {
-		diffRows(c, k, lines)
-		if truncated {
-			ui.Text(c, "… diff truncated").FontSize(11).TextColor(k.TextFaint).Padding(6, 10)
+	p.viewsGen = p.diffGen
+	p.diffView, p.patchViews = nil, nil
+	p.patchCut = false
+	if p.Mode == ModeHistory {
+		p.buildPatchViews(c)
+		return
+	}
+	if files := SplitDiff(p.Diff); len(files) > 0 {
+		p.diffView = p.newDiffView(c, files[0], false)
+	}
+}
+
+// buildPatchViews makes one viewer per file a commit touched, stopping
+// at the line budget on a hunk boundary.
+func (p *Page) buildPatchViews(c *ui.Context) {
+	const maxLines = 2500
+	left := maxLines
+	for _, file := range p.patch {
+		if left <= 0 {
+			p.patchCut = true
+			break
 		}
-	})
+		if len(file.Lines) > left {
+			file = cutFileDiff(file, left)
+			p.patchCut = true
+		}
+		left -= len(file.Lines)
+		p.patchViews = append(p.patchViews, p.newDiffView(c, file, true))
+	}
+}
+
+// cutFileDiff keeps the whole hunks of f that fit in n lines.
+func cutFileDiff(f FileDiff, n int) FileDiff {
+	used := 0
+	out := f
+	out.Lines = nil
+	for i := 0; i < len(f.Lines); {
+		j := i + 1
+		for j < len(f.Lines) && f.Lines[j].kind != '@' {
+			j++
+		}
+		if used > 0 && used+j-i > n {
+			break
+		}
+		out.Lines = append(out.Lines, f.Lines[i:j]...)
+		used += j - i
+		i = j
+	}
+	return out
+}
+
+// newDiffView configures one viewer with the page's editor look.
+func (p *Page) newDiffView(c *ui.Context, f FileDiff, fit bool) *editor.DiffState {
+	font, lineHeight, tabSize := p.h.EditorFont()
+	d := &editor.DiffState{
+		Layout:         editor.DiffUnified,
+		Wrap:           true,
+		Inline:         editor.DiffInlineNone,
+		Indicators:     editor.DiffClassic,
+		KeepScrollbars: true,
+		FitContent:     fit,
+		Font:           font,
+		LineHeight:     lineHeight,
+		TabSize:        tabSize,
+	}
+	d.SetPatch(toFilePatch(f))
+	return d
+}
+
+// styleDiffView follows the window's theme and font, so a theme switch
+// recolors a diff already built.
+func (p *Page) styleDiffView(c *ui.Context, d *editor.DiffState) {
+	font, lineHeight, tabSize := p.h.EditorFont()
+	d.Theme = p.h.EditorTheme(c)
+	d.Font, d.LineHeight, d.TabSize = font, lineHeight, tabSize
 }
 
 // diffPatch draws every file a commit touched, each under its own
 // heading, so a commit that changed several files stays readable.
 func (p *Page) diffPatch(c *ui.Context, k *theme.Colors) {
-	const maxLines = 2500
-	left := maxLines
+	p.buildDiffViews(c)
 	scroll := ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 0, 4, 0).
 		TrackScroll(&p.DiffScroll)
 	scroll.Children(func() {
-		for _, file := range p.patch {
-			if left <= 0 {
+		for i, file := range p.patch {
+			if i >= len(p.patchViews) || p.patchViews[i] == nil {
 				break
 			}
 			p.fileHeading(c, k, file)
-			lines := file.Lines
-			if len(lines) > left {
-				lines = lines[:left]
-			}
-			diffRows(c, k, lines)
-			left -= len(lines)
+			p.styleDiffView(c, p.patchViews[i])
+			editor.DiffView(c, p.patchViews[i]).FillWidth()
 		}
-		if left <= 0 {
+		if p.patchCut {
 			ui.Text(c, "… diff truncated").FontSize(11).TextColor(k.TextFaint).Padding(6, 10)
 		}
 	})
@@ -534,77 +603,12 @@ func (p *Page) fileHeading(c *ui.Context, k *theme.Colors, file FileDiff) {
 	})
 }
 
-func diffRows(c *ui.Context, k *theme.Colors, lines []gitDiffLine) {
-	for _, line := range lines {
-		switch line.kind {
-		case '@':
-			ui.Row(c).FillWidth().Padding(3, 10).AlignItems(ui.Start).
-				Background(k.DiffHunk.Alpha(0.08)).Children(func() {
-				ui.Text(c, diffLineText(line.text)).Font(theme.NoteFont.Family).FontSize(11).
-					TextColor(k.DiffHunk).LineHeight(1.5).Shrink(1).MinWidth(0)
-			})
-		case 'm', '\\':
-			ui.Row(c).FillWidth().Padding(1, 10).AlignItems(ui.Start).Children(func() {
-				ui.Text(c, diffLineText(line.text)).Font(theme.NoteFont.Family).FontSize(11).
-					TextColor(k.TextFaint).LineHeight(1.5).Shrink(1).MinWidth(0)
-			})
-		default:
-			row := ui.Row(c).FillWidth().ClipX().AlignItems(ui.Start)
-			switch line.kind {
-			case '+':
-				row.Background(k.DiffAdd.Alpha(0.10))
-			case '-':
-				row.Background(k.DiffDel.Alpha(0.09))
-			}
-			row.Children(func() {
-				gitGutter(c, k, line.old)
-				gitGutter(c, k, line.new)
-				ui.Text(c, diffLineText(line.text)).Font(theme.NoteFont.Family).FontSize(11.5).
-					TextColor(diffLineKindColor(line.kind, k)).LineHeight(1.5).
-					Shrink(1).MinWidth(0).Padding(1, 0, 1, 8)
-			})
-		}
-	}
-}
-
-func gitGutter(c *ui.Context, k *theme.Colors, n int) {
-	text := ""
-	if n > 0 {
-		text = strconv.Itoa(n)
-	}
-	ui.Text(c, text).Font(theme.NoteFont.Family).FontSize(10).TextColor(k.TextFaint).
-		Width(38).TextAlign(ui.End).Shrink(0).Padding(0, 5)
-}
-
-func diffLineKindColor(kind byte, k *theme.Colors) ui.Color {
-	switch kind {
-	case '+':
-		return k.DiffAdd
-	case '-':
-		return k.DiffDel
-	default:
-		return k.TextMuted
-	}
-}
-
-// diffLineRunes bounds one drawn diff line. A file Git reads as text but
-// is really binary, such as an archive or a packed blob whose first
+// diffLineRunes bounds one patch line. A file Git reads as text but is
+// really binary, such as an archive or a packed blob whose first
 // kilobytes held no NUL, arrives as one line of megabytes; shaping it
 // costs the square of its length, which stalled the window for seconds.
-// A row wraps, so it draws the line up to this many characters and marks
-// the cut.
+// The adapter cuts it once, when it builds the patch.
 const diffLineRunes = 2000
-
-func diffLineText(line string) string {
-	line = clipRunes(line, diffLineRunes)
-	line = strings.ReplaceAll(line, "\t", "    ")
-	if strings.TrimSpace(line) == "" {
-		// A blank row still takes a line of height, which shaping an empty
-		// string does not.
-		return "\u00a0"
-	}
-	return line
-}
 
 // clipRunes keeps at most max runes of s, ending the cut with an ellipsis.
 func clipRunes(s string, max int) string {

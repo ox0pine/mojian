@@ -21,6 +21,7 @@ type branchState struct {
 	seq      int
 	queued   bool
 	open     bool
+	shown    bool // the menu was drawn open on the last pass
 	creating bool
 	name     string
 	err      string
@@ -104,6 +105,7 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 	if d.Root == "" {
 		// No repository and so no chip: a command that opened the menu
 		// says why it stayed empty.
+		a.branch.shown = false
 		if a.branch.open {
 			a.branch.open = false
 			msg := d.Err
@@ -118,34 +120,44 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 	if d.Detached {
 		name = "detached at " + d.Current
 	}
-	chip := titleChip(c, k, a.branch.open).Label("Switch branch: " + name).
+	m := ui.MenuBase(c, &a.branch.open)
+	chip := titleChip(m.Trigger, k, a.branch.open).Label("Switch branch: " + name).
 		Tooltip("Branch " + name + "  " + nativeKeys("⌘⇧B")).MaxWidth(210)
+	if m.Open() && !a.branch.shown {
+		// Opened by the chip or a command: forget a name being typed
+		// and read the branches again.
+		a.beginBranchMenu()
+	}
+	a.branch.shown = m.Open()
 	drop := float32(0)
 	if a.branch.open {
 		drop = 1
 	}
 	drop = chip.AnimateTo("branch-menu", drop, motion.PopoverIn)
-	if chip.Clicked() {
-		if a.branch.open {
-			a.branch.open = false
-		} else {
-			a.openBranchPicker()
-		}
-	}
 	chip.Children(func() {
 		ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
 		ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
-	ui.PopoverBase(c, chip, &a.branch.open, func(panel ui.Element) {
+	m.Popup(func(panel ui.Element) {
 		menuSurface(panel, k, drop)
-		a.branchMenuBody(c, k)
+		panel.Margin(4, 0, 0, 0)
+		a.branchMenuBody(c, k, m)
 	})
 }
 
+// beginBranchMenu prepares the menu the framework just opened: no name
+// half typed, and the branches as they are now.
+func (a *app) beginBranchMenu() {
+	a.branch.creating = false
+	a.branch.name = ""
+	a.branch.err = ""
+	a.refreshBranch()
+}
+
 // branchMenuBody draws the menu: the branches, or the new branch field.
-func (a *app) branchMenuBody(c *ui.Context, k *colors) {
+func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 	d := a.branch.data
 	if a.branch.creating {
 		submit := false
@@ -182,7 +194,7 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors) {
 	default:
 		menuList(c, func() {
 			for _, b := range d.Branches {
-				a.branchMenuRow(c, k, b)
+				a.branchMenuRow(c, k, m, b)
 			}
 		})
 	}
@@ -190,7 +202,7 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors) {
 		menuNote(c, k, a.branch.err, true)
 	}
 	ui.Divider(c).Margin(6, 0)
-	row := menuAction(c, k, "menu:new-branch", "plus", "New Branch…")
+	row := menuAction(c, k, m, "menu:new-branch", "plus", "New Branch…").KeepOpen()
 	if row.Clicked() {
 		a.branch.creating = true
 		a.branch.name = ""
@@ -199,8 +211,8 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors) {
 }
 
 // branchMenuRow is one branch in the menu, checked when it is current.
-func (a *app) branchMenuRow(c *ui.Context, k *colors, b gitpage.Branch) {
-	row := menuChoice(c, k, "branch:"+b.Name, "git-branch", b.Name, b.Current)
+func (a *app) branchMenuRow(c *ui.Context, k *colors, m ui.MenuParts, b gitpage.Branch) {
+	row := menuChoice(c, k, m, "branch:"+b.Name, "git-branch", b.Name, b.Current)
 	if row.Clicked() {
 		a.branch.open = false
 		a.branch.creating = false

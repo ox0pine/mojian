@@ -69,6 +69,11 @@ var webImageClient = &http.Client{Timeout: 20 * time.Second}
 
 const maxWebImageBytes = 16 << 20
 
+// maxWebImageSide bounds a previewed picture's decoded size, in pixels: a
+// Markdown preview draws one at most the preview column wide, about 700
+// DIPs, so 2048 pixels leave room for a 3x screen and no more.
+const maxWebImageSide = 2048
+
 func fetchWebImage(raw string) (ui.ImageSource, error) {
 	req, err := http.NewRequest(http.MethodGet, shieldPNG(raw), nil)
 	if err != nil {
@@ -90,7 +95,7 @@ func fetchWebImage(raw string) (ui.ImageSource, error) {
 	if len(data) > maxWebImageBytes {
 		return nil, errors.New("image is too large")
 	}
-	return ui.DecodeImage(data)
+	return ui.DecodeBitmapScaled(data, maxWebImageSide)
 }
 
 // shieldPNG asks shields.io for the PNG of a badge. Its SVG sizes the

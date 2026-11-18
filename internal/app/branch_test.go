@@ -141,6 +141,33 @@ func TestBranchChipSwitchesAndReloads(t *testing.T) {
 	}
 }
 
+// The menu takes the keys MyGo's menus have: the chip opens it, Down
+// highlights the first branch and Enter checks it out.
+func TestBranchMenuKeyboard(t *testing.T) {
+	registerFonts()
+	dir, base := branchRepo(t)
+	a, tt := branchTestApp(t, dir)
+	if err := tt.Click("Switch branch: " + base); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	tt.Key(0, ui.KeyEnter)
+	for range 3 {
+		tt.Frame()
+	}
+	if a.branch.data.Current != "feature" {
+		t.Fatalf("after Down, Enter: %+v", a.branch.data)
+	}
+	if a.branch.open {
+		t.Fatal("the menu stayed open")
+	}
+	if n := a.store.ByRel["a.md"]; n == nil || !strings.Contains(n.Text(), "feature text") {
+		t.Fatalf("note after switch: %+v", n)
+	}
+}
+
 func TestBranchSwitchKeepsUnsavedEdits(t *testing.T) {
 	registerFonts()
 	dir, base := branchRepo(t)

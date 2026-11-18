@@ -98,6 +98,10 @@ client: it runs the terminal-only part of this server and never uploads or contr
 - A restored terminal on the project on screen waits for the project's connection instead of
   showing Try Again; `installRemoteConn` clears the waiting state and the pane attaches. A failed
   reconnect puts the connection error behind Try Again.
+- A terminal that rings its bell (`NotifyBell`) or ends (`NotifyExit`) notifies only while the
+  window is not focused. The subtitle is the program's own title (OSC 0/2) or the pane's name, and
+  the body is `exit N` for an ended shell plus the last line with text on the screen, so a shell or
+  an agent that finished behind another tab says what happened.
 - Missing or unreachable binaries surface as an error from `Provision`; the app reports it and keeps
   the project closed rather than editing a stale listing.
 

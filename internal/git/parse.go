@@ -15,6 +15,8 @@ import (
 
 	"mojian/internal/gitenv"
 	"mojian/internal/platform"
+
+	"github.com/egoist/mygo/ui/editor"
 )
 
 // repoRoot resolves the project's symlinks and finds the repository that
@@ -316,6 +318,76 @@ func buildFileDiff(section []string) FileDiff {
 	file.Lines = ParseDiff(strings.Join(section, "\n"))
 	file.Add, file.Del = DiffStat(strings.Join(section, "\n"))
 	return file
+}
+
+// gitHunkCounts reads a hunk header's ranges and its section text.
+var gitHunkCounts = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$`)
+
+// toFilePatch turns a parsed file's diff into the patch MyGo's diff
+// viewer draws. Lines are clipped as the page clipped them: a file Git
+// reads as text but is really binary arrives as one line of megabytes,
+// which costs the editor minutes to shape.
+func toFilePatch(f FileDiff) editor.FilePatch {
+	p := editor.FilePatch{}
+	switch f.Status {
+	case "A":
+		p.NewName = f.Path
+	case "D":
+		p.OldName = f.Path
+	default:
+		p.OldName, p.NewName = f.Path, f.Path
+	}
+	var h *editor.PatchHunk
+	for _, line := range f.Lines {
+		if line.kind == '@' {
+			m := gitHunkCounts.FindStringSubmatch(line.text)
+			if m == nil {
+				h = nil
+				continue
+			}
+			p.Hunks = append(p.Hunks, editor.PatchHunk{
+				OldStart: hunkCount(m[1]), OldLines: hunkCount(m[2]),
+				NewStart: hunkCount(m[3]), NewLines: hunkCount(m[4]),
+				Section: strings.TrimSpace(m[5]),
+			})
+			h = &p.Hunks[len(p.Hunks)-1]
+			continue
+		}
+		if h == nil {
+			continue
+		}
+		text := line.text
+		if text == "" {
+			// ParseDiff's blank context line carries no prefix.
+			text = " "
+		}
+		if line.kind != '\\' {
+			text = clipDiffLine(text)
+		}
+		h.Lines = append(h.Lines, text)
+	}
+	return p
+}
+
+// clipDiffLine keeps a patch line's prefix and cuts its text.
+func clipDiffLine(line string) string {
+	if line == "" {
+		return line
+	}
+	return line[:1] + clipRunes(line[1:], diffLineRunes)
+}
+
+// hunkCount reads a hunk header's line count, where Git omits a count of
+// one.
+func hunkCount(s string) int {
+	if s == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // diffPath reads one side of a header: /dev/null is no path, and the

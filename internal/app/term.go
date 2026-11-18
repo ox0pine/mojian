@@ -3,6 +3,8 @@ package app
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"mojian/internal/session"
 
@@ -308,24 +310,79 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 		OnBell: func() {
 			update(func() {
 				if a.NotifyBell && (a.win == nil || !a.win.IsFocused()) {
-					mygo.NewNotification(mygo.NotificationOptions{
-						Title: "Terminal", Body: tt.Spec.title(),
-					}).Show()
+					a.notifyTerminal("Terminal", tt, "")
 				}
 				a.invalidate()
 			})
 		},
-		OnExit: func(int) {
+		OnExit: func(code int) {
 			update(func() {
 				if a.NotifyExit && !a.quitting && (a.win == nil || !a.win.IsFocused()) {
-					mygo.NewNotification(mygo.NotificationOptions{
-						Title: "Terminal finished", Body: tt.Spec.title(),
-					}).Show()
+					a.notifyTerminal("Terminal finished", tt, "exit "+strconv.Itoa(code))
 				}
 				a.invalidate()
 			})
 		},
 	}
+}
+
+// notifyTerminal reports a terminal that wants attention or has ended:
+// the program's name, what happened, and the last line it printed. The
+// pane is behind another tab or another app when the notification
+// matters, so the line is the only thing that says what happened.
+func (a *app) notifyTerminal(title string, tt *termTab, state string) {
+	name := tt.Spec.title()
+	text := ""
+	if tt.Term != nil {
+		if said := tt.Term.Title(); said != "" {
+			name = said
+		}
+		text = tt.Term.Text()
+	}
+	body := state
+	if line := lastScreenLine(text); line != "" {
+		if body != "" {
+			body += " · "
+		}
+		body += line
+	}
+	if body == "" {
+		body = name
+	}
+	mygo.NewNotification(mygo.NotificationOptions{
+		Title: title, Subtitle: name, Body: body,
+	}).Show()
+}
+
+// lastScreenLine is the last line of a terminal screen that has text,
+// collapsed and cut for a notification body. A bare shell prompt there
+// says nothing about what happened, so the line above it is used.
+func lastScreenLine(screen string) string {
+	lines := strings.Split(screen, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		text := strings.Join(strings.Fields(lines[i]), " ")
+		if text == "" || promptOnly(text) {
+			continue
+		}
+		if r := []rune(text); len(r) > 160 {
+			text = string(r[:159]) + "…"
+		}
+		return text
+	}
+	return ""
+}
+
+// promptOnly reports whether a screen line is a shell prompt and nothing
+// else.
+func promptOnly(text string) bool {
+	if len([]rune(text)) > 2 {
+		return false
+	}
+	switch text {
+	case "$", "%", "#", ">", "❯", "➜", "»":
+		return true
+	}
+	return false
 }
 
 // rethemeTerminals repaints every live terminal, in the project on screen

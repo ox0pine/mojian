@@ -182,6 +182,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			st.NoIndentGuides = a.NoIndentGuides
 			st.NoAutoClose = a.NoAutoClose
 			st.NoScrollPastEnd = a.NoScrollPastEnd
+			st.ScrollMargin = a.EditorScrollMargin
 			st.Label = p.Note.Title
 			if a.HideLineNumbers {
 				st.LineNumbers = editor.LineNumbersOff

@@ -29,13 +29,12 @@ const (
 // binary.
 const HeadSize = 8192
 
-// SkipDir keeps generated trees and version control out of the project
-// view; a code project's own sources still show.
+// SkipDir keeps version control and the app's trash out of the project
+// view. Generated trees follow the project's .gitignore instead, so a
+// folder the project tracks stays visible whatever it is named.
 func SkipDir(name string) bool {
 	switch name {
-	case ".git", ".svn", ".hg", "node_modules", "__pycache__", ".venv", "venv",
-		"dist", "build", ".next", ".cache", ".turbo", "target", "vendor",
-		".idea", ".gradle", "Pods", "DerivedData", ".mojian-trash":
+	case ".git", ".svn", ".hg", ".mojian-trash":
 		return true
 	}
 	return false

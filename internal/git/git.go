@@ -11,6 +11,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 const headerH = 33
@@ -61,6 +62,11 @@ type Host interface {
 	HasPath(string) bool
 	OpenPath(string)
 	FileMenu(*ui.Menu, string)
+	// EditorTheme is the code editor's theme, for the diff pane; its
+	// background is the pane's card, so change tints mix against it.
+	EditorTheme(*ui.Context) *editor.Theme
+	// EditorFont is the code editor's font, line height and tab size.
+	EditorFont() (ui.Font, float32, int)
 	// SwitchBranch checks out name at root and reloads the notes the new
 	// branch holds; it refuses while a note has unsaved edits.
 	SwitchBranch(root, name string) error
@@ -109,15 +115,25 @@ type Page struct {
 	historyList ui.ListState
 	patch       []FileDiff
 
+	// diffGen counts the diffs loaded so far; diffView and patchViews
+	// draw the one of viewsGen with MyGo's diff viewer, and are built on
+	// the frame that first draws them, where the window's theme is known.
+	diffGen    int
+	diffView   *editor.DiffState
+	patchViews []*editor.DiffState
+	viewsGen   int
+	patchCut   bool
+
 	// BranchMenu is the page's own popover under the branch chip; it
 	// reads the branches again each time it opens.
-	BranchMenu bool
-	Branches   BranchData
-	branchLoad bool
-	branchSeq  int
-	branchErr  string
-	branchNew  bool
-	branchName string
+	BranchMenu  bool
+	Branches    BranchData
+	branchShown bool // the menu was drawn open on the last pass
+	branchLoad  bool
+	branchSeq   int
+	branchErr   string
+	branchNew   bool
+	branchName  string
 
 	h      Host
 	runner Runner
@@ -259,6 +275,8 @@ func (p *Page) clearDiff() {
 	p.DiffLoad = false
 	p.DiffSeq++
 	p.patch = nil
+	p.diffGen++
+	p.diffView, p.patchViews = nil, nil
 }
 
 func (p *Page) loadHistory() {
@@ -395,6 +413,8 @@ func (p *Page) loadDiff(i int) {
 	p.patch = nil
 	p.DiffLoad = true
 	p.DiffScroll = ui.ScrollState{}
+	p.diffGen++
+	p.diffView, p.patchViews = nil, nil
 	p.DiffSeq++
 	seq := p.DiffSeq
 	root := p.Root
@@ -423,6 +443,8 @@ func (p *Page) applyDiff(seq int, diff string, err error) {
 	p.Diff = diff
 	p.DiffErr = ""
 	p.patch = nil
+	p.diffGen++
+	p.diffView, p.patchViews = nil, nil
 	if err != nil {
 		p.DiffErr = err.Error()
 		return

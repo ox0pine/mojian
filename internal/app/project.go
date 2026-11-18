@@ -155,16 +155,18 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 	if a.store == nil {
 		return
 	}
-	chip := titleChip(c, k, a.projectOpen).Label("Switch project: " + a.projectName()).
+	m := ui.MenuBase(c, &a.projectOpen)
+	chip := titleChip(m.Trigger, k, a.projectOpen).Label("Switch project: " + a.projectName()).
 		Tooltip(a.projectPath()).MaxWidth(210)
+	if a.store.IsMemory() {
+		// A memory store has no folder to switch to.
+		m.Trigger.Disabled(true)
+	}
 	drop := float32(0)
 	if a.projectOpen {
 		drop = 1
 	}
 	drop = chip.AnimateTo("project-menu", drop, motion.PopoverIn)
-	if chip.Clicked() && !a.store.IsMemory() {
-		a.projectOpen = !a.projectOpen
-	}
 	chip.Children(func() {
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
 		ui.Text(c, a.projectName()).FontSize(12.5).FontWeight(600).TextColor(k.Text).
@@ -174,12 +176,13 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 	if a.store.IsMemory() {
 		return
 	}
-	ui.PopoverBase(c, chip, &a.projectOpen, func(panel ui.Element) {
+	m.Popup(func(panel ui.Element) {
 		menuSurface(panel, k, drop)
+		panel.Margin(4, 0, 0, 0)
 		if a.remotePath != "" {
-			a.remoteProjectRows(c, k)
+			a.remoteProjectRows(c, k, m)
 			ui.Divider(c).Margin(6, 0)
-			row := menuAction(c, k, "menu:open-remote-folder", "folder-plus", "Open Remote Folder…")
+			row := menuAction(c, k, m, "menu:open-remote-folder", "folder-plus", "Open Remote Folder…")
 			if row.Clicked() {
 				a.projectOpen = false
 				a.later(func() { a.openRemotePicker(a.serverAlias) })
@@ -190,7 +193,7 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 		recent := a.recentProjects()
 		menuList(c, func() {
 			for _, p := range recent {
-				a.projectRow(c, k, p)
+				a.projectRow(c, k, m, p)
 			}
 		})
 		if len(recent) == 0 {
@@ -198,7 +201,7 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 		}
 		if runtime.GOOS != "js" {
 			ui.Divider(c).Margin(6, 0)
-			row := menuAction(c, k, "menu:open-folder", "folder-plus", "Open Folder…")
+			row := menuAction(c, k, m, "menu:open-folder", "folder-plus", "Open Folder…")
 			row.Tooltip(a.tip("Open Folder", cmdOpenProject))
 			if row.Clicked() {
 				a.projectOpen = false
@@ -208,9 +211,9 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 	})
 }
 
-func (a *app) projectRow(c *ui.Context, k *colors, p string) {
+func (a *app) projectRow(c *ui.Context, k *colors, m ui.MenuParts, p string) {
 	current := a.store != nil && !a.store.IsMemory() && filepath.Clean(a.store.Dir) == filepath.Clean(p)
-	a.projectRowBase(c, k, projectRowSpec{
+	a.projectRowBase(c, k, m, projectRowSpec{
 		key:        "project:" + p,
 		label:      a.projectLabel(p),
 		title:      a.projectLabel(p),
@@ -241,12 +244,12 @@ type projectRowSpec struct {
 	close      func()
 }
 
-func (a *app) projectRowBase(c *ui.Context, k *colors, s projectRowSpec) {
-	row := ui.Row(c.Key(s.key)).Height(menuRowH).Padding(0, menuInset).Gap(8).Radius(radius).
-		AlignItems(ui.Center)
+func (a *app) projectRowBase(c *ui.Context, k *colors, m ui.MenuParts, s projectRowSpec) {
+	row := menuItem(m, s.key).Height(menuRowH).Padding(0, menuInset).Gap(8).Radius(radius).
+		AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(s.label)
 	if s.current {
 		row.Background(k.PanelSel)
-	} else if row.Hovered() {
+	} else if row.Highlighted() {
 		row.Background(k.Hover)
 	}
 	weight := 500
@@ -278,6 +281,9 @@ func (a *app) projectRowBase(c *ui.Context, k *colors, s projectRowSpec) {
 			s.close()
 		}
 	})
+	if row.Clicked() && s.open != nil {
+		s.open()
+	}
 }
 
 // closeLocalProject forgets one local project from the recent list. When

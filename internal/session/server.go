@@ -718,6 +718,7 @@ func (s *Server) listTree(root string, fresh bool) ([]FileEntry, error) {
 
 func walkTree(root string) ([]FileEntry, error) {
 	var out []FileEntry
+	ign := filekind.NewGitIgnore(root)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if path == root {
@@ -737,6 +738,9 @@ func walkTree(root string) ([]FileEntry, error) {
 			rel, err := filepath.Rel(root, path)
 			if err != nil {
 				return nil
+			}
+			if ign.DirIgnored(filepath.ToSlash(rel)) {
+				return filepath.SkipDir
 			}
 			info, err := d.Info()
 			if err != nil {

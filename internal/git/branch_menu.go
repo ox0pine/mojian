@@ -29,12 +29,19 @@ func (p *Page) ToggleBranchMenu() {
 		p.CloseBranchMenu()
 		return
 	}
+	p.openBranchMenu()
+}
+
+// openBranchMenu shows the page's menu and reads the branches again.
+func (p *Page) openBranchMenu() {
 	p.BranchMenu = true
 	p.branchNew = false
 	p.branchName = ""
 	p.branchErr = ""
 	p.loadBranches()
-	p.h.Invalidate()
+	if p.h != nil {
+		p.h.Invalidate()
+	}
 }
 
 // CloseBranchMenu closes the menu and forgets a name being typed.
@@ -110,9 +117,14 @@ func (p *Page) makeBranch() {
 	p.CloseBranchMenu()
 }
 
+// menuItem is one row of the page's drawn branch menu.
+func menuItem(m ui.MenuParts, key any) ui.Element {
+	return m.Item().Key(key)
+}
+
 // branchMenuBody draws the popover: the branches, the new branch field, or
 // the note explaining why the list is empty.
-func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors) {
+func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 	if p.branchNew {
 		p.newBranchBody(c, k)
 		return
@@ -133,7 +145,7 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors) {
 	default:
 		ui.Scroll(c).MaxHeight(branchMaxH).Children(func() {
 			for _, b := range d.Branches {
-				p.branchMenuRow(c, k, b)
+				p.branchMenuRow(c, k, m, b)
 			}
 		})
 	}
@@ -141,10 +153,10 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors) {
 		p.branchNote(c, k, p.branchErr, true)
 	}
 	ui.Divider(c).Margin(6, 0)
-	row := ui.ButtonBase(c).Height(branchRowH).Padding(0, 10).Gap(8).
+	row := menuItem(m, "menu:new-branch").Height(branchRowH).Padding(0, 10).Gap(8).
 		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).
-		Label("New Branch…")
-	if row.Hovered() {
+		Label("New Branch…").KeepOpen()
+	if row.Highlighted() {
 		row.Background(k.Hover)
 	}
 	if row.Clicked() {
@@ -159,12 +171,12 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors) {
 }
 
 // branchMenuRow is one branch, checked when it is the current one.
-func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, b Branch) {
-	row := ui.ButtonBase(c).Height(branchRowH).Padding(0, 10).Gap(8).
+func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b Branch) {
+	row := menuItem(m, "branch:"+b.Name).Height(branchRowH).Padding(0, 10).Gap(8).
 		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(b.Name)
 	if b.Current {
 		row.Background(k.PanelSel)
-	} else if row.Hovered() {
+	} else if row.Highlighted() {
 		row.Background(k.Hover)
 	}
 	if row.Clicked() {

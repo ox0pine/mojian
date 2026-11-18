@@ -287,33 +287,32 @@ func (a *app) loadRemoteDirs(path string) {
 
 func (a *app) serverChip(c *ui.Context, k *colors) {
 	label := a.remoteName()
-	chip := titleChip(c, k, a.serverOpen).Label("Switch server: " + label).
+	m := ui.MenuBase(c, &a.serverOpen)
+	chip := titleChip(m.Trigger, k, a.serverOpen).Label("Switch server: " + label).
 		Tooltip("Switch server").MaxWidth(210)
 	drop := float32(0)
 	if a.serverOpen {
 		drop = 1
 	}
 	drop = chip.AnimateTo("server-menu", drop, motion.PopoverIn)
-	if chip.Clicked() {
-		a.serverOpen = !a.serverOpen
-	}
 	chip.Children(func() {
 		ui.Icon(c, icons.Icon("server")).Size(15, 15).TextColor(k.TextMuted)
 		ui.Text(c, label).FontSize(12.5).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
-	ui.PopoverBase(c, chip, &a.serverOpen, func(panel ui.Element) {
+	m.Popup(func(panel ui.Element) {
 		menuSurface(panel, k, drop)
+		panel.Margin(4, 0, 0, 0)
 		menuHeader(c, k, "Servers", "")
 		menuList(c, func() {
-			a.serverRow(c, k, "", "Local")
+			a.serverRow(c, k, m, "", "Local")
 			for _, h := range a.hosts() {
 				label := h.Name
 				if label == "" {
 					label = h.Address
 				}
-				a.serverRow(c, k, h.Address, label)
+				a.serverRow(c, k, m, h.Address, label)
 			}
 		})
 		if len(a.hosts()) == 0 {
@@ -322,8 +321,8 @@ func (a *app) serverChip(c *ui.Context, k *colors) {
 	})
 }
 
-func (a *app) serverRow(c *ui.Context, k *colors, host, label string) {
-	row := menuChoice(c, k, "server:"+host, "server", label, a.serverAlias == host)
+func (a *app) serverRow(c *ui.Context, k *colors, m ui.MenuParts, host, label string) {
+	row := menuChoice(c, k, m, "server:"+host, "server", label, a.serverAlias == host)
 	if row.Clicked() {
 		a.serverOpen = false
 		if host == "" {
@@ -338,7 +337,7 @@ func (a *app) serverRow(c *ui.Context, k *colors, host, label string) {
 	}
 }
 
-func (a *app) remoteProjectRows(c *ui.Context, k *colors) {
+func (a *app) remoteProjectRows(c *ui.Context, k *colors, m ui.MenuParts) {
 	recent := a.remoteProjects()
 	menuHeader(c, k, "Projects on "+a.remoteName(), "")
 	onHost := 0
@@ -357,7 +356,7 @@ func (a *app) remoteProjectRows(c *ui.Context, k *colors) {
 				continue
 			}
 			p := p
-			a.projectRowBase(c, k, projectRowSpec{
+			a.projectRowBase(c, k, m, projectRowSpec{
 				key:        "remote:" + p.Host + ":" + p.Path,
 				label:      p.Path,
 				title:      filepath.Base(p.Path),

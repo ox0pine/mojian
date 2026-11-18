@@ -129,6 +129,11 @@ var Rows = []Row{
 	{ID: "scroll-past-end", Cat: Editor, Section: "WRITING", Title: "Scroll past the last line",
 		Detail: "Keep a little air below the end of the file.", Words: "scroll past end air bottom line",
 		Kind: Toggle, Pref: "NoScrollPastEnd", Invert: true},
+	{ID: "scroll-margin", Cat: Editor, Section: "WRITING", Title: "Keep lines around the caret",
+		Detail: "Lines kept between the caret and the pane's edge as it moves.", Words: "scroll margin scrolloff caret edge lines",
+		Kind: Choice, Pref: "EditorScrollMargin",
+		Options: []string{"None", "1 line", "3 lines", "5 lines", "8 lines"},
+		Values:  []int{-1, 1, 3, 5, 8}},
 
 	// Terminal
 	{ID: "terminal-font", Cat: Terminal, Section: "TYPE", Title: "Terminal font",

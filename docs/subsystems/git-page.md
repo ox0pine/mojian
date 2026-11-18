@@ -16,12 +16,12 @@ also reads, switches and creates the project's branches and reloads open notes a
   `selectCommit`.
 - [`internal/git/parse.go`](../../internal/git/parse.go) — `repoRoot`, `ReadStatus`, `parseStatus`,
   `statusLetter`, `ReadDiff`, `untrackedDiff`, `runGit`, `ParseDiff`, `DiffStat`, `FileDiff`,
-  `SplitDiff`.
+  `SplitDiff`, `toFilePatch` (a `FileDiff` as the viewer's `editor.FilePatch`), `gitHunkCounts`.
 - [`internal/git/history.go`](../../internal/git/history.go) — `Commit`, `HistoryData`,
   `ReadHistory`, `parseHistory`, `ReadCommitDiff`.
 - [`internal/git/branch_menu.go`](../../internal/git/branch_menu.go) — `ToggleBranchMenu`,
-  `CloseBranchMenu`, `loadBranches`, `applyBranches`, `chooseBranch`, `makeBranch`,
-  `branchMenuBody`, `branchMenuRow`, `newBranchBody`.
+  `openBranchMenu`, `CloseBranchMenu`, `loadBranches`, `applyBranches`, `chooseBranch`,
+  `makeBranch`, `branchMenuBody`, `branchMenuRow`, `newBranchBody`.
 - [`internal/git/view.go`](../../internal/git/view.go) — `(*Page).View`: header, file list, diff
   pane and its empty/loading/error states.
 - [`internal/gitenv/gitenv.go`](../../internal/gitenv/gitenv.go) — `Env`, the environment Git runs
@@ -50,14 +50,16 @@ also reads, switches and creates the project's branches and reloads open notes a
    `refreshBranch` through `a.later`, so the first paint never waits on Git; `ReadBranches` runs in
    the background through the same `Runner` and lands under `branch.seq`. The chip is absent while
    that read is pending, and for `BranchData.Root == ""`.
-5. The menu is a popover anchored to that chip, not a centered dialog. `branchMenuBody` draws it
-   from the shared title-bar pieces in `internal/app/context_menu.go`: a `BRANCHES` header with the
-   shortcut, one 36-pixel `menuChoice` per branch — leading check and `PanelSel` fill on the
-   current one — a `menuAction` row `New Branch…` under a divider, and `menuNote` for the
-   reading, empty and failure lines. `New Branch…` swaps the list for a name field whose Enter
-   runs `createBranchAt` with `BranchData.Current` named as the source. A click on a branch runs
-   `checkoutBranch`. The same menu opens from the `switch-branch` command, whose banner reports
-   the reason when there is no chip to anchor to.
+5. The menu is a `ui.MenuBase` menu anchored below that chip, not a centered dialog: the chip is
+   the menu button, so Up/Down/Home/End, type-ahead, Escape/Tab and focus return come from MyGo.
+   `branchMenuBody` draws it from the shared title-bar pieces in `internal/app/context_menu.go`:
+   a `BRANCHES` header with the shortcut as a plain child, one 34-pixel menu item per branch —
+   leading check and `PanelSel` fill on the current one — a `New Branch…` item under a divider,
+   and `branchNote` for the reading, empty and failure lines. `New Branch…` keeps the menu open
+   and swaps the list for a name field whose Enter runs `createBranchAt` with
+   `BranchData.Current` named as the source. A click on a branch runs `checkoutBranch`. The same
+   menu opens from the `switch-branch` command, whose banner reports the reason when there is no
+   chip to anchor to.
 6. `branchRoot` refuses the change while any note is dirty, since checkout would overwrite the file
    those edits belong to: the reason lands in the banner and in the menu's footer, and the menu
    stays open. Otherwise `runBranchChange` runs `git switch` (or `git checkout` for Git older than
@@ -95,13 +97,21 @@ also reads, switches and creates the project's branches and reloads open notes a
   process cannot change what the page reads.
 - Failures render inside the page (`Page.Err`, `Page.DiffErr`) instead of the app's error banner; a
   stale result is dropped, never shown over a newer one.
-- `diffLineText` draws at most `diffLineRunes` characters of one line and marks the cut with `…`. A
-  binary file Git reads as text is a single line of megabytes, and MyGo shapes a line in time
-  quadratic to its length, so the whole line stalled the frame for minutes.
-- A diff row wraps at the pane's width and has no horizontal scroll: `LineHeight(1.5)` with
-  `AlignItems(ui.Start)` so the line numbers sit on the first visual line, and the row's background
-  covers every wrapped line. `diffLineText` keeps ordinary spaces, since a no-break space would stop
-  the line from wrapping at all.
+- The diff pane is MyGo's `editor.DiffView` over one `editor.DiffState` per loaded diff. The states
+  are built on the frame that first draws them (`buildDiffViews`, `newDiffView`), where the window's
+  theme and font are known, and kept for that diff's generation (`diffGen`/`viewsGen`); a new diff
+  clears them and starts at the top. `Host.EditorTheme` is the editor theme with the pane's card as
+  its background, because the viewer mixes change tints against the background it is given.
+- `toFilePatch` turns a parsed `FileDiff` into the viewer's `editor.FilePatch`: hunk headers keep
+  their counts and section text, a blank context line regains its space prefix, and a `\ No newline`
+  line stays as it is. Every other line is cut at `diffLineRunes` (2000) with `…` after its prefix,
+  because a binary file Git reads as text arrives as one line of megabytes and the viewer would
+  shape it for minutes. Cutting changes no hunk's line counts, so numbering stays right.
+- The working tree's file scrolls inside the viewer (`FitContent` false, no outer `ui.Scroll`). A
+  commit's patch keeps the outer scroll and `p.DiffScroll`, one `FitContent` viewer per file under
+  its heading; the 2500-line budget cuts whole hunks (`cutFileDiff`) and still ends with the
+  "… diff truncated" note. The viewer brings selection, copy, find, go-to-line and its own
+  scrollbar, and draws its gutter, so the page no longer draws rows, numbers or per-line colors.
 - `BranchData.Current` is the checked-out branch, or the short hash of a detached HEAD with
   `Detached` set; no branch is marked `Current` in that case. `Root` is empty outside a repository,
   which hides the chip; the command reports "This folder is not a Git repository." in the banner.

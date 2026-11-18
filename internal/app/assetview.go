@@ -15,6 +15,11 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 )
 
+// maxPDFPageSide bounds a rendered page's decoded size, in pixels: the
+// renderer draws a page at its printing size, so a page larger than this
+// holds memory no pane can show.
+const maxPDFPageSide = 4096
+
 // markdownBody shows a note as rendered Markdown, with the same buffer
 // the editor writes.
 func (a *app) markdownBody(c *ui.Context, k *colors, p *pane) {
@@ -131,7 +136,7 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 				data, err := os.ReadFile(file)
 				var img ui.ImageSource
 				if err == nil {
-					img, err = ui.DecodeImage(data)
+					img, err = ui.DecodeBitmapScaled(data, maxPDFPageSide)
 				}
 				if err != nil {
 					v.pdfPageErr[page] = err.Error()

@@ -6,19 +6,22 @@ package prefs
 // its settings file embed it, so loading, saving, resetting and the JSON
 // keys all come from this one declaration.
 type Prefs struct {
-	Appearance          int     `json:"appearance"`
-	Theme               string  `json:"theme,omitempty"`
-	EditorFontFamily    string  `json:"editorFontFamily,omitempty"`
-	EditorFontSize      float64 `json:"editorFontSize,omitempty"`
-	EditorLineHeight    float64 `json:"editorLineHeight,omitempty"`
-	EditorTabSize       int     `json:"editorTabSize,omitempty"`
-	EditorSoftWrap      bool    `json:"editorSoftWrap,omitempty"`
-	HideLineNumbers     bool    `json:"hideLineNumbers,omitempty"`
-	MarkdownPreview     bool    `json:"markdownPreview,omitempty"`
-	NoActiveLine        bool    `json:"noActiveLine,omitempty"`
-	NoIndentGuides      bool    `json:"noIndentGuides,omitempty"`
-	NoAutoClose         bool    `json:"noAutoClose,omitempty"`
-	NoScrollPastEnd     bool    `json:"noScrollPastEnd,omitempty"`
+	Appearance       int     `json:"appearance"`
+	Theme            string  `json:"theme,omitempty"`
+	EditorFontFamily string  `json:"editorFontFamily,omitempty"`
+	EditorFontSize   float64 `json:"editorFontSize,omitempty"`
+	EditorLineHeight float64 `json:"editorLineHeight,omitempty"`
+	EditorTabSize    int     `json:"editorTabSize,omitempty"`
+	EditorSoftWrap   bool    `json:"editorSoftWrap,omitempty"`
+	HideLineNumbers  bool    `json:"hideLineNumbers,omitempty"`
+	MarkdownPreview  bool    `json:"markdownPreview,omitempty"`
+	NoActiveLine     bool    `json:"noActiveLine,omitempty"`
+	NoIndentGuides   bool    `json:"noIndentGuides,omitempty"`
+	NoAutoClose      bool    `json:"noAutoClose,omitempty"`
+	NoScrollPastEnd  bool    `json:"noScrollPastEnd,omitempty"`
+	// EditorScrollMargin is how many lines the editor keeps between the
+	// caret and the edge of the pane; -1 keeps none, as Vim's scrolloff.
+	EditorScrollMargin  int     `json:"editorScrollMargin,omitempty"`
 	TerminalFontFamily  string  `json:"terminalFontFamily,omitempty"`
 	TerminalFontSize    float64 `json:"terminalFontSize,omitempty"`
 	ShellPath           string  `json:"shellPath,omitempty"`
@@ -43,7 +46,8 @@ type Prefs struct {
 var defaults = Prefs{
 	Theme:          "petal",
 	EditorFontSize: 12.5, EditorLineHeight: 1.55, EditorTabSize: 4,
-	TerminalFontSize: 12.5, TerminalLineHeight: 1, TerminalScrollback: 10,
+	EditorScrollMargin: 3,
+	TerminalFontSize:   12.5, TerminalLineHeight: 1, TerminalScrollback: 10,
 	NotifyBell: true, NotifyExit: true,
 }
 
@@ -79,6 +83,13 @@ func (p *Prefs) Sanitize() {
 	p.EditorFontSize = clamp(p.EditorFontSize, 9, 28, defaults.EditorFontSize)
 	p.EditorLineHeight = clamp(p.EditorLineHeight, 1.1, 2.2, defaults.EditorLineHeight)
 	p.EditorTabSize = int(clamp(float64(p.EditorTabSize), 1, 8, float64(defaults.EditorTabSize)))
+	// The settings window offers a fixed set, and 0 would mean MyGo's own
+	// default rather than a choice, so only the offered values survive.
+	switch p.EditorScrollMargin {
+	case -1, 1, 3, 5, 8:
+	default:
+		p.EditorScrollMargin = defaults.EditorScrollMargin
+	}
 	p.TerminalFontSize = clamp(p.TerminalFontSize, 9, 28, defaults.TerminalFontSize)
 	p.TerminalLineHeight = clamp(p.TerminalLineHeight, 0.8, 2, defaults.TerminalLineHeight)
 	if p.TerminalCursor < 0 || p.TerminalCursor > 2 {

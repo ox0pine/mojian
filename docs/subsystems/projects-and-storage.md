@@ -81,6 +81,13 @@ the save path, path guards and the asset cache.
 - A listing that cannot read the project root (for example a denied macOS folder permission) returns
   that error instead of an empty listing, so the store and Explorer keep their previous tree. An
   unreadable folder below a readable root is skipped so the rest of the project stays usable.
+- A listing hides the folders the project's `.gitignore` files exclude, read from the root down as
+  the walk reaches them, so a generated tree the project ignores stays out of the Explorer while a
+  tracked folder stays visible whatever it is named. Only folders are decided: a file the project
+  ignores still lists and opens, so an ignored `.env` or log is not lost. `.git`, `.svn`, `.hg` and
+  `.mojian-trash` are hidden by name. Patterns follow Git: `#` comments, `!` negation, a trailing
+  `/` for folders, a `/` inside anchoring the pattern to the `.gitignore`'s folder, `**` crossing
+  folders, and a deeper `.gitignore` overriding its parents.
 - `Memory` lists nothing and refuses file operations with `errReadOnly` (its `Write` is a no-op); the browser build keeps its editor in memory.
 
 ## Verification

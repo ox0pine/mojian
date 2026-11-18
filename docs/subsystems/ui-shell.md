@@ -96,10 +96,13 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   `branchChip` sit in a `k.Track` frame at `radius`, and `titleChip` gives each a `tabH`-tall face
   that turns `k.TabActive` with the active tab's shadows while its menu is open, so the open chip
   reads as the raised tab above its popover.
-- The three title-bar popovers share `internal/app/context_menu.go`: `menuSurface` (one width,
-  inset and shadow for all of them), `menuHeader`, `menuChoice` (34 tall, with a leading check on
-  the current entry), `menuAction`, `menuNote` and `menuList` (scrolls after nine rows). A menu
-  adds its own rows only; a new menu takes the same pieces rather than a fourth set of metrics.
+- The three title-bar menus are `ui.MenuBase` menus, so the chip is the menu button and
+  Up/Down/Home/End, type-ahead, Escape/Tab and focus return come from MyGo. Their shared look
+  lives in `internal/app/context_menu.go`: `menuSurface` (one width, inset and shadow for all of
+  them), `menuHeader`, `menuChoice` (34 tall, with a leading check on the current entry),
+  `menuAction`, `menuNote` and `menuList` (scrolls after nine rows). Headers and notes are plain
+  children between the items, which is why the menus keep their exact look; a menu adds its own
+  rows only, and a new menu takes the same pieces rather than a fourth set of metrics.
 - A pane's body is one of three kinds, chosen by `paneCardMode`: a note, an asset, or a terminal.
   Background agent tasks have no pane; their sheet is part of the window's modal stack.
 - Every list row in a window is one row: `internal/app/style.go` holds `rowH` (34), `rowPadX`

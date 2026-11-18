@@ -33,14 +33,20 @@ func menuHeader(c *ui.Context, k *colors, title, keys string) {
 	})
 }
 
+// menuItem is one row of a drawn menu, keyed so its identity follows it
+// when the rows around it change.
+func menuItem(m ui.MenuParts, key any) ui.Element {
+	return m.Item().Key(key)
+}
+
 // menuChoice is one single-line choice: its icon, its label, and the
 // check the current one shows in place of the icon, on the selected fill.
-func menuChoice(c *ui.Context, k *colors, key any, icon, label string, current bool) ui.Element {
-	row := ui.ButtonBase(c.Key(key)).Height(menuRowH).Padding(0, menuInset).Gap(8).
+func menuChoice(c *ui.Context, k *colors, m ui.MenuParts, key any, icon, label string, current bool) ui.Element {
+	row := menuItem(m, key).Height(menuRowH).Padding(0, menuInset).Gap(8).
 		Radius(radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
 	if current {
 		row.Background(k.PanelSel)
-	} else if row.Hovered() {
+	} else if row.Highlighted() {
 		row.Background(k.Hover)
 	}
 	weight := 500
@@ -61,10 +67,10 @@ func menuChoice(c *ui.Context, k *colors, key any, icon, label string, current b
 
 // menuAction is a row that does something rather than choose a value:
 // the foot of a menu, above its divider.
-func menuAction(c *ui.Context, k *colors, key any, icon, label string) ui.Element {
-	row := ui.ButtonBase(c.Key(key)).Height(menuRowH).Padding(0, menuInset).Gap(8).
+func menuAction(c *ui.Context, k *colors, m ui.MenuParts, key any, icon, label string) ui.Element {
+	row := menuItem(m, key).Height(menuRowH).Padding(0, menuInset).Gap(8).
 		Radius(radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
-	if row.Hovered() {
+	if row.Highlighted() {
 		row.Background(k.Hover)
 	}
 	row.Children(func() {

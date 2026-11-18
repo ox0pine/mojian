@@ -88,25 +88,58 @@ func TestParseStatusKeepsRenameSource(t *testing.T) {
 	}
 }
 
-func TestDiffLineTextCapsABinaryLine(t *testing.T) {
+func TestToFilePatchClipsAHugeLine(t *testing.T) {
 	// A binary file Git prints as text arrives as one line of megabytes.
 	// Passing it on whole made the layout of one frame take minutes.
 	long := strings.Repeat("\xff", 1<<20)
-	got := diffLineText(long)
-	if n := utf8.RuneCountInString(got); n > diffLineRunes+1 {
-		t.Fatalf("rendered line has %d runes", n)
+	diff := "diff --git a/blob.bin b/blob.bin\n--- a/blob.bin\n+++ b/blob.bin\n@@ -1 +1 @@\n-" + long + "\n+" + long + "\n"
+	files := SplitDiff(diff)
+	if len(files) != 1 {
+		t.Fatalf("files: %d", len(files))
 	}
-	if !strings.HasPrefix(got, strings.Repeat("\xff", 32)) {
-		t.Fatal("the cut line lost its start")
+	p := toFilePatch(files[0])
+	if len(p.Hunks) != 1 || len(p.Hunks[0].Lines) != 2 {
+		t.Fatalf("hunks: %+v", p.Hunks)
 	}
-	if !strings.HasSuffix(got, "…") {
-		t.Fatalf("the cut line has no ellipsis: %q", got[max(0, len(got)-8):])
+	for _, line := range p.Hunks[0].Lines {
+		if n := utf8.RuneCountInString(line); n > diffLineRunes+2 {
+			t.Fatalf("patch line has %d runes", n)
+		}
+		if line[0] != '+' && line[0] != '-' {
+			t.Fatalf("the cut line lost its prefix: %q", line[:1])
+		}
+		if !strings.HasSuffix(line, "…") {
+			t.Fatalf("the cut line has no ellipsis: %q", line[max(0, len(line)-8):])
+		}
 	}
-	if tabbed := diffLineText("+a\tb"); tabbed != "+a    b" {
-		t.Fatalf("tab: %q", tabbed)
+	if p.OldName != "blob.bin" || p.NewName != "blob.bin" {
+		t.Fatalf("names: %q %q", p.OldName, p.NewName)
 	}
-	if blank := diffLineText("  "); blank != "\u00a0" {
-		t.Fatalf("blank row: %q", blank)
+}
+
+func TestToFilePatchKeepsPrefixes(t *testing.T) {
+	diff := "diff --git a/a.txt b/a.txt\nnew file mode 100644\n--- /dev/null\n+++ b/a.txt\n" +
+		"@@ -0,0 +1,2 @@ section\n+one\n+\n\\ No newline at end of file\n"
+	files := SplitDiff(diff)
+	if len(files) != 1 {
+		t.Fatalf("files: %d", len(files))
+	}
+	p := toFilePatch(files[0])
+	if p.OldName != "" || p.NewName != "a.txt" {
+		t.Fatalf("names: %q %q", p.OldName, p.NewName)
+	}
+	if len(p.Hunks) != 1 || p.Hunks[0].Section != "section" {
+		t.Fatalf("hunks: %+v", p.Hunks)
+	}
+	got := p.Hunks[0].Lines
+	want := []string{"+one", "+", "\\ No newline at end of file"}
+	if len(got) != len(want) {
+		t.Fatalf("lines: %q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("line %d: %q, want %q", i, got[i], want[i])
+		}
 	}
 }
 

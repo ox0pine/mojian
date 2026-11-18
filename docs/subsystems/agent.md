@@ -47,7 +47,7 @@ process that lives only as long as its task.
    sheet answers with an option ID; Reject or closing the window answers cancelled.
 6. `session/prompt` returning (or failing) notifies `Agent finished` / `Agent error` and closes
    the session. The notification body is the answer's first 160 characters, or the prompt when the
-   answer was empty.
+   answer was empty; its subtitle names the agent, and the time the task took once it ended.
 7. Closing the window, Stop or a new project stops the task and kills the agent.
 
 ## Contracts and failure behavior

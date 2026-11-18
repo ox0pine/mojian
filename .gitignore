@@ -6,6 +6,9 @@
 
 /mojian
 
+# what a failed golden test draws, for comparing beside its image
+*.got.png
+
 # update signing keys never enter the repository
 /mygo-update.key
 /mygo-update.pub

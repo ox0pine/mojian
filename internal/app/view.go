@@ -178,8 +178,8 @@ func (a *app) tip(label string, cmd *commands.Command) string {
 // titleChip is the frame of one chip in the title bar's context track:
 // tab-sized, so the machine, project and branch read as a group, and
 // filled like the active tab while its menu is open.
-func titleChip(c *ui.Context, k *colors, open bool) ui.Element {
-	e := ui.ButtonBase(c).Height(tabH-4).Gap(6).Padding(0, 8, 0, 6).Radius(radius - 2).
+func titleChip(e ui.Element, k *colors, open bool) ui.Element {
+	e.Height(tabH-4).Gap(6).Padding(0, 8, 0, 6).Radius(radius - 2).
 		Justify(ui.Start).Cursor(ui.CursorPointer).Shrink(0).ClipX().
 		Transition(motion.Colors)
 	switch {

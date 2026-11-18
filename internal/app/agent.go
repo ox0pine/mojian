@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"mojian/internal/acp"
 	"mojian/internal/icons"
@@ -15,11 +17,12 @@ import (
 // agentTask is the window's one background ACP task: a prompt run
 // without a pane, whose only voice is a system notification.
 type agentTask struct {
-	prompt string
-	agent  string
-	sess   *acp.Session
-	perm   *acp.Permission
-	reply  strings.Builder
+	prompt  string
+	agent   string
+	sess    *acp.Session
+	perm    *acp.Permission
+	reply   strings.Builder
+	started time.Time
 }
 
 // openAgentTask asks for the task, or shows the permission a running
@@ -54,7 +57,7 @@ func (a *app) startAgentTask(prompt string) {
 		a.fail(errors.New("agent tasks need a window"))
 		return
 	}
-	t := &agentTask{prompt: prompt}
+	t := &agentTask{prompt: prompt, started: time.Now()}
 	a.agentTask = t
 	a.agentOpen = false
 	dir := a.store.Dir
@@ -68,7 +71,7 @@ func (a *app) startAgentTask(prompt string) {
 					return
 				}
 				a.agentTask = nil
-				a.notifyAgentTask("Agent could not start", err.Error())
+				a.notifyAgentTask("Agent could not start", "", err.Error())
 				a.invalidate()
 			})
 			return
@@ -83,7 +86,7 @@ func (a *app) startAgentTask(prompt string) {
 		if err := s.Prompt(context.Background(), prompt); err != nil {
 			post(func() {
 				if a.agentTask == t {
-					a.notifyAgentTask("Agent error", err.Error())
+					a.notifyAgentTask("Agent error", t.agentSub(false), err.Error())
 					a.finishAgentTask(t)
 				}
 			})
@@ -120,22 +123,22 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 		t.reply.WriteString(ev.Text)
 	case acp.KindTool:
 		if ev.Tool != nil && ev.Tool.Status == acp.StatusFailed {
-			a.notifyAgentTask("Agent tool failed", ev.Tool.Title)
+			a.notifyAgentTask("Agent tool failed", t.agentSub(false), ev.Tool.Title)
 		}
 	case acp.KindPermission:
 		t.perm = ev.Permission
 		a.agentOpen = true
-		a.notifyAgentTask("Agent needs permission", ev.Permission.Title)
+		a.notifyAgentTask("Agent needs permission", t.agentSub(false), ev.Permission.Title)
 	case acp.KindTurnDone:
 		body := agentNotificationBody(t.reply.String(), t.prompt)
-		a.notifyAgentTask("Agent finished", body)
+		a.notifyAgentTask("Agent finished", t.agentSub(true), body)
 		a.finishAgentTask(t)
 	case acp.KindFailed:
-		a.notifyAgentTask("Agent error", ev.Err.Error())
+		a.notifyAgentTask("Agent error", t.agentSub(false), ev.Err.Error())
 		a.finishAgentTask(t)
 	case acp.KindClosed:
 		if t.sess != nil {
-			a.notifyAgentTask("Agent stopped", t.prompt)
+			a.notifyAgentTask("Agent stopped", t.agentSub(false), t.prompt)
 			a.finishAgentTask(t)
 		}
 	}
@@ -191,12 +194,38 @@ func (a *app) answerAgentTask(option string) {
 }
 
 // notifyAgentTask is the task's only result: the window has no pane to
-// print into.
-func (a *app) notifyAgentTask(title, body string) {
+// print into. The subtitle names the agent, and the time it took once
+// the task ended, so a notification says who ran and for how long.
+func (a *app) notifyAgentTask(title, subtitle, body string) {
 	if a.harness || a.quitting {
 		return
 	}
-	mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
+	mygo.NewNotification(mygo.NotificationOptions{
+		Title: title, Subtitle: subtitle, Body: body,
+	}).Show()
+}
+
+// agentSub names the agent in a notification's subtitle.
+func (t *agentTask) agentSub(done bool) string {
+	name := t.agent
+	if name == "" {
+		return ""
+	}
+	if !done {
+		return name
+	}
+	return name + " · " + shortDuration(time.Since(t.started))
+}
+
+// shortDuration is a task's running time as a notification says it.
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
 // agentNotificationBody condenses an answer for a notification.

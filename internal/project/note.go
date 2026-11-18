@@ -62,7 +62,13 @@ func (f *Asset) LocalPath() string {
 	return f.Path
 }
 
-// Image decodes the picture once, on the frame that first shows it.
+// maxAssetSide bounds the longest side of a decoded picture, in pixels: a
+// pane showing it at fit holds about 4000 pixels across a 5K display, so a
+// photo larger than that keeps memory no pane can show.
+const maxAssetSide = 4096
+
+// Image decodes the picture once, on the frame that first shows it, to no
+// more than maxAssetSide pixels on its longest side.
 func (f *Asset) Image() (ui.ImageSource, error) {
 	f.Once.Do(func() {
 		data, err := os.ReadFile(f.LocalPath())
@@ -70,7 +76,7 @@ func (f *Asset) Image() (ui.ImageSource, error) {
 			f.Err = err
 			return
 		}
-		f.Img, f.Err = ui.DecodeImage(data)
+		f.Img, f.Err = ui.DecodeBitmapScaled(data, maxAssetSide)
 	})
 	return f.Img, f.Err
 }

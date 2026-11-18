@@ -84,6 +84,12 @@ var (
 	// above its anchor, so the menu feels attached to the chip.
 	PopoverIn = ui.Animation{Spring: ui.SpringOptions{Duration: 180 * time.Millisecond}}
 
+	// ListMove carries a list's rows to their places as rows come, go or
+	// move around them, as the Git page's changes do when a file is saved
+	// or a commit is picked. Shorter than a page's spring, so a list
+	// settles rather than performs.
+	ListMove = spring(180 * time.Millisecond)
+
 	// Colors makes hover faces catch up with the pointer.
 	Colors = ui.ElementTransition{
 		Duration: colorDuration,

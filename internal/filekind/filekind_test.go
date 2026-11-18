@@ -51,14 +51,18 @@ func TestClassifyFileReadsOnlyUnknownHeads(t *testing.T) {
 	}
 }
 
-func TestSkipDirHidesGeneratedTreesAndRemoteTrash(t *testing.T) {
-	for _, name := range []string{".git", "node_modules", "dist", ".mojian-trash"} {
+func TestSkipDirHidesOnlyVersionControlAndTrash(t *testing.T) {
+	for _, name := range []string{".git", ".svn", ".hg", ".mojian-trash"} {
 		if !SkipDir(name) {
 			t.Errorf("%q is not skipped", name)
 		}
 	}
-	if SkipDir("src") {
-		t.Error("src is skipped")
+	// A tracked folder keeps its name, whatever it is called: .gitignore
+	// decides the rest.
+	for _, name := range []string{"src", "build", "dist", "node_modules", "vendor"} {
+		if SkipDir(name) {
+			t.Errorf("%q is skipped by name", name)
+		}
 	}
 }
 
