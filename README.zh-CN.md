@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=1F1B16" alt="MIT 许可证" height="22"></a>
 </p>
 
-墨间是一款直接打开普通文件夹的原生纯文本编辑器。编辑文件、预览图片与 PDF、运行常驻终端，并在平铺工作区中查看 Git diff。没有数据库、账号、WebView 或 cgo。支持 macOS 13+、Linux 与 Windows 10 1809+。
+墨间是一款直接打开普通文件夹的原生纯文本编辑器。编辑文件、预览图片与 PDF、运行常驻终端，并在平铺工作区中查看 Git diff。没有数据库、账号、WebView 或 cgo。支持 macOS 13+、Linux 与 Windows 10 1809+；Windows 是仅本地客户端，暂不支持 SSH 与远程项目。
 
 [下载最新版本](https://github.com/ox0pine/mojian/releases) · [English](README.md) · [从源码构建](#从源码构建)
 
@@ -24,56 +24,6 @@
 - **内置 Git diff。** 不离开窗口即可查看已暂存、未暂存和未跟踪的改动。
 - **通过 SSH 的远程项目。** 在 macOS 与 Linux 上，文件、Git 和终端直接在配置的主机上运行。
 - **单个 Go 二进制的原生界面。** [MyGo](https://mygo.egoist.dev) 在 macOS 上用 Metal、在 Linux 上用 GTK 3、在 Windows 上用 Direct3D 11 绘制界面。没有 Electron，也没有 JavaScript 构建。
-
-## 安装
-
-从 [Releases](https://github.com/ox0pine/mojian/releases) 下载最新构建。
-
-### macOS
-
-| 架构 | 下载 |
-|---|---|
-| Apple Silicon | `mojian-<版本>-arm64.dmg` |
-| Intel | `mojian-<版本>-amd64.dmg` |
-
-打开磁盘映像，把墨间拖进「应用程序」。发布构建采用 ad-hoc 签名、未经公证。如果 macOS 拦截首次启动，请在 Finder 中右键墨间并选择 **打开**。
-
-### Linux
-
-墨间需要 GTK 3 和桌面会话。
-
-安装 Debian 或 RPM 包：
-
-```sh
-sudo apt install ./mojian_<版本>_<架构>.deb        # Debian、Ubuntu
-sudo dnf install ./mojian-<版本>-<rpm 架构>.rpm  # Fedora、RHEL
-```
-
-`<架构>` 为 `amd64` 或 `arm64`；`<rpm 架构>` 为 `x86_64` 或 `aarch64`。
-
-如果想安装到用户目录、不需要 root：把 `install.sh` 和
-`mojian-<版本>-linux-<架构>.tar.gz` 放在同一目录，然后运行：
-
-```sh
-sh install.sh
-```
-
-### Windows
-
-墨间需要 Windows 10 1809 或更高版本。
-
-| 架构 | 下载 |
-|---|---|
-| x64 | `mojian-setup-<版本>-amd64.exe` |
-| ARM64 | `mojian-setup-<版本>-arm64.exe` |
-
-安装器为当前用户安装，不需要管理员权限。目前构建未签名，SmartScreen 可能提示。启用更新时，可以一行安装：
-
-```powershell
-irm https://github.com/ox0pine/mojian/releases/latest/download/install.ps1 | iex
-```
-
-Windows 目前是仅本地客户端：本地文件、Git、图片、Poppler PDF 和本地终端可用；SSH 与远程项目暂不可用。
 
 ## 项目与文件
 
@@ -224,33 +174,17 @@ go run ./cmd/harness -addr 127.0.0.1:8090
 
 每次运行都会在临时目录中生成一个一次性项目；这些夹具绝不会打开原生窗口、启动终端，也不会触碰你的项目与设置。该端点没有身份验证，请保持在回环地址上。
 
-### 发布构建
+### 构建应用包
 
 ```sh
-go tool mygo build -platform darwin/arm64,darwin/amd64
-go tool mygo build -platform linux/amd64,linux/arm64
-go tool mygo build -platform windows/amd64,windows/arm64
+go tool mygo build
 ```
 
-产物位于 `build/<系统>-<架构>/`。macOS 生成 `.app` 与 `.dmg`；Linux 生成 `.tar.gz`、`.deb` 与 `.rpm`；Windows 生成应用与 `mojian-setup-<版本>-<架构>.exe`。
-
-修改会话协议或 `cmd/mojian-server` 后，重新生成嵌入的远程二进制：
+产物位于 `build/<系统>-<架构>/`。修改会话协议或 `cmd/mojian-server` 后，重新生成嵌入的远程二进制：
 
 ```sh
 go generate ./internal/remotebin
 ```
-
-### 发布版本
-
-推送 `vX.Y.Z` tag 会运行 [`.github/workflows/release.yml`](.github/workflows/release.yml)：先测试代码树，再构建全部平台，创建草稿 Release，上传安装包和 `SHA256SUMS`，所有上传成功后才正式发布。完整流程见 [`RELEASING.md`](RELEASING.md)。
-
-每次发布包含：
-
-- macOS：`mojian-<版本>-arm64.dmg` 和 `mojian-<版本>-amd64.dmg`
-- Linux：`mojian-<版本>-linux-{amd64,arm64}.tar.gz`、对应的 `.deb` 与 `.rpm` 包和 `install.sh`
-- Windows：`mojian-setup-<版本>-{amd64,arm64}.exe`、`install.ps1` 和 `mojian-<版本>-windows-{amd64,arm64}.tar.gz`
-- 签名更新包（`*-darwin-*.tar.gz`、`*-linux-*.tar.gz`、`*-windows-*.tar.gz`）与 `update-<target>.json` 清单
-- `SHA256SUMS`
 
 ## 设计
 

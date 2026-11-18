@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/ox0pine/mojian?style=flat&amp;labelColor=1F1B16&amp;color=1F1B16" alt="MIT license" height="22"></a>
 </p>
 
-Mojian is a native plain-text editor for ordinary folders. Edit files, preview images and PDFs, run persistent terminals, and inspect Git diffs in tiled workspaces. No database, account, webview, or cgo. Runs on macOS 13+, Linux, and Windows 10 1809+.
+Mojian is a native plain-text editor for ordinary folders. Edit files, preview images and PDFs, run persistent terminals, and inspect Git diffs in tiled workspaces. No database, account, webview, or cgo. Runs on macOS 13+, Linux, and Windows 10 1809+. Windows is a local-only client: SSH and remote projects are not available there.
 
 [Download the latest release](https://github.com/ox0pine/mojian/releases) · [简体中文](README.zh-CN.md) · [Build from source](#build-from-source)
 
@@ -24,55 +24,6 @@ Mojian is a native plain-text editor for ordinary folders. Edit files, preview i
 - **Built-in Git diffs.** Inspect staged, unstaged, and untracked work without leaving the window.
 - **Remote projects over SSH.** Files, Git, and terminals run directly on the configured host on macOS and Linux.
 - **Native UI in one Go binary.** [MyGo](https://mygo.egoist.dev) draws the interface with Metal on macOS, GTK 3 on Linux, and Direct3D 11 on Windows. No Electron or JavaScript build.
-
-## Installation
-
-Download the latest build from [Releases](https://github.com/ox0pine/mojian/releases).
-
-### macOS
-
-| Architecture | Download |
-|---|---|
-| Apple Silicon | `mojian-<version>-arm64.dmg` |
-| Intel | `mojian-<version>-amd64.dmg` |
-
-Open the disk image and drag Mojian into Applications. Release builds are ad-hoc signed rather than notarized. If macOS blocks the first launch, right-click Mojian in Finder and choose **Open**.
-
-### Linux
-
-Mojian requires GTK 3 and a desktop session.
-
-Install the Debian or RPM package:
-
-```sh
-sudo apt install ./mojian_<version>_<arch>.deb        # Debian, Ubuntu
-sudo dnf install ./mojian-<version>-<rpm-arch>.rpm  # Fedora, RHEL
-```
-
-`<arch>` is `amd64` or `arm64`; `<rpm-arch>` is `x86_64` or `aarch64`.
-
-For a per-user installation without root, put `install.sh` and `mojian-<version>-linux-<arch>.tar.gz` in the same folder, then run:
-
-```sh
-sh install.sh
-```
-
-### Windows
-
-Mojian requires Windows 10 1809 or later.
-
-| Architecture | Download |
-|---|---|
-| x64 | `mojian-setup-<version>-amd64.exe` |
-| ARM64 | `mojian-setup-<version>-arm64.exe` |
-
-The installer installs for the current user, without administrator rights. Builds are unsigned for now, so SmartScreen may ask before running one. With updates enabled, the one-line install is:
-
-```powershell
-irm https://github.com/ox0pine/mojian/releases/latest/download/install.ps1 | iex
-```
-
-Windows is supported as a local-only client: local files, Git, images, PDFs with Poppler, and local terminals work; SSH and remote projects are not available there yet.
 
 ## Projects and files
 
@@ -230,33 +181,17 @@ Each run seeds a disposable project in the temp directory, and the fixtures
 never open native windows, start terminals or touch your projects and
 settings. The endpoint has no authentication, so keep it on loopback.
 
-### Release builds
+### Build an app bundle
 
 ```sh
-go tool mygo build -platform darwin/arm64,darwin/amd64
-go tool mygo build -platform linux/amd64,linux/arm64
-go tool mygo build -platform windows/amd64,windows/arm64
+go tool mygo build
 ```
 
-Build output lives under `build/<os>-<arch>/`. macOS produces `.app` and `.dmg`; Linux produces `.tar.gz`, `.deb` and `.rpm`; Windows produces the app and `mojian-setup-<version>-<arch>.exe`.
-
-After changing the session protocol or `cmd/mojian-server`, rebuild the embedded remote binaries:
+It writes the app and its installers under `build/<os>-<arch>/`. After changing the session protocol or `cmd/mojian-server`, rebuild the embedded remote binaries:
 
 ```sh
 go generate ./internal/remotebin
 ```
-
-### Publishing a release
-
-Push a `vX.Y.Z` tag to run [`.github/workflows/release.yml`](.github/workflows/release.yml). The workflow tests the tree, builds every platform, creates a draft release, uploads the installers and `SHA256SUMS`, and publishes only after every upload succeeds. See [`RELEASING.md`](RELEASING.md) for the full process.
-
-Each release contains:
-
-- macOS: `mojian-<version>-arm64.dmg` and `mojian-<version>-amd64.dmg`
-- Linux: `mojian-<version>-linux-{amd64,arm64}.tar.gz`, matching `.deb` and `.rpm` packages, and `install.sh`
-- Windows: `mojian-setup-<version>-{amd64,arm64}.exe`, `install.ps1`, and `mojian-<version>-windows-{amd64,arm64}.tar.gz`
-- Signed update archives (`*-darwin-*.tar.gz`, `*-linux-*.tar.gz`, `*-windows-*.tar.gz`) and `update-<target>.json` manifests
-- `SHA256SUMS`
 
 ## Design
 
