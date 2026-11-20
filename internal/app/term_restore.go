@@ -77,9 +77,11 @@ func (a *app) startRestoredTerminal(p *pane) {
 	client, err := a.terminalClientExisting(t.Spec)
 	if err != nil {
 		if a.win != nil && t.Spec.Server != "" && t.Spec.Server != localServerID &&
-			t.Spec.Server == a.serverAlias && !a.remoteBusy {
+			t.Spec.Server == a.serverAlias {
 			t.connecting = true
-			a.reconnectActiveRemoteAsync()
+			if !a.remoteBusy {
+				a.reconnectActiveRemoteAsync()
+			}
 			a.invalidate()
 			return
 		}
@@ -167,7 +169,11 @@ func (a *app) endTerminal(t *termTab) {
 	}
 	client := t.Client
 	if client == nil {
-		client = a.sessionClient
+		if t.Spec.Server == "" || t.Spec.Server == localServerID || t.Spec.Host != "" {
+			client = a.sessionClient
+		} else if rc := a.remoteForHost(t.Spec.Server); rc != nil {
+			client = rc.Client
+		}
 	}
 	if client == nil {
 		return

@@ -54,11 +54,13 @@ func menuChoice(c *ui.Context, k *colors, m ui.MenuParts, key any, icon, label s
 		weight = 600
 	}
 	row.Children(func() {
-		if current {
-			ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
-		} else {
-			ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
-		}
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			if current {
+				ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
+			} else {
+				ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
+			}
+		})
 		ui.Text(c, label).FontSize(13).FontWeight(weight).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
@@ -74,7 +76,9 @@ func menuAction(c *ui.Context, k *colors, m ui.MenuParts, key any, icon, label s
 		row.Background(k.Hover)
 	}
 	row.Children(func() {
-		ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
+		})
 		ui.Text(c, label).FontSize(13).TextColor(k.Text)
 	})
 	return row

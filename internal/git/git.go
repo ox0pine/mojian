@@ -119,6 +119,8 @@ type Page struct {
 	// draw the one of viewsGen with MyGo's diff viewer, and are built on
 	// the frame that first draws them, where the window's theme is known.
 	diffGen    int
+	diffAdd    int
+	diffDel    int
 	diffView   *editor.DiffState
 	patchViews []*editor.DiffState
 	viewsGen   int
@@ -158,6 +160,7 @@ type StatusData struct {
 func (p *Page) Toggle(h Host) {
 	p.h = h
 	p.runner = h.GitRunner()
+	p.CloseBranchMenu()
 	if p.Open {
 		p.Open = false
 		h.Invalidate()
@@ -170,9 +173,7 @@ func (p *Page) Toggle(h Host) {
 	p.Open = true
 	p.Changes = nil
 	p.Sel = -1
-	p.Diff = ""
-	p.DiffPath = ""
-	p.patch = nil
+	p.clearDiff()
 	p.Err = ""
 	p.Loading = true
 	p.Refresh()
@@ -226,9 +227,7 @@ func (p *Page) applyStatus(seq int, data StatusData) {
 			// replace.
 			return
 		}
-		p.Diff = ""
-		p.DiffPath = ""
-		p.patch = nil
+		p.clearDiff()
 		return
 	}
 	sel := min(max(p.Sel, 0), len(data.Changes)-1)
@@ -236,13 +235,8 @@ func (p *Page) applyStatus(seq int, data StatusData) {
 		p.Sel = sel
 		return
 	}
-	if sel != p.Sel || p.DiffPath != data.Changes[sel].Display ||
-		p.Diff == "" && p.DiffErr == "" && !p.DiffLoad {
-		p.Sel = sel
-		p.loadDiff(sel)
-		return
-	}
 	p.Sel = sel
+	p.loadDiff(sel)
 }
 
 // ShowHistory switches the left list to the repository's commits.
@@ -273,6 +267,7 @@ func (p *Page) clearDiff() {
 	p.DiffPath = ""
 	p.DiffErr = ""
 	p.DiffLoad = false
+	p.diffAdd, p.diffDel = 0, 0
 	p.DiffSeq++
 	p.patch = nil
 	p.diffGen++
@@ -386,9 +381,15 @@ func (p *Page) Reset() {
 	p.DiffErr = ""
 	p.HistoryLoad = false
 	p.HistoryErr = ""
+	p.BranchMenu = false
+	p.branchLoad = false
+	p.branchNew = false
+	p.branchName = ""
+	p.branchErr = ""
 	p.Seq++
 	p.DiffSeq++
 	p.HistorySeq++
+	p.branchSeq++
 }
 
 func (p *Page) Select(i int) {
@@ -441,12 +442,14 @@ func (p *Page) applyDiff(seq int, diff string, err error) {
 	}
 	p.DiffLoad = false
 	p.Diff = diff
+	p.diffAdd, p.diffDel = DiffStat(diff)
 	p.DiffErr = ""
 	p.patch = nil
 	p.diffGen++
 	p.diffView, p.patchViews = nil, nil
 	if err != nil {
 		p.DiffErr = err.Error()
+		p.diffAdd, p.diffDel = 0, 0
 		return
 	}
 	if p.Mode == ModeHistory {

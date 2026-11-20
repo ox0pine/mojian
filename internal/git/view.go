@@ -71,7 +71,7 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 	ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(10).AlignItems(ui.Center).Children(func() {
 		// One track holds the lists and the branch, as the title bar's
 		// track holds the machine, project and branch chips.
-		ui.Row(c).Height(28).Gap(4).Radius(theme.Radius).
+		ui.Row(c).Height(28).Padding(2).Gap(4).Radius(theme.Radius).
 			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).
 			Children(func() {
 				p.modeTab(c, k, "Changes", ModeChanges)
@@ -88,7 +88,8 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 			Tooltip("Refresh").Clicked() {
 			p.Refresh()
 		}
-		if iconButton(c, k, "x", "Close Changes", 26, 16).Clicked() {
+		if iconButton(c, k, "x", "Close "+p.Title(), 26, 16).
+			Tooltip("Close").Clicked() {
 			p.Open = false
 			p.h.Invalidate()
 		}
@@ -98,8 +99,8 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 // modeTab is one segment of the page's list switch.
 func (p *Page) modeTab(c *ui.Context, k *theme.Colors, label string, mode PageMode) {
 	active := p.Mode == mode
-	b := ui.ButtonBase(c).Height(28).Padding(0, 9).Radius(theme.Radius).
-		Cursor(ui.CursorPointer).Label(label)
+	b := ui.ButtonBase(c).Height(24).Padding(0, 9).Radius(theme.Radius - 2).
+		Cursor(ui.CursorPointer).Label(label).Transition(motion.Colors)
 	switch {
 	case active:
 		b.Background(k.TabActive)
@@ -130,9 +131,10 @@ func (p *Page) modeTab(c *ui.Context, k *theme.Colors, label string, mode PageMo
 // this header read as one row.
 func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 	m := ui.MenuBase(c, &p.BranchMenu)
-	b := m.Trigger.Height(28).Padding(0, 8, 0, 6).Radius(theme.Radius).
+	b := m.Trigger.Height(24).Padding(0, 8, 0, 6).Radius(theme.Radius - 2).
 		Gap(6).Cursor(ui.CursorPointer).Label("Switch branch: " + p.Branch).
-		Tooltip("Switch branch: " + p.Branch)
+		Tooltip("Switch branch: " + p.Branch).MaxWidth(210).ClipX().
+		Transition(motion.Colors)
 	switch {
 	case p.BranchMenu:
 		b.Background(k.TabActive)
@@ -162,7 +164,7 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 	m.Popup(func(panel ui.Element) {
 		panel.Width(branchMenuW).Padding(6).Radius(theme.Radius).
 			Background(k.Panel).Border(1, k.PanelBorder).
-			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).Clip().
+			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
 			Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
 		panel.Margin(4, 0, 0, 0)
 		p.branchMenuBody(c, k, m)
@@ -193,8 +195,8 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 		p.list.MoveAnimation = motion.ListMove
 		list := ui.List(c, &p.list, len(p.Changes), func(i int) {
 			ch := p.Changes[i]
-			row := ui.Row(c.Key(fmt.Sprintf("git:%d", i))).Height(34).Padding(0, 10).
-				Gap(10).Radius(theme.Radius).Cursor(ui.CursorPointer).
+			row := ui.Row(c.Key("git:"+ch.Display)).Height(34).Padding(0, 10).
+				Gap(10).Radius(theme.Radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 				Label(ch.Display).Tooltip(ch.Display + " — " + statusLabel(ch.Status)).
 				PopoverMenu(func(m *ui.Menu) { p.h.FileMenu(m, ch.Display) })
 			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
@@ -219,7 +221,7 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 				})
 				p.statusBadge(c, k, ch.Status, i == p.Sel)
 			})
-		}).Grow(1).MinHeight(0).Padding(6, 7).Gap(4)
+		}).Grow(1).MinHeight(0).Padding(6, 7).Gap(6)
 		if list.Changed() {
 			p.Select(p.Sel)
 		}
@@ -237,8 +239,8 @@ func (p *Page) commits(c *ui.Context, k *theme.Colors) {
 	p.historyList.MoveAnimation = motion.ListMove
 	list := ui.List(c, &p.historyList, len(p.Commits), func(i int) {
 		commit := p.Commits[i]
-		row := ui.Row(c.Key(fmt.Sprintf("git-commit:%d", i))).Height(34).Padding(0, 10).
-			Gap(10).Radius(theme.Radius).Cursor(ui.CursorPointer).
+		row := ui.Row(c.Key("git-commit:"+commit.Hash)).Height(34).Padding(0, 10).
+			Gap(10).Radius(theme.Radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 			Label(commit.Subject).
 			Tooltip(commit.Short + " · " + commit.Author + " · " + commit.When)
 		fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
@@ -250,14 +252,14 @@ func (p *Page) commits(c *ui.Context, k *theme.Colors) {
 		}
 		row.Children(func() {
 			ui.Icon(c, icons.Icon("git-commit")).Size(15, 15).TextColor(icon)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Text(c, commit.Subject).FontSize(13).FontWeight(500).TextColor(fg).
 					SingleLine().Ellipsis("…")
 				ui.Text(c, commitMeta(commit)).FontSize(12).TextColor(muted).
 					SingleLine().Ellipsis("…")
 			})
 		})
-	}).Grow(1).MinHeight(0).Padding(6, 7).Gap(4)
+	}).Grow(1).MinHeight(0).Padding(6, 7).Gap(6)
 	if list.Changed() {
 		p.selectCommit(p.CommitSel)
 	}
@@ -343,7 +345,7 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 		}
 		ui.Icon(c, icons.FileIcon(path)).Size(15, 15).TextColor(k.TextMuted)
 		ui.Text(c, filepath.Base(path)).FontSize(13).FontWeight(500).TextColor(k.Text).
-			SingleLine().Shrink(0)
+			SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 		if dir := filepath.Dir(path); dir != "." {
 			ui.Text(c, dir).FontSize(12).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
@@ -352,10 +354,10 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 		if status := p.changeStatus(); status != "" {
 			p.statusBadge(c, k, status, false)
 		}
-		if add, del := DiffStat(p.Diff); add > 0 || del > 0 {
-			ui.Text(c, fmt.Sprintf("+%d", add)).FontSize(11).FontWeight(600).
+		if p.diffAdd > 0 || p.diffDel > 0 {
+			ui.Text(c, fmt.Sprintf("+%d", p.diffAdd)).FontSize(11).FontWeight(600).
 				TextColor(k.DiffAdd).Shrink(0)
-			ui.Text(c, fmt.Sprintf("−%d", del)).FontSize(11).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(11).FontWeight(600).
 				TextColor(k.DiffDel).Shrink(0)
 		}
 		if p.h.HasPath(path) {
@@ -387,10 +389,10 @@ func (p *Page) commitHeader(c *ui.Context, k *theme.Colors) {
 	ui.Text(c, commit.Subject).FontSize(13).FontWeight(500).TextColor(k.Text).
 		SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	ui.Spacer(c)
-	if add, del := DiffStat(p.Diff); add > 0 || del > 0 {
-		ui.Text(c, fmt.Sprintf("+%d", add)).FontSize(11).FontWeight(600).
+	if p.diffAdd > 0 || p.diffDel > 0 {
+		ui.Text(c, fmt.Sprintf("+%d", p.diffAdd)).FontSize(11).FontWeight(600).
 			TextColor(k.DiffAdd).Shrink(0)
-		ui.Text(c, fmt.Sprintf("−%d", del)).FontSize(11).FontWeight(600).
+		ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(11).FontWeight(600).
 			TextColor(k.DiffDel).Shrink(0)
 	}
 }
@@ -431,8 +433,11 @@ func (p *Page) diffState(c *ui.Context, k *theme.Colors) {
 	default:
 		p.buildDiffViews(c)
 		if p.diffView == nil {
-			p.state(c, k, "file-text", k.TextFaint, "No text changes",
-				"This file has no textual diff.")
+			detail := "This file has no textual diff."
+			if note := strings.TrimSpace(p.Diff); note != "" && !strings.HasPrefix(note, "diff ") {
+				detail = note
+			}
+			p.state(c, k, "file-text", k.TextFaint, "No text changes", detail)
 			return
 		}
 		p.styleDiffView(c, p.diffView)
@@ -585,7 +590,7 @@ func (p *Page) fileHeading(c *ui.Context, k *theme.Colors, file FileDiff) {
 		Background(k.Hover).Children(func() {
 		ui.Icon(c, icons.FileIcon(file.Path)).Size(13, 13).TextColor(k.TextMuted)
 		ui.Text(c, filepath.Base(file.Path)).FontSize(12).FontWeight(600).
-			TextColor(k.Text).SingleLine().Shrink(0)
+			TextColor(k.Text).SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 		if dir := filepath.Dir(file.Path); dir != "." {
 			ui.Text(c, dir).FontSize(11.5).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
@@ -637,7 +642,7 @@ func mustDir(h Host) string {
 // iconButton is a borderless icon button of the page header.
 func iconButton(c *ui.Context, k *theme.Colors, name, label string, size, iconSize float32) ui.Element {
 	b := ui.ButtonBase(c).Size(size, size).Radius(theme.Radius).
-		Cursor(ui.CursorPointer).Label(label)
+		Cursor(ui.CursorPointer).Label(label).Transition(motion.Colors)
 	if b.Pressed() {
 		b.Background(k.Pressed)
 	} else if b.Hovered() {

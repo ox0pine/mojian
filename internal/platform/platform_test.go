@@ -16,6 +16,8 @@ func TestNativeKeys(t *testing.T) {
 		{"linux", "⌃⇥", "Ctrl+Tab"},
 		{"linux", "F2", "F2"},
 		{"js", "**⌘O** opens", "**Ctrl+O** opens"},
+		{"linux", "**⌃ + backtick** toggles", "**Ctrl + backtick** toggles"},
+		{"windows", "**⌃ + backtick** toggles", "**Ctrl + backtick** toggles"},
 	} {
 		if got := NativeKeysFor(tt.goos, tt.in); got != tt.want {
 			t.Errorf("%s %q: %q, want %q", tt.goos, tt.in, got, tt.want)

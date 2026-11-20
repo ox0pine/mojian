@@ -84,6 +84,11 @@ func toneTheme(t tone, dark bool) (*terminal.Theme, ui.Color) {
 			th.Foreground, tint(0.7, 0.02), tint(0.52, 0.02), tint(0.8, 0.015)
 		th.Selection = oklch(0.9, 0.045, t.Accent)
 		accent = oklch(0.55, 0.13, t.Accent)
+		// Some hues (e.g. cyan) sit near mid-luminance at L=0.55; nudge
+		// darker until accent text meets WCAG AA 4.5:1.
+		for l := float32(0.54); l >= 0.45 && contrastRatio(relativeLuminance(accent), relativeLuminance(accentText(accent))) < 4.5; l -= 0.01 {
+			accent = oklch(l, 0.13, t.Accent)
+		}
 	}
 	for i := range 6 {
 		d := float32(math.Remainder(float64(t.Hue-hues[i]), 360))

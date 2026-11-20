@@ -65,7 +65,8 @@ type serverGitRunner struct{ client *session.Client }
 
 func (r serverGitRunner) Run(dir string, args ...string) (string, error) {
 	cmd := append([]string{"git", "-C", dir}, args...)
-	res, err := r.client.Exec(dir, cmd, nil, 10*time.Second)
+	env := []string{"GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
+	res, err := r.client.Exec(dir, cmd, env, 10*time.Second)
 	if err != nil {
 		return res.Stdout, err
 	}
@@ -139,6 +140,9 @@ func (a *app) CreateBranch(root, name string) error {
 // branchReady refuses a checkout while a note holds unsaved edits, since
 // the branch would overwrite the file those edits belong to.
 func (a *app) branchReady(root string) error {
+	if a.branch.loading {
+		return errors.New("A branch change is already in progress.")
+	}
 	if root == "" {
 		return errors.New("This folder is not a Git repository.")
 	}

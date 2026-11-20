@@ -2,9 +2,8 @@
 
 Mojian is a quiet text editor for plain files: Go and MyGo's native UI, no webview, no cgo, no
 JavaScript build. One binary draws its own window; a tab is a workspace, a pane edits a file,
-previews an image or PDF, runs a terminal, or runs a background ACP agent task, and a project
-is just a
-folder. Version, bundle id and
+previews an image or PDF, or runs a terminal (background ACP agent tasks run from a modal sheet),
+and a project is just a folder. Version, bundle id and
 the macOS minimum live in `mygo.json`; nothing here repeats them.
 
 ## Where to read first

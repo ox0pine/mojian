@@ -99,8 +99,14 @@ func TestThemesReadable(t *testing.T) {
 			if c := contrast(k.Text, bg); c < 4.5 {
 				t.Fatalf("%s dark=%v: text contrast %.2f, want 4.5", ch.ID, dark, c)
 			}
-			if c := contrast(k.TextMuted, bg); c < 3.0 {
-				t.Fatalf("%s dark=%v: muted contrast %.2f, want 3.0", ch.ID, dark, c)
+			if c := contrast(k.TextMuted, bg); c < 4.5 {
+				t.Fatalf("%s dark=%v: muted contrast %.2f, want 4.5", ch.ID, dark, c)
+			}
+			if c := contrast(k.TextFaint, bg); c < 3.0 {
+				t.Fatalf("%s dark=%v: faint contrast %.2f, want 3.0", ch.ID, dark, c)
+			}
+			if c := contrast(accentText(k.Accent), k.Accent); c < 4.5 {
+				t.Fatalf("%s dark=%v: accent text contrast %.2f, want 4.5", ch.ID, dark, c)
 			}
 		}
 	}

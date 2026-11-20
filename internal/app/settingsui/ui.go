@@ -55,11 +55,12 @@ type UI struct {
 
 // Command is one command the Settings keyboard page lists and records.
 type Command struct {
-	ID        string
-	Title     string
-	Accel     string
-	Keys      string
-	Available bool
+	ID          string
+	Title       string
+	Accel       string
+	Keys        string
+	DefaultKeys string
+	Available   bool
 }
 
 // UpdateState is the updater's state for the Updates page.

@@ -20,7 +20,9 @@ type agentTask struct {
 	prompt  string
 	agent   string
 	sess    *acp.Session
+	cancel  context.CancelFunc
 	perm    *acp.Permission
+	tools   map[string]string
 	reply   strings.Builder
 	started time.Time
 }
@@ -57,12 +59,13 @@ func (a *app) startAgentTask(prompt string) {
 		a.fail(errors.New("agent tasks need a window"))
 		return
 	}
-	t := &agentTask{prompt: prompt, started: time.Now()}
+	ctx, cancel := context.WithCancel(context.Background())
+	t := &agentTask{prompt: prompt, cancel: cancel, tools: map[string]string{}, started: time.Now()}
 	a.agentTask = t
 	a.agentOpen = false
 	dir := a.store.Dir
 	go func() {
-		s, _, err := acp.StartAny(context.Background(), dir, func(ev acp.Event) {
+		s, _, err := acp.StartAny(ctx, dir, func(ev acp.Event) {
 			post(func() { a.agentTaskEvent(t, ev) })
 		})
 		if err != nil {
@@ -76,6 +79,10 @@ func (a *app) startAgentTask(prompt string) {
 			})
 			return
 		}
+		if ctx.Err() != nil {
+			s.Close()
+			return
+		}
 		post(func() {
 			if a.agentTask != t {
 				s.Close()
@@ -83,7 +90,7 @@ func (a *app) startAgentTask(prompt string) {
 			}
 			t.sess = s
 		})
-		if err := s.Prompt(context.Background(), prompt); err != nil {
+		if err := s.Prompt(ctx, prompt); err != nil {
 			post(func() {
 				if a.agentTask == t {
 					a.notifyAgentTask("Agent error", t.agentSub(false), err.Error())
@@ -117,15 +124,33 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 	case acp.KindReady:
 		t.agent = ev.Agent
 	case acp.KindAgentText:
-		if t.reply.Len() > 8000 {
-			t.reply.Reset()
+		if left := 8000 - t.reply.Len(); left > 0 {
+			if len(ev.Text) > left {
+				t.reply.WriteString(ev.Text[:left])
+			} else {
+				t.reply.WriteString(ev.Text)
+			}
 		}
-		t.reply.WriteString(ev.Text)
 	case acp.KindTool:
-		if ev.Tool != nil && ev.Tool.Status == acp.StatusFailed {
-			a.notifyAgentTask("Agent tool failed", t.agentSub(false), ev.Tool.Title)
+		if ev.Tool != nil {
+			if ev.Tool.Title != "" && ev.Tool.ID != "" {
+				if t.tools == nil {
+					t.tools = map[string]string{}
+				}
+				t.tools[ev.Tool.ID] = ev.Tool.Title
+			}
+			if ev.Tool.Status == acp.StatusFailed {
+				title := ev.Tool.Title
+				if title == "" {
+					title = t.tools[ev.Tool.ID]
+				}
+				a.notifyAgentTask("Agent tool failed", t.agentSub(false), title)
+			}
 		}
 	case acp.KindPermission:
+		if ev.Permission == nil {
+			return
+		}
 		t.perm = ev.Permission
 		a.agentOpen = true
 		a.notifyAgentTask("Agent needs permission", t.agentSub(false), ev.Permission.Title)
@@ -134,11 +159,19 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 		a.notifyAgentTask("Agent finished", t.agentSub(true), body)
 		a.finishAgentTask(t)
 	case acp.KindFailed:
-		a.notifyAgentTask("Agent error", t.agentSub(false), ev.Err.Error())
+		msg := "agent failed"
+		if ev.Err != nil {
+			msg = ev.Err.Error()
+		}
+		a.notifyAgentTask("Agent error", t.agentSub(false), msg)
 		a.finishAgentTask(t)
 	case acp.KindClosed:
 		if t.sess != nil {
-			a.notifyAgentTask("Agent stopped", t.agentSub(false), t.prompt)
+			body := t.prompt
+			if ev.Err != nil {
+				body = ev.Err.Error()
+			}
+			a.notifyAgentTask("Agent stopped", t.agentSub(false), body)
 			a.finishAgentTask(t)
 		}
 	}
@@ -152,6 +185,10 @@ func (a *app) finishAgentTask(t *agentTask) {
 	}
 	a.agentTask = nil
 	a.agentOpen = false
+	if t.cancel != nil {
+		t.cancel()
+		t.cancel = nil
+	}
 	if t.perm != nil {
 		t.perm.Answer("")
 		t.perm = nil
@@ -168,6 +205,10 @@ func (a *app) stopAgentTask() {
 	t := a.agentTask
 	if t == nil {
 		return
+	}
+	if t.cancel != nil {
+		t.cancel()
+		t.cancel = nil
 	}
 	if t.perm != nil {
 		t.perm.Answer("")
@@ -190,6 +231,7 @@ func (a *app) answerAgentTask(option string) {
 	}
 	t.perm.Answer(option)
 	t.perm = nil
+	a.agentOpen = false
 	a.invalidate()
 }
 
@@ -253,9 +295,12 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
 			ui.Icon(c, icons.Icon("bot")).Size(17, 17).TextColor(k.TextMuted)
 			t := a.agentTask
-			if t != nil && t.perm != nil {
+			switch {
+			case t != nil && t.perm != nil:
 				ui.Text(c, "Permission").FontSize(15).FontWeight(600).TextColor(k.Text).Grow(1).MinWidth(0)
-			} else {
+			case t != nil:
+				ui.Text(c, "Agent task").FontSize(15).FontWeight(600).TextColor(k.Text).Grow(1).MinWidth(0)
+			default:
 				in := ui.TextInputBase(c, &a.agentInput).Grow(1).FontSize(15).
 					Placeholder("What should the agent do in this project?").
 					Label("Agent task").AutoFocus()
@@ -270,7 +315,7 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 				a.agentPermission(c, k, t)
 				return
 			}
-			ui.Column(c).Padding(10).Gap(8).Children(func() {
+			ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Spinner(c).Size(12, 12).Label("Agent task running")
 					ui.Text(c, "Running "+t.prompt).FontSize(12.5).TextColor(k.TextMuted).
@@ -282,7 +327,7 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			})
 			return
 		}
-		ui.Column(c).Padding(10).Gap(10).Children(func() {
+		ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
 			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Codex, Gemini CLI, Goose and others — in the background, and notifies you when it finishes, fails or asks for permission.").
 				FontSize(12).TextColor(k.TextFaint)
 			if ui.PrimaryButton(c, "Run").Clicked() {
@@ -292,7 +337,11 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 	})
 	if was && !a.agentOpen {
 		if t := a.tab(); t != nil && a.focusReq == nil {
-			a.focusReq = t.editorPane()
+			if t.Focus != nil {
+				a.focusReq = t.Focus
+			} else {
+				a.focusReq = t.editorPane()
+			}
 		}
 	}
 	if submit {
@@ -302,17 +351,27 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 
 // agentPermission shows the options the agent asked the user to choose.
 func (a *app) agentPermission(c *ui.Context, k *colors, t *agentTask) {
-	ui.Column(c).Padding(10).Gap(10).Children(func() {
-		ui.Text(c, t.perm.Title).FontSize(12.5).TextColor(k.Text)
+	ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
+		title := t.perm.Title
+		if title == "" {
+			title = "The agent needs permission to continue."
+		}
+		ui.Text(c, title).FontSize(12.5).TextColor(k.Text)
 		ui.Row(c).Gap(8).Wrap().Children(func() {
+			hasReject := false
 			for _, o := range t.perm.Options {
+				if strings.EqualFold(strings.TrimSpace(o.Name), "Reject") {
+					hasReject = true
+				}
 				option := o.ID
 				if ui.Button(c, o.Name).Clicked() {
 					a.later(func() { a.answerAgentTask(option) })
 				}
 			}
-			if ui.Button(c, "Reject").Clicked() {
-				a.later(func() { a.answerAgentTask("") })
+			if !hasReject {
+				if ui.Button(c, "Reject").Clicked() {
+					a.later(func() { a.answerAgentTask("") })
+				}
 			}
 		})
 	})

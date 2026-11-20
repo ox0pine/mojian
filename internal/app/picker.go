@@ -157,7 +157,7 @@ func (a *app) projectPickerModal(c *ui.Context, k *colors) {
 }
 
 func (a *app) pickerHeader(c *ui.Context, k *colors) {
-	ui.Row(c).Height(60).Padding(0, 18, 0, 12).Gap(11).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Height(60).Padding(0, 18).Gap(11).AlignItems(ui.Center).Children(func() {
 		ui.Box(c).Size(34, 34).Radius(radius).Background(k.Hover).Center().Children(func() {
 			ui.Icon(c, icons.FolderIcon()).Size(18, 18).TextColor(k.TextMuted)
 		})
@@ -174,9 +174,8 @@ func (a *app) pickerHeader(c *ui.Context, k *colors) {
 }
 
 func (a *app) pickerRail(c *ui.Context, k *colors) {
-	ui.Column(c).Width(190).Shrink(0).FillHeight().Padding(12, 10).Gap(2).Children(func() {
-		ui.Text(c, "PLACES").FontSize(10).FontWeight(650).TextColor(k.TextFaint).
-			Padding(2, 8, 4, 8)
+	ui.Scroll(c).Width(190).Shrink(0).FillHeight().Padding(12, 10).Gap(2).Children(func() {
+		sectionLabel(c, k, "Places").Padding(2, 8, 4, 8)
 		home, _ := os.UserHomeDir()
 		for _, place := range []struct{ label, path string }{
 			{"Home", home},
@@ -189,8 +188,7 @@ func (a *app) pickerRail(c *ui.Context, k *colors) {
 		recent := a.recentProjects()
 		if len(recent) > 0 {
 			ui.Divider(c).Margin(6, 4)
-			ui.Text(c, "RECENT").FontSize(10).FontWeight(650).TextColor(k.TextFaint).
-				Padding(2, 8, 4, 8)
+			sectionLabel(c, k, "Recent").Padding(2, 8, 4, 8)
 			for i, p := range recent {
 				if i >= 5 {
 					break
@@ -280,9 +278,6 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 				icon = fg.Alpha(0.9)
 			} else if row.Hovered() {
 				row.Background(k.Hover)
-			}
-			if selected {
-				row.ScrollIntoView()
 			}
 			row.Children(func() {
 				ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(icon)

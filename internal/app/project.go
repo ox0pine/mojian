@@ -41,9 +41,14 @@ func (a *app) projectPath() string {
 
 func shortPath(p string) string {
 	home, err := os.UserHomeDir()
-	if err == nil {
-		if rest, ok := strings.CutPrefix(p, home); ok {
-			return "~" + rest
+	if err == nil && home != "" {
+		home = filepath.Clean(home)
+		clean := filepath.Clean(p)
+		if clean == home {
+			return "~"
+		}
+		if rest, ok := strings.CutPrefix(clean, home+string(filepath.Separator)); ok {
+			return "~" + string(filepath.Separator) + rest
 		}
 	}
 	return p
@@ -123,6 +128,7 @@ func (a *app) openProject(dir string) {
 		a.fail(err)
 		return
 	}
+	a.stopAgentTask()
 	a.stashActiveWorkspace()
 	ws := &workspace{
 		key:        workspaceKeyLocal(abs),
@@ -189,7 +195,11 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 			}
 			return
 		}
-		menuHeader(c, k, "Projects", nativeKeys("⌘O"))
+		keys := a.commandKeys(cmdOpenProject)
+		if keys == "None" {
+			keys = ""
+		}
+		menuHeader(c, k, "Projects", keys)
 		recent := a.recentProjects()
 		menuList(c, func() {
 			for _, p := range recent {
@@ -263,11 +273,13 @@ func (a *app) projectRowBase(c *ui.Context, k *colors, m ui.MenuParts, s project
 			s.open()
 		}
 		info.Children(func() {
-			if s.current {
-				ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
-			} else {
-				ui.Icon(c, icons.FolderIcon()).Size(16, 16).TextColor(k.TextMuted)
-			}
+			ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+				if s.current {
+					ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
+				} else {
+					ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
+				}
+			})
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				ui.Text(c, s.title).FontSize(12.5).FontWeight(weight).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
@@ -319,6 +331,7 @@ func (a *app) closeLocalProject(dir string) {
 		a.project = ""
 	}
 	if active {
+		a.stopAgentTask()
 		a.abandonActiveWorkspace()
 		for _, p := range a.projects {
 			p = filepath.Clean(p)

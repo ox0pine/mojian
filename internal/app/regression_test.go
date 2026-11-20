@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"mojian/internal/prefs"
+
 	"github.com/egoist/mygo/ui"
 )
 
@@ -169,5 +171,52 @@ func TestLaterRunsFromSettingsWindow(t *testing.T) {
 	tt.Frame()
 	if !ran {
 		t.Fatal("a deferred settings action did not run")
+	}
+}
+
+func TestNotifyPreferencesPersistFalse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{workspace: &workspace{}, Prefs: prefs.Default(), settingsPath: path}
+	a.loadSettings()
+	if !a.NotifyBell || !a.NotifyExit {
+		t.Fatalf("defaults: bell=%v exit=%v, want both true", a.NotifyBell, a.NotifyExit)
+	}
+	a.NotifyBell = false
+	a.NotifyExit = false
+	a.saveSettings()
+
+	b := &app{workspace: &workspace{}, Prefs: prefs.Default(), settingsPath: path}
+	b.loadSettings()
+	if b.NotifyBell || b.NotifyExit {
+		t.Fatalf("after reload: bell=%v exit=%v, want both false", b.NotifyBell, b.NotifyExit)
+	}
+}
+
+func TestWindowClosedPreservesReopenFlag(t *testing.T) {
+	a := newProjectApp(t)
+	a.quitting = false
+	a.quickOpen = true
+	a.windowClosed()
+	if a.quitting {
+		t.Fatal("windowClosed left quitting=true for a non-quit close")
+	}
+	if a.quickOpen {
+		t.Fatal("windowClosed did not close quickOpen modal")
+	}
+}
+
+func TestShortPathDoesNotMatchSiblingHomePrefix(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home dir")
+	}
+	sibling := home + "2" + string(filepath.Separator) + "proj"
+	if got := shortPath(sibling); got != sibling {
+		t.Fatalf("shortPath(%q) = %q, want %q", sibling, got, sibling)
+	}
+	child := filepath.Join(home, "proj")
+	want := "~" + string(filepath.Separator) + "proj"
+	if got := shortPath(child); got != want {
+		t.Fatalf("shortPath(%q) = %q, want %q", child, got, want)
 	}
 }

@@ -68,6 +68,11 @@ func (s *Store) Remap(oldRel, newRel string, dir bool) {
 			n.Buf.SetLanguage(editor.LanguageFor(n.Path))
 		}
 	}
+	type movedAsset struct {
+		oldKey string
+		f      *Asset
+	}
+	var moved []movedAsset
 	for assetRel, f := range s.Assets {
 		switch {
 		case assetRel == oldRel:
@@ -75,12 +80,15 @@ func (s *Store) Remap(oldRel, newRel string, dir bool) {
 		default:
 			continue
 		}
-		rest := strings.TrimPrefix(assetRel, oldRel)
-		f.Rel = filepath.Join(newRel, rest)
-		f.Path = s.AbsFor(f.Rel)
-		f.Name = filepath.Base(f.Path)
-		delete(s.Assets, assetRel)
-		s.Assets[f.Rel] = f
+		moved = append(moved, movedAsset{oldKey: assetRel, f: f})
+	}
+	for _, m := range moved {
+		rest := strings.TrimPrefix(m.oldKey, oldRel)
+		m.f.Rel = filepath.Join(newRel, rest)
+		m.f.Path = s.AbsFor(m.f.Rel)
+		m.f.Name = filepath.Base(m.f.Path)
+		delete(s.Assets, m.oldKey)
+		s.Assets[m.f.Rel] = m.f
 	}
 	s.Reindex()
 	s.BuildTree()
@@ -212,6 +220,21 @@ func (s *Store) MoveInto(srcAbs, destDirRel string) (string, error) {
 
 // MoveRel moves rel into dest, keeping its name when free.
 func (s *Store) MoveRel(rel, dest string) (string, error) {
+	rel = filepath.Clean(rel)
+	dest = filepath.Clean(dest)
+	if dest == "." {
+		dest = ""
+	}
+	if rel == dest || (dest != "" && strings.HasPrefix(dest, rel+string(filepath.Separator))) {
+		return "", errors.New("a folder cannot be moved into itself")
+	}
+	parent := filepath.Dir(rel)
+	if parent == "." {
+		parent = ""
+	}
+	if parent == dest {
+		return rel, nil
+	}
 	e, err := s.FS.Stat(rel)
 	if err != nil {
 		return "", err

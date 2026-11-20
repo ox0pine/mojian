@@ -126,23 +126,21 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				if p.Term.Term == nil {
 					a.startRestoredTerminal(p)
 					if p.Term.startErr != "" {
-						ui.Column(c).Fill().Center().Padding(20).Gap(8).Children(func() {
-							ui.Text(c, "Could not open the terminal").FontSize(13).
-								FontWeight(600).TextColor(k.Text)
-							ui.Text(c, p.Term.startErr).FontSize(11.5).
-								TextColor(k.TextFaint).TextAlign(ui.Center).MaxWidth(460)
+						emptyState(c, k, "square-terminal", k.Danger, "Could not open the terminal", p.Term.startErr, func() {
 							if ui.Button(c, "Try Again").Clicked() {
 								p.Term.startErr = ""
 								a.startRestoredTerminal(p)
 							}
 						})
-					} else if p.Term.connecting {
-						ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-							ui.Spinner(c).Size(12, 12).Label("Attaching terminal")
-							ui.Text(c, "Attaching…").FontSize(12).TextColor(k.TextFaint)
-						})
 					} else {
-						ui.Text(c, "Attaching…").FontSize(12).TextColor(k.TextFaint)
+						ui.Column(c).Fill().Center().Padding(20).Children(func() {
+							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+								if p.Term.connecting {
+									ui.Spinner(c).Size(12, 12).Label("Attaching terminal")
+								}
+								ui.Text(c, "Attaching…").FontSize(rowDetail).TextColor(k.TextFaint)
+							})
+						})
 					}
 					return
 				}
@@ -216,12 +214,12 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			}
 		}
 	}
-	if p.dragging || overTarget {
+	if p.dragging || (overTarget && overZone != dropNone && overZone != dropCenter) {
 		card.Border(2, k.Text)
 	}
 	if !overlay && card.Pressed() && t.Focus != p {
 		t.Focus = p
-		if !p.Preview && p.Note != nil {
+		if !p.Preview && (p.Note != nil || p.Term != nil) {
 			a.focusReq = p
 		}
 		a.changed()
@@ -305,15 +303,19 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 				a.later(func() { a.openPaneChoice(t, p, ch) })
 			}
 		})
-		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2).Children(func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2).Gap(2).Children(func() {
 			if len(choices) == 0 {
 				emptyLine(c, k, "No files match")
 				return
 			}
 			for i, ch := range choices {
 				i, ch := i, ch
-				row, clicked := fileChoiceRow(c, k, "open:"+p.ID+":"+ch.rel, ch, i == p.emptySel)
-				if i == p.emptySel && reveal {
+				selected := i == p.emptySel
+				row, clicked := fileChoiceRow(c, k, "open:"+p.ID+":"+ch.rel, ch, selected)
+				if selected {
+					row.Background(c.Theme().Accent)
+				}
+				if selected && reveal {
 					row.ScrollIntoView()
 				}
 				if clicked {
@@ -447,7 +449,7 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 		if compact {
 			ui.Spacer(c)
 			if p.Note != nil && p.Note.Dirty() {
-				ui.Box(c).Size(6, 6).Radius(3).Background(k.Attention).
+				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize / 2).Background(k.Attention).
 					Tooltip("Unsaved edits")
 			}
 		} else {
@@ -465,7 +467,8 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 			if p.Preview {
 				glyph, label = "pencil", "Edit"
 			}
-			if !overlay && iconButton(c, k, glyph, label+suffix, btn, isize).Tooltip(label).Clicked() {
+			previewBtn := iconButton(c, k, glyph, label+suffix, btn, isize).Tooltip(label).Disabled(overlay)
+			if !overlay && previewBtn.Clicked() {
 				p.Preview = !p.Preview
 				if p.Preview {
 					a.focusReq = nil
@@ -498,7 +501,7 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				t.Focus = p
 				a.toggleZoom()
 			}
-			if iconButton(c, k, "x", "Close Pane"+suffix, btn, isize+1).
+			if iconButton(c, k, "x", "Close Pane"+suffix, btn, isize).
 				Tooltip(a.tip("Close Pane", cmdClosePane)).Clicked() {
 				a.laterPane(p)
 			}

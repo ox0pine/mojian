@@ -21,8 +21,8 @@ const (
 // runs the peer's frames through onFrame and a single writer goroutine
 // sends queued frames, so a stalled stream only ever drops that stream.
 type mux struct {
-	rw io.ReadWriteCloser
-	r  *bufio.Reader
+	rw  io.ReadWriteCloser
+	r   *bufio.Reader
 	wmu sync.Mutex
 
 	mu      sync.Mutex
@@ -279,9 +279,9 @@ type muxStream struct {
 	out chan streamFrame
 	in  chan []byte
 
-	buf  []byte
-	mu   sync.Mutex
-	err  error
+	buf []byte
+	mu  sync.Mutex
+	err error
 	// finished is read by the writer under the mux's lock.
 	finished bool
 	done     chan struct{}
@@ -306,8 +306,11 @@ func (s *muxStream) Read(p []byte) (int, error) {
 		case b := <-s.in:
 			s.buf = b
 		case <-s.done:
-			if len(s.buf) > 0 {
+			select {
+			case b := <-s.in:
+				s.buf = b
 				continue
+			default:
 			}
 			s.mu.Lock()
 			err := s.err

@@ -160,6 +160,7 @@ func (a *app) closeModals() {
 	a.branch.open = false
 	a.branch.creating = false
 	a.branch.err = ""
+	a.git.CloseBranchMenu()
 }
 
 // closeTransientUI drops the pickers and edits that belong to the
@@ -186,6 +187,7 @@ func (a *app) switchWorkspace(ws *workspace) {
 		a.fail(err)
 		return
 	}
+	a.stopAgentTask()
 	a.saveLayout()
 	a.layoutDirty = false
 	a.dropPickerRemote()

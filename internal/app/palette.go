@@ -2,6 +2,7 @@ package app
 
 import (
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -100,6 +101,22 @@ func (a *app) paletteItems() []paletteItem {
 					a.updateTitle()
 				}})
 		}
+		var assets []*assetFile
+		for _, f := range a.store.Assets {
+			assets = append(assets, f)
+		}
+		sort.Slice(assets, func(i, j int) bool { return assets[i].Rel < assets[j].Rel })
+		for _, f := range assets {
+			if !match(f.Name + " " + f.Rel) {
+				continue
+			}
+			f := f
+			items = append(items, paletteItem{id: "asset:" + f.Rel, title: f.Name, detail: f.Rel, glyph: "file-text",
+				run: func() {
+					a.openAsset(f)
+					a.updateTitle()
+				}})
+		}
 	}
 	for i, t := range a.tabs {
 		name, detail := t.label()
@@ -147,7 +164,7 @@ func (a *app) palette(c *ui.Context, k *colors) {
 	reveal := false
 	chosen := -1
 	commandDialog(c, k, &a.paletteOpen, func() {
-		in := sheetHeader(c, k, &a.paletteQuery, "Type a command, or the name of a note…",
+		in := sheetHeader(c, k, &a.paletteQuery, "Type a command, or the name of a file…",
 			"Search commands", &a.paletteOpen)
 		if listNav(in, &a.paletteSel, len(items), &reveal) {
 			chosen = a.paletteSel
@@ -156,7 +173,7 @@ func (a *app) palette(c *ui.Context, k *colors) {
 		a.paletteList.Key = func(i int) any { return items[i].id }
 		list := ui.List(c, &a.paletteList, len(items), func(i int) {
 			it := items[i]
-			row := ui.Row(c.Key(i)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
+			row := ui.Row(c.Key(it.id)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
 				Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
 			if i == a.paletteSel {
@@ -177,7 +194,7 @@ func (a *app) palette(c *ui.Context, k *colors) {
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				}
 				ui.Spacer(c)
-				if it.keys != "" {
+				if it.keys != "" && it.keys != "None" {
 					chipFg, chipBg := k.TextFaint, k.Hover
 					if i == a.paletteSel {
 						chipFg, chipBg = fg, fg.Alpha(0.16)
@@ -200,7 +217,11 @@ func (a *app) palette(c *ui.Context, k *colors) {
 	}
 	if was && !a.paletteOpen {
 		if t := a.tab(); t != nil && a.focusReq == nil {
-			a.focusReq = t.editorPane()
+			if t.Focus != nil {
+				a.focusReq = t.Focus
+			} else {
+				a.focusReq = t.editorPane()
+			}
 		}
 	}
 }
@@ -223,7 +244,8 @@ func (a *app) filteredNotes() []*note {
 // where it has no menu bar. The harness has no menu either, so it binds
 // the same commands in the view.
 func (a *app) shortcuts(c *ui.Context) {
-	if (runtime.GOOS != "js" && !a.harness) || a.paletteOpen {
+	if (runtime.GOOS != "js" && !a.harness) ||
+		a.paletteOpen || a.quickOpen || a.sshPick || a.projectPicker || a.remotePicker || a.agentOpen {
 		return
 	}
 	for _, cmd := range paletteCommands {

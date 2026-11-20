@@ -34,11 +34,16 @@ func newFixture() (*app.Headless, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	if err := welcome.WriteFiles(dir); err != nil {
+	projectDir := filepath.Join(dir, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		_ = os.RemoveAll(dir)
 		return nil, "", err
 	}
-	s, err := app.OpenStoreAt(dir)
+	if err := welcome.WriteFiles(projectDir); err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, "", err
+	}
+	s, err := app.OpenStoreAt(projectDir)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 		return nil, "", err

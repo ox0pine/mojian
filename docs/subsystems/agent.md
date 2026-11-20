@@ -23,7 +23,7 @@ process that lives only as long as its task.
 - [`internal/app/workspace.go`](../../internal/app/workspace.go) — `closeModals` also closes the
   sheet.
 - [`internal/acp/acp.go`](../../internal/acp/acp.go) — `Agents`, the ordered list of known ACP
-  commands (`omp acp`, `claude-code-acp`, `codex-acp`, `gemini --experimental-acp`,
+  commands (`omp acp`, `claude-code-acp`, `claude-code-acp-rs`, `codex-acp`, `gemini --experimental-acp`,
   `qwen --experimental-acp`, `goose acp`, `opencode acp`, `kimi --acp`, `amp acp`,
   `cursor-agent acp`), and `StartAny`, which gives each one on PATH a bounded handshake and runs
   the first that answers. Claude Code and Codex join through those adapters, not their own
@@ -33,8 +33,8 @@ process that lives only as long as its task.
 
 1. View › Run Agent Task… (`run-agent-task`) or the palette calls `openAgentTask`. A memory store
    or a remote project is refused: the agent runs on this machine, in `a.store.Dir`. While a task
-   runs, the command either reopens the sheet on a pending permission or reports that a task is
-   already running.
+   runs, the command reopens the sheet showing either the pending permission or the running task
+   with a Stop button.
 2. The sheet takes one line and Enter or Run calls `startAgentTask`. The sheet closes, the task is
    stored on `*app`, and `acp.StartAny` tries the known agents in order on a goroutine, so the task
    does not depend on one vendor's command.
@@ -55,7 +55,7 @@ process that lives only as long as its task.
 - One task per window. Its process never outlives the window, unlike a terminal's session server.
 - Notifications are the only result: never in the harness, never while quitting, no focus gate (a
   background task has no in-app output to watch) and no setting of its own. Titles: `Agent finished`,
-  `Agent tool failed`, `Agent needs permission`, `Agent error`, `Agent could not start`.
+  `Agent tool failed`, `Agent needs permission`, `Agent error`, `Agent stopped`, `Agent could not start`.
 - Permissions block the agent until the sheet is answered; the notification still fires first, and
   the command reopens the sheet later.
 - The task is not persisted: a launch starts with no agent. A missing `omp` or a protocol error is

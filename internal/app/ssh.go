@@ -29,16 +29,16 @@ func (a *app) connectSSH(address string) {
 	if address == "" {
 		return
 	}
+	tt, err := a.startTerminalSpec(termSpec{Host: address})
+	if err != nil {
+		a.fail(err)
+		return
+	}
 	a.git.Open = false
 	if a.tab() == nil {
 		t := &tab{ID: nextID("t")}
 		a.tabs = append(a.tabs, t)
 		a.active = len(a.tabs) - 1
-	}
-	tt, err := a.startTerminalSpec(termSpec{Host: address})
-	if err != nil {
-		a.fail(err)
-		return
 	}
 	a.addTerminalPane(tt)
 }
@@ -50,11 +50,12 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 	q := strings.ToLower(strings.TrimSpace(a.sshQuery))
 	var filtered []hostConfig
 	for _, h := range a.hosts() {
-		if q == "" || strings.Contains(strings.ToLower(h.Name+" "+h.Address), q) {
+		if q == "" || fuzzy(strings.ToLower(h.Name+" "+h.Address), q) {
 			filtered = append(filtered, h)
 		}
 	}
 	a.sshSel = min(max(a.sshSel, 0), max(len(filtered)-1, 0))
+	was := a.sshPick
 	connected := ""
 	commandDialog(c, k, &a.sshPick, func() {
 		reveal := false
@@ -86,7 +87,7 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 				label = h.Address
 			}
 			row := ui.Row(c.Key(h.Address)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
-				Radius(radius).Cursor(ui.CursorPointer).
+				Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 				Label(label + " " + h.Address)
 			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
 			if i == a.sshSel {
@@ -101,7 +102,7 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 			row.Children(func() {
 				ui.Icon(c, icons.Icon("server")).Size(15, 15).TextColor(icon)
 				ui.Text(c, label).FontSize(rowTitle).FontWeight(500).TextColor(fg).
-					Shrink(0)
+					SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 				ui.Text(c, h.Address).FontSize(rowDetail).TextColor(muted).
 					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			})
@@ -116,6 +117,15 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 	if connected != "" {
 		a.sshPick = false
 		a.later(func() { a.connectSSH(connected) })
+	}
+	if was && !a.sshPick {
+		if t := a.tab(); t != nil && a.focusReq == nil {
+			if t.Focus != nil {
+				a.focusReq = t.Focus
+			} else {
+				a.focusReq = t.editorPane()
+			}
+		}
 	}
 }
 

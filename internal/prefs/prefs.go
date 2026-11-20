@@ -26,8 +26,8 @@ type Prefs struct {
 	TerminalFontSize    float64 `json:"terminalFontSize,omitempty"`
 	ShellPath           string  `json:"shellPath,omitempty"`
 	TerminalCursor      int     `json:"terminalCursor,omitempty"`
-	NotifyBell          bool    `json:"notifyBell,omitempty"`
-	NotifyExit          bool    `json:"notifyExit,omitempty"`
+	NotifyBell          bool    `json:"notifyBell"`
+	NotifyExit          bool    `json:"notifyExit"`
 	TerminalLineHeight  float64 `json:"terminalLineHeight,omitempty"`
 	TerminalOptionAsAlt bool    `json:"terminalOptionAsAlt,omitempty"`
 	TerminalCopySelect  bool    `json:"terminalCopySelect,omitempty"`

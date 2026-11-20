@@ -58,3 +58,20 @@ func TestDirectListHidesGitignoredFolders(t *testing.T) {
 		t.Error("a tracked file's body is missing")
 	}
 }
+
+func TestWriteFileAtomicPreservesPermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "run.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileAtomic(path, []byte("#!/bin/sh\necho ok\n")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("mode = %o, want 755", got)
+	}
+}

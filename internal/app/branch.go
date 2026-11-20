@@ -122,7 +122,7 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 	}
 	m := ui.MenuBase(c, &a.branch.open)
 	chip := titleChip(m.Trigger, k, a.branch.open).Label("Switch branch: " + name).
-		Tooltip("Branch " + name + "  " + nativeKeys("⌘⇧B")).MaxWidth(210)
+		Tooltip(a.tip("Branch "+name, cmdBranch)).MaxWidth(210)
 	if m.Open() && !a.branch.shown {
 		// Opened by the chip or a command: forget a name being typed
 		// and read the branches again.
@@ -181,7 +181,11 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 		}
 		return
 	}
-	menuHeader(c, k, "Branches", nativeKeys("⌘⇧B"))
+	keys := a.commandKeys(cmdBranch)
+	if keys == "None" {
+		keys = ""
+	}
+	menuHeader(c, k, "Branches", keys)
 	switch {
 	case a.branch.loading && len(d.Branches) == 0:
 		menuNote(c, k, "Reading branches…", false)
@@ -212,10 +216,8 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 
 // branchMenuRow is one branch in the menu, checked when it is current.
 func (a *app) branchMenuRow(c *ui.Context, k *colors, m ui.MenuParts, b gitpage.Branch) {
-	row := menuChoice(c, k, m, "branch:"+b.Name, "git-branch", b.Name, b.Current)
+	row := menuChoice(c, k, m, "branch:"+b.Name, "git-branch", b.Name, b.Current).KeepOpen()
 	if row.Clicked() {
-		a.branch.open = false
-		a.branch.creating = false
 		a.checkoutBranch(b.Name)
 	}
 }
@@ -223,6 +225,9 @@ func (a *app) branchMenuRow(c *ui.Context, k *colors, m ui.MenuParts, b gitpage.
 // checkoutBranch switches to an existing branch, then reloads every clean
 // pane from the files the branch holds.
 func (a *app) checkoutBranch(name string) {
+	if a.branch.loading {
+		return
+	}
 	root := a.branchRoot()
 	if root == "" {
 		return
@@ -234,6 +239,9 @@ func (a *app) checkoutBranch(name string) {
 
 // createBranchAt creates the typed branch at HEAD and switches to it.
 func (a *app) createBranchAt(name string) {
+	if a.branch.loading {
+		return
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		a.branch.err = "Type a branch name."

@@ -195,8 +195,10 @@ func (s *Server) dispatch(m *mux, f frame) {
 			m.shutdown(errors.New("session: malformed request"))
 			return
 		}
-		b, _ := json.Marshal(s.request(req))
-		_ = m.writeControl(frameResponse, b)
+		go func(req Request) {
+			b, _ := json.Marshal(s.request(req))
+			_ = m.writeControl(frameResponse, b)
+		}(req)
 	case frameOpen:
 		var o openRequest
 		if json.Unmarshal(f.payload, &o) != nil {
@@ -410,6 +412,7 @@ type session struct {
 
 	mu         sync.Mutex
 	vt         *terminal.Terminal
+	lastTitle  string
 	clients    map[*attached]struct{}
 	cols, rows int
 	exited     bool
@@ -476,6 +479,11 @@ func newSession(id string, o CreateOptions) (*session, error) {
 		}
 		s.mu.Lock()
 		s.exited, s.code = true, code
+		if s.vt != nil {
+			s.lastTitle = s.vt.Title()
+		}
+		closedVT := s.vt
+		s.vt = nil
 		for a := range s.clients {
 			a.finish()
 		}
@@ -483,7 +491,9 @@ func newSession(id string, o CreateOptions) (*session, error) {
 		s.mu.Unlock()
 		close(s.done)
 		_ = pw.Close()
-		vt.Close()
+		if closedVT != nil {
+			closedVT.Close()
+		}
 	}()
 	return s, nil
 }
@@ -552,19 +562,24 @@ func (s *session) read() {
 func (s *session) attach(ms *muxStream, cols, rows int) {
 	a := &attached{st: ms}
 	s.mu.Lock()
-	if cols > 0 && rows > 0 {
-		s.cols, s.rows = cols, rows
-		s.vt.Resize(cols, rows)
-	}
-	snap := s.vt.Snapshot()
-	if title := s.vt.Title(); title != "" {
-		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
+	exited := s.exited || s.vt == nil
+	var snap []byte
+	var resized bool
+	if !exited {
+		if cols > 0 && rows > 0 && (cols != s.cols || rows != s.rows) {
+			s.cols, s.rows = cols, rows
+			s.vt.Resize(cols, rows)
+			resized = true
+		}
+		snap = s.vt.Snapshot()
+		if title := s.vt.Title(); title != "" {
+			snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
+		}
 	}
 	// Queue the snapshot before joining the clients, so live output
 	// cannot reach the stream ahead of the screen it belongs on.
-	full := !a.send(snap)
-	exited := s.exited
-	if !exited {
+	full := len(snap) > 0 && !a.send(snap)
+	if !exited && !full {
 		s.clients[a] = struct{}{}
 	}
 	s.mu.Unlock()
@@ -576,8 +591,17 @@ func (s *session) attach(ms *muxStream, cols, rows int) {
 		a.finish()
 		return
 	}
-	if cols > 0 && rows > 0 {
-		s.resize(cols, rows)
+	if resized {
+		_ = s.proc.Resize(cols, rows)
+		s.mu.Lock()
+		if !s.exited {
+			if s.resync == nil {
+				s.resync = time.AfterFunc(resyncDelay, s.resyncScreen)
+			} else {
+				s.resync.Reset(resyncDelay)
+			}
+		}
+		s.mu.Unlock()
 	}
 	buf := make([]byte, 32<<10)
 	for {
@@ -612,10 +636,10 @@ func (s *session) resize(cols, rows int) {
 		return
 	}
 	s.mu.Lock()
-	changed := cols != s.cols || rows != s.rows
-	s.cols, s.rows = cols, rows
-	exited := s.exited
+	exited := s.exited || s.vt == nil
+	changed := !exited && (cols != s.cols || rows != s.rows)
 	if changed {
+		s.cols, s.rows = cols, rows
 		s.vt.Resize(cols, rows)
 		if s.resync == nil {
 			s.resync = time.AfterFunc(resyncDelay, s.resyncScreen)
@@ -632,7 +656,7 @@ func (s *session) resize(cols, rows int) {
 func (s *session) resyncScreen() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.exited || len(s.clients) == 0 {
+	if s.exited || s.vt == nil || len(s.clients) == 0 {
 		return
 	}
 	snap := s.vt.Snapshot()
@@ -672,9 +696,13 @@ func (s *session) hasExited() bool {
 
 func (s *session) info() SessionInfo {
 	s.mu.Lock()
+	title := s.lastTitle
+	if s.vt != nil {
+		title = s.vt.Title()
+	}
 	in := SessionInfo{
 		ID: s.id, Shell: s.shell, Created: s.created,
-		Cols: s.cols, Rows: s.rows, Title: s.vt.Title(),
+		Cols: s.cols, Rows: s.rows, Title: title,
 		Exited: s.exited, ExitCode: s.code,
 	}
 	s.mu.Unlock()

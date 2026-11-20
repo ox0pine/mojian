@@ -180,7 +180,8 @@
     white-space: nowrap;
     cursor: pointer;
   }
-  .menu-item:hover { background: var(--muted); color: var(--fg); }
+  .menu-item:hover,
+  .menu-item[data-highlighted] { background: var(--muted); color: var(--fg); }
   .menu-item svg { width: 15px; height: 15px; flex: none; }
   .menu-item .check { margin-left: auto; }
   .menu-positioner { z-index: 60; }
@@ -369,6 +370,7 @@
     text-transform: uppercase;
     color: var(--muted-fg);
   }
+  html:lang(zh) .stat dt { letter-spacing: normal; text-transform: none; }
 
   /* The real window, after the facts. */
   .proof { padding: 32px 16px 56px; }

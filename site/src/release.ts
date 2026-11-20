@@ -10,6 +10,7 @@ export type AssetKey =
   | "linux-amd64"
   | "linux-arm64"
   | "linux-amd64-rpm"
+  | "linux-arm64-rpm"
   | "windows-amd64"
   | "windows-arm64"
 
@@ -29,6 +30,7 @@ const FALLBACK: Release = {
     "linux-amd64": ASSET(`mojian_${VERSION}_amd64.deb`),
     "linux-arm64": ASSET(`mojian_${VERSION}_arm64.deb`),
     "linux-amd64-rpm": ASSET(`mojian-${VERSION}-x86_64.rpm`),
+    "linux-arm64-rpm": ASSET(`mojian-${VERSION}-aarch64.rpm`),
     "windows-amd64": ASSET(`mojian-setup-${VERSION}-amd64.exe`),
     "windows-arm64": ASSET(`mojian-setup-${VERSION}-arm64.exe`),
   },
@@ -43,6 +45,7 @@ const pickers: Record<AssetKey, RegExp> = {
   "linux-amd64": /_amd64\.deb$/,
   "linux-arm64": /_arm64\.deb$/,
   "linux-amd64-rpm": /x86_64\.rpm$/,
+  "linux-arm64-rpm": /aarch64\.rpm$/,
   "windows-amd64": /-setup-.*-amd64\.exe$/,
   "windows-arm64": /-setup-.*-arm64\.exe$/,
 }

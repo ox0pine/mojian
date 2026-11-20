@@ -179,7 +179,7 @@ func (a *app) tip(label string, cmd *commands.Command) string {
 // tab-sized, so the machine, project and branch read as a group, and
 // filled like the active tab while its menu is open.
 func titleChip(e ui.Element, k *colors, open bool) ui.Element {
-	e.Height(tabH-4).Gap(6).Padding(0, 8, 0, 6).Radius(radius - 2).
+	e.Height(tabH).Gap(6).Padding(0, 8, 0, 6).Radius(radius - 2).
 		Justify(ui.Start).Cursor(ui.CursorPointer).Shrink(0).ClipX().
 		Transition(motion.Colors)
 	switch {
@@ -285,7 +285,7 @@ func (a *app) errorBanner(c *ui.Context, k *colors) {
 				AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Background(k.Danger)
 				ui.Text(c, a.err).FontSize(12.5).TextColor(k.Text).MaxWidth(520)
-				if iconButton(c, k, "x", "Dismiss", 22, 14).Clicked() {
+				if iconButton(c, k, "x", "Dismiss", iconBtnSm, iconGlyphSm).Clicked() {
 					a.err = ""
 				}
 			})

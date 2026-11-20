@@ -120,8 +120,8 @@ func tabLabel(name, detail string, nameColor, detailColor ui.Color) []ui.Span {
 // tabItem draws one tab: the tiles of its panes and its label.
 func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, whole bool) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(tabH+4).Basis(width).Shrink(0).
-		Padding(0, 9, 0, 5).Gap(8).AlignItems(ui.Center).Radius(radius).
+	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(0).
+		Padding(0, 9, 0, 5).Gap(8).AlignItems(ui.Center).Radius(radius - 2).
 		Role(ui.RoleTab).Selected(active).FocusRing(false)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -165,20 +165,15 @@ func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, wh
 			if !active {
 				nameColor = k.TextMuted
 			}
-			nameMax := width - 52
-			if t.dirty() {
-				nameMax -= 11
-			}
-			label := ui.Box(c).Grow(1).MinWidth(0).Height(18).ClipX()
+			label := ui.Row(c).Grow(1).MinWidth(0).Height(18).Gap(5).
+				AlignItems(ui.Center).ClipX()
 			label.Children(func() {
-				ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, name).FontSize(13).FontWeight(500).TextColor(nameColor).
-						SingleLine().Shrink(0).MaxWidth(max(nameMax, 24))
-					if detail != "" {
-						ui.Text(c, detail).FontSize(12).TextColor(detailColor).
-							SingleLine().Shrink(1).MinWidth(0)
-					}
-				})
+				ui.Text(c, name).FontSize(13).FontWeight(500).TextColor(nameColor).
+					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+				if detail != "" {
+					ui.Text(c, detail).FontSize(12).TextColor(detailColor).
+						SingleLine().Shrink(0)
+				}
 			})
 			// Every tab shows its close button; the unsaved dot joins it
 			// only while there are unsaved edits, and the tab's width
@@ -204,7 +199,7 @@ func (a *app) renameField(c *ui.Context, k *colors, t *tab, name string) {
 	// The unstyled input has no field padding to push its text down; the
 	// small bottom margin centers its caret on the tab label's baseline.
 	in := ui.TextInputBase(c, &a.renameText).Placeholder(name).Grow(1).MinWidth(0).Height(18).
-		Margin(0, 0, 2.5, 0).FontSize(13).FontWeight(500).TextColor(k.Text).AutoFocus()
+		FontSize(13).FontWeight(500).TextColor(k.Text).AutoFocus()
 	done := func(keep bool) {
 		if keep {
 			t.Name = a.renameText
@@ -278,6 +273,8 @@ func (a *app) tiles(c *ui.Context, k *colors, t *tab) {
 			switch {
 			case t.Focus.Note != nil:
 				ic = icons.FileIcon(t.Focus.Note.Path)
+			case t.Focus.Asset != nil:
+				ic = icons.FileIcon(t.Focus.Asset.Path)
 			case t.Focus.Term != nil:
 				ic = icons.Icon("square-terminal")
 			}

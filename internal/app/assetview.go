@@ -43,7 +43,7 @@ func (a *app) markdownBody(c *ui.Context, k *colors, p *pane) {
 				images := map[string]*markdownImage{}
 				opts.LoadImage = load
 				opts.HTML = func(c *ui.Context, block string) {
-					markdownHTMLBlock(c, block, images, load, a.colorsOf(c))
+					markdownHTMLBlock(c, block, images, load, a.colorsOf(c), !a.harness)
 				}
 				p.md = opts
 			}
@@ -90,35 +90,36 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 		v.pdfPending = map[int]bool{}
 		v.pdfPageErr = map[int]string{}
 	}
-	path, win := p.Asset.LocalPath(), a.win
+	path, post := p.Asset.LocalPath(), a.uiPoster()
 	if !v.pdfStarted {
 		v.pdfStarted, v.pdfLoading = true, true
 		v.pdfGen++
 		gen := v.pdfGen
-		go func() {
+		finish := func(dir string, count int, err error) {
+			// The pane may have been closed or repurposed while the
+			// count was read; do not publish into it, and do not leave
+			// its temporary files behind.
+			if p.assetView != v || v.pdfGen != gen {
+				if dir != "" {
+					_ = os.RemoveAll(dir)
+				}
+				return
+			}
+			v.pdfLoading, v.pdfDir, v.pdfCount = false, dir, count
+			if err != nil {
+				v.pdfErr = err.Error()
+			}
+			a.invalidate()
+		}
+		if post != nil {
+			go func() {
+				dir, count, err := pdfOpen(path)
+				post(func() { finish(dir, count, err) })
+			}()
+		} else {
 			dir, count, err := pdfOpen(path)
-			update := func() {
-				// The pane may have been closed or repurposed while the
-				// count was read; do not publish into it, and do not leave
-				// its temporary files behind.
-				if p.assetView != v || v.pdfGen != gen {
-					if dir != "" {
-						_ = os.RemoveAll(dir)
-					}
-					return
-				}
-				v.pdfLoading, v.pdfDir, v.pdfCount = false, dir, count
-				if err != nil {
-					v.pdfErr = err.Error()
-				}
-				a.invalidate()
-			}
-			if win != nil {
-				win.Update(update)
-			} else {
-				update()
-			}
-		}()
+			finish(dir, count, err)
+		}
 	}
 	switch {
 	case v.pdfErr != "":
@@ -131,6 +132,7 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 		page := min(max(v.pdfPage, 0), v.pdfCount-1)
 		v.pdfPage = page
 		errText, failed := v.pdfPageErr[page]
+		rendering := false
 		if !failed && (v.pdfImage == nil || v.pdfImageAt != page) {
 			if file, drawn := v.pdfFiles[page]; drawn {
 				data, err := os.ReadFile(file)
@@ -152,34 +154,37 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 				if len(v.pdfPending) == 0 {
 					v.pdfPending[page] = true
 					gen, dir := v.pdfGen, v.pdfDir
-					go func() {
-						file, err := pdfRenderPage(path, dir, page+1)
-						update := func() {
-							if p.assetView != v || v.pdfGen != gen {
-								return
-							}
-							delete(v.pdfPending, page)
-							if err != nil {
-								v.pdfPageErr[page] = err.Error()
-							} else {
-								v.pdfFiles[page] = file
-							}
-							a.invalidate()
+					finishPage := func(file string, err error) {
+						if p.assetView != v || v.pdfGen != gen {
+							return
 						}
-						if win != nil {
-							win.Update(update)
+						delete(v.pdfPending, page)
+						if err != nil {
+							v.pdfPageErr[page] = err.Error()
 						} else {
-							update()
+							v.pdfFiles[page] = file
 						}
-					}()
+						a.invalidate()
+					}
+					if post != nil {
+						go func() {
+							file, err := pdfRenderPage(path, dir, page+1)
+							post(func() { finishPage(file, err) })
+						}()
+					} else {
+						file, err := pdfRenderPage(path, dir, page+1)
+						finishPage(file, err)
+					}
 				}
-				pdfStatus(c, k, fmt.Sprintf("Drawing page %d…", page+1),
-					"Pages are drawn as you turn to them.")
-				return
+				rendering = true
 			}
 		}
 		ui.Column(c).Grow(1).MinHeight(0).Children(func() {
-			if failed {
+			switch {
+			case rendering:
+				pdfStatus(c, k, fmt.Sprintf("Drawing page %d…", page+1),
+					"Pages are drawn as you turn to them.")
+			case failed:
 				ui.Box(c).Grow(1).MinHeight(0).Center().Padding(24).Children(func() {
 					ui.Column(c).Center().Gap(6).Children(func() {
 						ui.Text(c, fmt.Sprintf("Page %d of this PDF could not be drawn.", page+1)).
@@ -189,7 +194,7 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 							TextAlign(ui.Center).MaxWidth(460)
 					})
 				})
-			} else {
+			default:
 				ui.Box(c).Grow(1).MinHeight(0).Center().Padding(18).Children(func() {
 					ui.Image(c, v.pdfImage).Fill().Fit(ui.Contain)
 				})
@@ -215,7 +220,7 @@ func (a *app) pdfFooter(c *ui.Context, k *colors, p *pane) {
 			ui.Text(c, "PDF").FontSize(10.5).FontWeight(600).TextColor(k.TextFaint)
 			ui.Text(c, "·").FontSize(10).TextColor(k.TextFaint)
 			if n > 1 {
-				if iconButton(c, k, "chevron-left", "Previous Page", 22, 12).
+				if iconButton(c, k, "chevron-left", "Previous Page", iconBtnSm, iconGlyphSm).
 					Disabled(v.pdfPage <= 0).Clicked() {
 					v.pdfPage--
 					v.pdfImage = nil
@@ -223,14 +228,14 @@ func (a *app) pdfFooter(c *ui.Context, k *colors, p *pane) {
 				}
 				ui.Text(c, fmt.Sprintf("Page %d of %d", v.pdfPage+1, n)).
 					FontSize(10.5).TextColor(k.TextMuted)
-				if iconButton(c, k, "chevron-right", "Next Page", 22, 12).
+				if iconButton(c, k, "chevron-right", "Next Page", iconBtnSm, iconGlyphSm).
 					Disabled(v.pdfPage >= n-1).Clicked() {
 					v.pdfPage++
 					v.pdfImage = nil
 					a.invalidate()
 				}
 			} else {
-				ui.Text(c, "First page").FontSize(10.5).TextColor(k.TextMuted)
+				ui.Text(c, "Page 1 of 1").FontSize(10.5).TextColor(k.TextMuted)
 			}
 			ui.Spacer(c)
 			ui.Text(c, fileSize(p.Asset.Size)).FontSize(10.5).TextColor(k.TextFaint)
@@ -272,8 +277,10 @@ func (a *app) openButton(c *ui.Context, k *colors, p *pane) {
 	if b.Hovered() {
 		b.Background(k.Hover)
 	}
-	if b.Clicked() {
-		mygo.Shell.OpenPath(p.Asset.LocalPath())
+	if b.Clicked() && !a.harness {
+		if err := mygo.Shell.OpenPath(p.Asset.LocalPath()); err != nil {
+			a.fail(err)
+		}
 	}
 	b.Children(func() {
 		ui.Text(c, "Open").FontSize(11.5).FontWeight(550).TextColor(k.Text)

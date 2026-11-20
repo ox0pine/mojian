@@ -10,9 +10,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os/exec"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -248,8 +249,24 @@ func probe(ctx context.Context, host string) (*Install, error) {
 		binPath:    dir + "/mojian-server",
 		libPath:    dir + "/libghostty-vt.so",
 		runtimeDir: runtimeDir,
-		sock:       session.SocketPathIn(runtimeDir, uid),
+		sock:       remoteSocketPath(runtimeDir, uid),
 	}, nil
+}
+
+// remoteSocketPath mirrors session.SocketPathIn using Linux POSIX path rules,
+// so Windows and macOS clients agree with a remote Linux server.
+func remoteSocketPath(dir string, uid int) string {
+	p := path.Join(dir, "sessions.sock")
+	if len(p) < 100 {
+		return p
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(p))
+	name := fmt.Sprintf("mojian-%x.sock", h.Sum32())
+	if uid >= 0 {
+		name = fmt.Sprintf("mojian-%d-%x.sock", uid, h.Sum32())
+	}
+	return path.Join("/tmp", name)
 }
 
 // Dial prepares a connection without touching the app's active
@@ -400,15 +417,15 @@ func remoteHashes(ctx context.Context, host string, paths ...string) (map[string
 	return hashes, nil
 }
 
-// uploadRemote writes data to path on host through SSH, atomically.
-func uploadRemote(ctx context.Context, host, path string, data []byte, mode string) error {
+// uploadRemote writes data to remotePath on host through SSH, atomically.
+func uploadRemote(ctx context.Context, host, remotePath string, data []byte, mode string) error {
 	ssh, err := sshPath()
 	if err != nil {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host,
-		"mkdir -p "+shellQuote(filepath.Dir(path))+" && cat > "+shellQuote(path+".tmp")+
-			" && chmod "+mode+" "+shellQuote(path+".tmp")+" && mv "+shellQuote(path+".tmp")+" "+shellQuote(path))...)
+		"mkdir -p "+shellQuote(path.Dir(remotePath))+" && cat > "+shellQuote(remotePath+".tmp")+
+			" && chmod "+mode+" "+shellQuote(remotePath+".tmp")+" && mv "+shellQuote(remotePath+".tmp")+" "+shellQuote(remotePath))...)
 	cmd.Stdin = bytes.NewReader(data)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

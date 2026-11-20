@@ -68,20 +68,23 @@ func (a *app) toggleTerminal() {
 		a.fail(errors.New("terminals are unavailable in this build"))
 		return
 	}
-	t := a.terminalTab()
-	if t == nil {
-		return
-	}
-	if t.Focus != nil && t.Focus.Term != nil {
-		a.closePane(t.Focus)
-		return
-	}
-	if p := t.terminalPane(); p != nil {
-		t.Focus = p
-		a.focusReq = p
-		a.changed()
-		a.invalidate()
-		return
+	if t := a.tab(); t != nil {
+		if t.Focus != nil && t.Focus.Term != nil {
+			a.git.Open = false
+			a.closePane(t.Focus)
+			return
+		}
+		if p := t.terminalPane(); p != nil {
+			a.git.Open = false
+			if t.Zoom != nil && t.Zoom != p {
+				a.unzoom(t)
+			}
+			t.Focus = p
+			a.focusReq = p
+			a.changed()
+			a.invalidate()
+			return
+		}
 	}
 	a.newTerminalPane()
 }
@@ -140,13 +143,12 @@ func (a *app) newTerminalPane() {
 		a.fail(errors.New("terminals need a project on disk"))
 		return
 	}
-	t := a.terminalTab()
-	if t == nil {
-		return
-	}
 	tt, err := a.startTerminal()
 	if err != nil {
 		a.fail(err)
+		return
+	}
+	if a.terminalTab() == nil {
 		return
 	}
 	a.addTerminalPane(tt)
@@ -309,7 +311,7 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 		Padding:      terminal.Padding{X: 10, Y: 8},
 		OnBell: func() {
 			update(func() {
-				if a.NotifyBell && (a.win == nil || !a.win.IsFocused()) {
+				if a.NotifyBell && !a.harness && !a.quitting && (a.win == nil || !a.win.IsFocused()) {
 					a.notifyTerminal("Terminal", tt, "")
 				}
 				a.invalidate()
@@ -317,7 +319,7 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 		},
 		OnExit: func(code int) {
 			update(func() {
-				if a.NotifyExit && !a.quitting && (a.win == nil || !a.win.IsFocused()) {
+				if a.NotifyExit && !a.harness && !a.quitting && (a.win == nil || !a.win.IsFocused()) {
 					a.notifyTerminal("Terminal finished", tt, "exit "+strconv.Itoa(code))
 				}
 				a.invalidate()
@@ -361,7 +363,7 @@ func lastScreenLine(screen string) string {
 	lines := strings.Split(screen, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		text := strings.Join(strings.Fields(lines[i]), " ")
-		if text == "" || promptOnly(text) {
+		if text == "" || promptOnly(text) || text == "[Disconnected]" {
 			continue
 		}
 		if r := []rune(text); len(r) > 160 {

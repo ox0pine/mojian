@@ -225,6 +225,20 @@ func shortcutKeyName(key ui.Key) (string, bool) {
 	return "", false
 }
 
+// sameAccel reports whether two accelerators bind the same keys on this
+// platform, treating CmdOrCtrl and Ctrl as equivalent outside macOS.
+func sameAccel(a, b string) bool {
+	if strings.EqualFold(a, b) {
+		return true
+	}
+	if a == "" || b == "" {
+		return false
+	}
+	ma, ka, oka := parseAccel(a)
+	mb, kb, okb := parseAccel(b)
+	return oka && okb && ma == mb && ka == kb
+}
+
 // setShortcut binds a command, taking the keys from any other that had
 // them; the default's own keys remove the binding. The returned notice is
 // shown by the Settings window.
@@ -242,14 +256,14 @@ func (a *app) setShortcutValue(id, accel string) string {
 			if other.ID == id {
 				continue
 			}
-			if strings.EqualFold(a.commandAccel(other), accel) {
+			if sameAccel(a.commandAccel(other), accel) {
 				sc[other.ID] = ""
 				notice = shortcutDisplay(accel) + " was used by " + strings.TrimSuffix(other.Title, "…") + "; it is now unbound."
 			}
 		}
 	}
 	c := commandByID(id)
-	if c != nil && strings.EqualFold(accel, c.Default()) {
+	if c != nil && sameAccel(accel, c.Default()) {
 		delete(sc, id)
 	} else {
 		sc[id] = accel
@@ -258,6 +272,7 @@ func (a *app) setShortcutValue(id, accel string) string {
 		sc = nil
 	}
 	a.shortcutKeys = sc
+	a.settings.IndexDirty = true
 	a.saveSettings()
 	a.refreshMenu()
 	a.invalidate()

@@ -131,6 +131,7 @@ func (a *app) createWindow(stateKey string) *mygo.Window {
 
 // windowClosed clears the window state, keeping the tabs for a reopen.
 func (a *app) windowClosed() {
+	wasQuitting := a.quitting
 	a.quitting = true
 	if a.settingsWin != nil {
 		a.settingsWin.Close()
@@ -152,11 +153,15 @@ func (a *app) windowClosed() {
 		a.layoutTimer.Stop()
 		a.layoutTimer = nil
 	}
+	if a.settingsTimer != nil {
+		a.settingsTimer.Stop()
+		a.settingsTimer = nil
+	}
 	a.focusReq = nil
-	a.paletteOpen = false
-	a.projectOpen = false
+	a.closeModals()
 	a.treeDraft = nil
 	a.rename = nil
+	a.quitting = wasQuitting
 }
 
 // openSettingsWindow shows the preferences in a window of their own, or
@@ -192,7 +197,9 @@ func (a *app) openSettingsWindow() {
 		a.settings.Query = ""
 		a.settings.Found, a.settings.Hits, a.settings.Reveal = nil, nil, ""
 		a.settings.KeyFilter = ""
-		a.hostEditAddr, a.hostRemoveAddr, a.settings.Notice = "", "", ""
+		a.settings.FontPick = false
+		a.hostEditAddr, a.hostRemoveAddr, a.hostStopAddr, a.settings.Notice = "", "", "", ""
+		a.localStopAsk = false
 	})
 	win.Focus()
 }
@@ -242,7 +249,7 @@ func (a *app) themeSource() mygo.ThemeSource {
 // frame's colors alone cannot do: a forced dark window needs dark traffic
 // lights and dark system panels too.
 func (a *app) applyAppearanceSource() {
-	if a.harness || a.win == nil {
+	if a.harness || (a.win == nil && a.settingsWin == nil) {
 		return
 	}
 	mygo.Theme.SetSource(a.themeSource())

@@ -41,7 +41,7 @@ func (u *UI) Sidebar(c *ui.Context, k *colors) {
 						return
 					}
 					if d := u.TreeDraft(); d != nil && d.Kind != DraftRename && d.Parent == n.Rel {
-						u.treeDraftRow(c, k, depth, n.Dir)
+						u.treeDraftRow(c, k, depth, d.Kind == DraftFolder)
 					}
 					for _, child := range n.Children {
 						if child.Dir {
@@ -102,7 +102,9 @@ func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
 				u.later(func() { u.StartNewFolder() })
 			}
 			if u.refreshing() {
-				ui.Spinner(c).Size(14, 14).Label("Refreshing project")
+				ui.Box(c).Size(22, 22).Center().Children(func() {
+					ui.Spinner(c).Size(14, 14).Label("Refreshing project")
+				})
 			} else if iconButton(c, k, "refresh-cw", "Refresh Project", 22, 13).
 				Tooltip("Refresh Project").Clicked() {
 				u.later(func() { u.RefreshProject() })
@@ -280,6 +282,7 @@ func (u *UI) treeDraftInput(c *ui.Context, d *Draft, placeholder string) {
 	case in.Submitted():
 		u.later(func() { u.SubmitTreeDraft() })
 	case d.Focused && !in.Focused():
+		d.Focused = false
 		if d.Kind == DraftRename {
 			u.later(func() { u.SubmitTreeDraft() })
 		} else {
@@ -314,7 +317,7 @@ func (u *UI) searchResults(c *ui.Context, k *colors) {
 	}
 	for _, n := range notes {
 		n := n
-		row := ui.Row(c.Key("result:"+n.Rel)).Height(34).Padding(0, 8).Gap(10).Radius(radius).
+		row := ui.Row(c.Key("result:"+n.Rel)).Height(34).Padding(0, 10).Gap(10).Radius(radius).
 			AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleTreeItem).
 			Focusable().FocusRing(false).Label(n.Title).
 			PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, n.Rel, false) })

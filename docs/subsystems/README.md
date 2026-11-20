@@ -9,6 +9,7 @@ its source links; `AGENTS.md` is the short index that points here.
 | UI shell and frame conventions | [ui-shell.md](ui-shell.md) |
 | Project store and filesystem backends | [projects-and-storage.md](projects-and-storage.md) |
 | Session server and remote hosts | [session-and-remote.md](session-and-remote.md) |
+| Background agent tasks | [agent.md](agent.md) |
 | Git page | [git-page.md](git-page.md) |
 | Persistence, settings and layout | [persistence-and-layout.md](persistence-and-layout.md) |
 | Colors and themes | [theme.md](theme.md) |

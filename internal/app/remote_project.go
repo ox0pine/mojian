@@ -206,12 +206,15 @@ func (a *app) closeRemoteProject(host, path string) {
 		a.remotePickHost = ""
 	}
 	if active {
+		a.stopAgentTask()
+		prevProject := a.project
 		a.serverAlias, a.remotePath = "", ""
 		a.abandonActiveWorkspace()
+		a.project = prevProject
 		a.updateTitle()
 		a.later(func() {
-			if a.project != "" {
-				a.openProject(a.project)
+			if prevProject != "" {
+				a.openProject(prevProject)
 			}
 		})
 	}
@@ -271,7 +274,11 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 		a.fail(fmt.Errorf("choose a server and a project"))
 		return
 	}
-	remotePath = strings.TrimRight(remotePath, "/")
+	if trimmed := strings.TrimRight(remotePath, "/"); trimmed != "" {
+		remotePath = trimmed
+	} else {
+		remotePath = "/"
+	}
 	if a.remoteBusy {
 		a.dropPickerRemote()
 		return
@@ -338,6 +345,7 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 			if rc != nil {
 				a.installRemoteConn(rc)
 			}
+			a.stopAgentTask()
 			a.stashActiveWorkspace()
 			ws := &workspace{
 				key:         key,
@@ -357,7 +365,7 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 			}
 			a.keepRemote(host)
 			a.rememberRemoteProject(remoteProject{Host: host, Path: remotePath})
-			if !a.restoreLayout() {
+			if a.NoRestoreLayout || !a.restoreLayout() {
 				a.focusFirstNote()
 			}
 			if t := a.tab(); t != nil {
@@ -483,8 +491,9 @@ func (a *app) remoteBusyView(c *ui.Context, k *colors) {
 		back.Children(func() {
 			panel := ui.Row(c).Width(390).Padding(18, 20).Gap(14).Radius(radius).
 				Background(k.Panel).Border(1, k.PanelBorder).
-				Shadow(0, 18, 44, -8, k.ShadowFocused).AlignItems(ui.Center).
-				Focusable().Focus()
+				Shadow(0, 18, 44, -8, k.ShadowDialog).AlignItems(ui.Center).
+				Focusable()
+			c.OnShortcut(0, ui.KeyEscape, func() { a.cancelRemoteTask() })
 			panel.Children(func() {
 				ui.Spinner(c).Size(18, 18).Label("Working")
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {

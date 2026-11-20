@@ -3,6 +3,7 @@ package app
 import (
 	"mojian/internal/app/commands"
 	"runtime"
+	"strings"
 
 	"mojian/internal/icons"
 
@@ -76,8 +77,21 @@ func (a *app) welcomePage(c *ui.Context, k *colors, vw, vh float32) {
 					})
 				}
 
-				ui.Text(c, nativeKeys("⌘,")+" Settings     "+nativeKeys("⇧⌘P")+" Commands     "+nativeKeys("⌘O")+" Open Project").
-					FontSize(11).TextColor(k.TextFaint).TextAlign(ui.Center)
+				var footerHints []string
+				addHint := func(cmd *commands.Command, label string) {
+					if keys := a.commandKeys(cmd); keys != "" && keys != "None" {
+						footerHints = append(footerHints, keys+" "+label)
+					}
+				}
+				addHint(cmdSettings, "Settings")
+				addHint(cmdPalette, "Commands")
+				if runtime.GOOS != "js" {
+					addHint(cmdOpenProject, "Open Project")
+				}
+				if len(footerHints) > 0 {
+					ui.Text(c, strings.Join(footerHints, "     ")).
+						FontSize(11).TextColor(k.TextFaint).TextAlign(ui.Center)
+				}
 			})
 		})
 	})
@@ -95,7 +109,7 @@ func (a *app) welcomeAction(c *ui.Context, k *colors, glyph, title string, cmd *
 	row.Children(func() {
 		ui.Icon(c, icons.Icon(glyph)).Size(15, 15).TextColor(k.TextMuted)
 		ui.Text(c, title).FontSize(rowTitle).TextColor(k.Text).Grow(1)
-		if hint := a.commandKeys(cmd); hint != "" {
+		if hint := a.commandKeys(cmd); hint != "" && hint != "None" {
 			ui.Text(c, hint).FontSize(rowDetail).TextColor(k.TextFaint)
 		}
 	})

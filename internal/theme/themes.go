@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"math"
 	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -230,8 +231,8 @@ func deriveColors(w wash, dark bool, term *terminal.Theme, accent ui.Color) Colo
 	}
 
 	k.Text = term.Foreground
-	k.TextMuted = term.Foreground.Mix(term.Background, .38)
-	k.TextFaint = term.Foreground.Mix(term.Background, .56)
+	k.TextMuted = term.Foreground.Mix(term.Background, pick(dark, float32(.36), float32(.32)))
+	k.TextFaint = term.Foreground.Mix(term.Background, pick(dark, float32(.48), float32(.44)))
 	k.IconMuted = k.TextFaint
 
 	k.Accent = accent
@@ -304,14 +305,35 @@ func UI(c *ui.Context, k *Colors, dark bool) *ui.Theme {
 	return &t
 }
 
-// accentText is black on a light accent and white on a dark one, read from
-// the accent's luminance so a pale theme keeps its accent readable.
+// accentText picks dark ink or white, whichever gives higher WCAG contrast
+// against the accent, so buttons and selected rows stay legible on every theme.
 func accentText(c ui.Color) ui.Color {
-	lum := 0.2126*float32(c.R) + 0.7152*float32(c.G) + 0.0722*float32(c.B)
-	if lum > 165 {
-		return ui.RGB(24, 24, 27)
+	ink, white := ui.RGB(14, 14, 16), ui.RGB(255, 255, 255)
+	lc := relativeLuminance(c)
+	cInk := contrastRatio(lc, relativeLuminance(ink))
+	cWhite := contrastRatio(lc, relativeLuminance(white))
+	if cInk >= cWhite {
+		return ink
 	}
-	return ui.RGB(255, 255, 255)
+	return white
+}
+
+func relativeLuminance(c ui.Color) float64 {
+	ch := func(v uint8) float64 {
+		x := float64(v) / 255
+		if x <= 0.03928 {
+			return x / 12.92
+		}
+		return math.Pow((x+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
+}
+
+func contrastRatio(a, b float64) float64 {
+	if a < b {
+		a, b = b, a
+	}
+	return (a + 0.05) / (b + 0.05)
 }
 
 // EditorTheme colors an open note. The default theme keeps GitHub's syntax
@@ -367,7 +389,7 @@ func PaintPreview(p *ui.Painter, r ui.Rect, id string, dark bool) {
 	p.Fill(card, k.CardFocused, 6)
 	p.Stroke(card, k.PanelBorder, 6, 1)
 	p.Text(card.X+8, card.Y+5, "Aa", 15, k.Text)
-	chip := ui.Rect{X: card.X + card.W - 38, Y: card.Y + 6, W: 28, H: 12}
+	chip := ui.Rect{X: card.X + card.W - 42, Y: card.Y + 6, W: 28, H: 12}
 	p.Fill(chip, k.PanelSel, 3)
 	p.Text(chip.X+4, chip.Y, "~/", 9, k.Text)
 	cursor := ui.Rect{X: card.X + card.W - 10, Y: card.Y + 6, W: 2, H: 14}

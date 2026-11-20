@@ -43,7 +43,7 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 	}
 	a.settings.Section(c, k, "SERVERS", func() {
 		ui.Column(c).Padding(6).Children(func() {
-			a.hostSettingsRow(c, k, "", "Local", thisComputerName(), a.serverAlias == "")
+			a.hostSettingsRow(c, k, "", "", "Local", thisComputerName(), a.serverAlias == "")
 			if remoteSupported() {
 				for _, h := range a.hosts() {
 					ui.Divider(c).Margin(0, 10)
@@ -51,7 +51,7 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 					if label == "" {
 						label = h.Address
 					}
-					a.hostSettingsRow(c, k, h.Address, label, h.Address, a.serverAlias == h.Address)
+					a.hostSettingsRow(c, k, h.Address, h.Name, label, h.Address, a.serverAlias == h.Address)
 				}
 				if len(a.hosts()) == 0 {
 					ui.Text(c, "No SSH servers yet. Add one above.").
@@ -91,7 +91,7 @@ func (a *app) addHostChecked() {
 	a.invalidate()
 }
 
-func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, label, detail string, selected bool) {
+func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, detail string, selected bool) {
 	if host != "" && a.hostEditAddr == host {
 		a.hostEditRow(c, k, host, label)
 		return
@@ -122,7 +122,7 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, label, detail stri
 			if host != "" {
 				edit := iconButton(c, k, "pencil", "Edit server "+label, iconBtnSm, iconGlyphSm)
 				if edit.Clicked() {
-					a.hostEditAddr, a.hostEditName, a.hostEditAddress = host, label, host
+					a.hostEditAddr, a.hostEditName, a.hostEditAddress = host, rawName, host
 					a.hostRemoveAddr, a.settings.Notice = "", ""
 					a.invalidate()
 				}
@@ -146,7 +146,7 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, label, detail stri
 					a.hostRemoveAddr = ""
 					a.invalidate()
 				}
-				if settingsButton(c, "Remove", true).TextColor(k.Danger).Clicked() {
+				if settingsButton(c, "Remove", false).TextColor(k.Danger).Clicked() {
 					a.removeHost(host)
 				}
 			})
@@ -217,13 +217,13 @@ func (a *app) serverControlRow(c *ui.Context, k *colors, s serverRowSpec) {
 			}
 		})
 		if s.stopAsk {
-			ui.Row(c).Padding(0, 2, 10, 8).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Padding(0, 6, 10, 6).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "Stop this server? Its terminals and the processes in them end.").
 					FontSize(11.5).TextColor(k.TextMuted).Grow(1).LineHeight(1.35)
 				if settingsButton(c, "Cancel", false).Clicked() {
 					s.cancel()
 				}
-				if settingsButton(c, "Stop", true).TextColor(k.Danger).Clicked() {
+				if settingsButton(c, "Stop", false).TextColor(k.Danger).Clicked() {
 					s.stop()
 				}
 			})
@@ -465,25 +465,40 @@ func (a *app) saveHostEdit(host string) {
 			name = addr
 		}
 		a.hosts()[i].Name, a.hosts()[i].Address = name, addr
-		if a.serverAlias == host {
-			a.serverAlias = addr
-		}
-		if st := a.hostStates[host]; st != nil {
+		if addr != host {
+			if a.serverAlias == host {
+				a.serverAlias = addr
+			}
 			delete(a.hostStates, host)
-			a.hostStates[addr] = st
-		}
-		if a.hostStopAddr == host {
-			a.hostStopAddr = addr
-		}
-		if a.hostSetupAddr == host {
-			a.hostSetupAddr = addr
-		}
-		delete(a.remoteHomes, host)
-		delete(a.remoteHomes, addr)
-		delete(a.remoteKeep, host)
-		for j := range a.remoteProjects() {
-			if a.remoteProjects()[j].Host == host {
-				a.remoteProjects()[j].Host = addr
+			delete(a.hostStates, addr)
+			if a.hostStopAddr == host {
+				a.hostStopAddr = addr
+			}
+			if a.hostSetupAddr == host {
+				a.hostSetupAddr = addr
+			}
+			delete(a.remoteHomes, host)
+			delete(a.remoteHomes, addr)
+			delete(a.remoteKeep, host)
+			if rc := a.remoteConn(host); rc != nil {
+				a.detachRemoteConn(rc)
+			}
+			var rekey []*workspace
+			for key, ws := range a.workspaces {
+				if ws.serverAlias == host {
+					delete(a.workspaces, key)
+					ws.serverAlias = addr
+					ws.key = workspaceKeyRemote(addr, ws.remotePath)
+					rekey = append(rekey, ws)
+				}
+			}
+			for _, ws := range rekey {
+				a.workspaces[ws.key] = ws
+			}
+			for j := range a.remoteProjects() {
+				if a.remoteProjects()[j].Host == host {
+					a.remoteProjects()[j].Host = addr
+				}
 			}
 		}
 		a.hostEditAddr, a.settings.Notice = "", ""
@@ -526,15 +541,18 @@ func (a *app) removeHost(address string) {
 			delete(a.workspaces, key)
 		}
 		if current {
+			a.stopAgentTask()
 			host := a.serverAlias
+			prevProject := a.project
 			a.dropPickerRemote()
 			a.serverAlias, a.remotePath = "", ""
 			a.abandonActiveWorkspace()
+			a.project = prevProject
 			a.releaseRemote(host)
 			a.saveSettings()
 			a.later(func() {
-				if a.project != "" {
-					a.openProject(a.project)
+				if prevProject != "" {
+					a.openProject(prevProject)
 				}
 			})
 		} else {
@@ -549,23 +567,17 @@ func (a *app) removeHost(address string) {
 func (a *app) selectServer(host string) {
 	if host == "" {
 		a.later(func() {
-			if err := a.saveNow(); err != nil {
-				a.fail(err)
-				return
-			}
-			host := a.serverAlias
-			a.dropPickerRemote()
-			a.serverAlias = ""
-			a.remotePath = ""
-			a.abandonActiveWorkspace()
-			a.releaseRemote(host)
-			a.saveSettings()
 			if a.settingsWin != nil {
 				a.settingsWin.Close()
 			}
+			if a.serverAlias == "" {
+				return
+			}
 			if a.project != "" {
 				a.openProject(a.project)
+				return
 			}
+			a.openProjectPicker()
 		})
 		return
 	}

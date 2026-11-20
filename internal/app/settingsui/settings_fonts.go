@@ -73,6 +73,18 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 			ui.Row(c).Padding(12, 14).Gap(9).AlignItems(ui.Center).
 				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
 				ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(k.Text)
+				ui.Spacer(c)
+				closeBtn := ui.ButtonBase(c).Size(24, 24).Radius(radius).Center().
+					Cursor(ui.CursorPointer).Label("Close")
+				if closeBtn.Hovered() {
+					closeBtn.Background(k.Hover)
+				}
+				closeBtn.Children(func() {
+					ui.Icon(c, icons.Icon("x")).Size(13, 13).TextColor(k.IconMuted)
+				})
+				if closeBtn.Clicked() {
+					u.FontPick = false
+				}
 			})
 			ui.Row(c).Padding(10, 12).Children(func() {
 				u.settingsSearchField(c, k, "font-search", &u.FontSearch,
@@ -104,7 +116,7 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 			ui.List(c, &u.FontList, len(choices), func(i int) {
 				ch := choices[i]
 				row := ui.Row(c.Key("picker-"+ch.name)).Height(34).Padding(0, 10).Gap(10).
-					Radius(radius).Cursor(ui.CursorPointer).Label(ch.label)
+					Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(ch.label)
 				if ch.name == current {
 					row.Background(k.PanelSel)
 				} else if row.Hovered() {
@@ -129,7 +141,7 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 						ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.TextMuted)
 					}
 				})
-			}).Height(350).Padding(6)
+			}).MaxHeight(350).Padding(6)
 			if picked {
 				if u.FontPickFor == 1 {
 					u.TerminalFontFamily = pick

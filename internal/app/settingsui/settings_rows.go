@@ -1,6 +1,7 @@
 package settingsui
 
 import (
+	"math"
 	"reflect"
 
 	"mojian/internal/settings"
@@ -74,7 +75,7 @@ func (u *UI) settingsRowSpec(c *ui.Context, k *colors, row settings.Row) {
 				Radius(8).Background(k.Hover).FontSize(12).
 				Placeholder(row.Placeholder).Label(row.Title)
 			if in.Changed() {
-				u.saveSettings()
+				u.saveSettingsSoon()
 				u.invalidate()
 			}
 		})
@@ -145,7 +146,7 @@ func (u *UI) setPrefFloat(name string, value float64) {
 		v.SetFloat(value)
 		return
 	}
-	v.SetInt(int64(value))
+	v.SetInt(int64(math.Round(value)))
 }
 
 func (u *UI) prefChoice(row settings.Row) int {

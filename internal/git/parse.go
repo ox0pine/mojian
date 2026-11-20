@@ -153,17 +153,17 @@ func ReadDiff(r Runner, root string, c Change) (string, error) {
 	if c.OldPath != "" && c.OldPath != path {
 		paths = append([]string{c.OldPath}, paths...)
 	}
-	out, err := r.Run(root, append([]string{"diff", "--no-color", "--no-ext-diff", "HEAD", "--"}, paths...)...)
+	out, err := r.Run(root, append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "HEAD", "--"}, paths...)...)
 	if err != nil && (strings.Contains(err.Error(), "unknown revision") ||
 		strings.Contains(err.Error(), "bad revision") ||
 		strings.Contains(err.Error(), "ambiguous argument")) {
-		out, err = r.Run(root, append([]string{"diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
+		out, err = r.Run(root, append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
 	}
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(out) == "" {
-		out, err = r.Run(root, append([]string{"diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
+		out, err = r.Run(root, append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
 		if err != nil {
 			return "", err
 		}
@@ -190,6 +190,9 @@ func untrackedDiff(r Runner, root, path, display string) (string, error) {
 	lines := strings.Split(text, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		return "Empty file.\n", nil
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "diff --git a/%s b/%s\nnew file mode 100644\n--- /dev/null\n+++ b/%s\n", display, display, display)

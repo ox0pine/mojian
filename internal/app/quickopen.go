@@ -46,7 +46,7 @@ func (a *app) quickOpenModal(c *ui.Context, k *colors) {
 		a.quickList.Key = func(i int) any { return choices[i].rel }
 		list := ui.List(c, &a.quickList, len(choices), func(i int) {
 			ch := choices[i]
-			_, clicked := fileChoiceRow(c, k, i, ch, i == a.quickSel)
+			_, clicked := fileChoiceRow(c, k, ch.rel, ch, i == a.quickSel)
 			if clicked {
 				chosen = i
 			}
@@ -65,7 +65,11 @@ func (a *app) quickOpenModal(c *ui.Context, k *colors) {
 	}
 	if was && !a.quickOpen {
 		if t := a.tab(); t != nil && a.focusReq == nil {
-			a.focusReq = t.editorPane()
+			if t.Focus != nil {
+				a.focusReq = t.Focus
+			} else {
+				a.focusReq = t.editorPane()
+			}
 		}
 	}
 }

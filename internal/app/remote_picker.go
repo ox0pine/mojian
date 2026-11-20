@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -155,17 +156,18 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 	q := strings.ToLower(strings.TrimSpace(a.remoteQuery))
 	ui.DialogBase(c, &a.remotePicker, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.Backdrop)
-		panel.Width(620).Height(520).Radius(radius).Background(k.Sheet).
-			Border(1, k.PanelBorder).
+		panel.WidthPercent(58).HeightPercent(66).
+			MinWidth(520).MinHeight(360).MaxWidth(680).MaxHeight(480).
+			Radius(radius).Background(k.Sheet).Border(1, k.PanelBorder).
 			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip()
 		ui.Column(c).Fill().Children(func() {
-			ui.Row(c).Height(60).Padding(0, 18, 0, 12).Gap(11).AlignItems(ui.Center).
+			ui.Row(c).Height(60).Padding(0, 18).Gap(11).AlignItems(ui.Center).
 				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
 				ui.Box(c).Size(34, 34).Radius(radius).Background(k.Hover).Center().Children(func() {
 					ui.Icon(c, icons.Icon("server")).Size(18, 18).TextColor(k.TextMuted)
 				})
 				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, "Open Project on "+a.remoteHost).FontSize(15).
+					ui.Text(c, "Open Project on "+a.hostLabel(a.remoteHost)).FontSize(15).
 						FontWeight(650).TextColor(k.Text)
 					ui.Text(c, "Choose a folder on the server").FontSize(11.5).
 						TextColor(k.TextFaint)
@@ -176,32 +178,44 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 				}
 			})
 			ui.Row(c).Padding(12, 18).Gap(8).AlignItems(ui.Center).Children(func() {
+				if iconButton(c, k, "arrow-up", "Parent Folder", iconBtnMd, iconGlyphMd).
+					Tooltip("Parent Folder").Clicked() {
+					cur := strings.TrimSpace(a.remoteQuery)
+					if cur != "" {
+						parent := path.Dir(cur)
+						if parent != "" && parent != "." && parent != cur {
+							a.remoteQuery = parent
+							a.later(func() { a.loadRemoteDirs(parent) })
+						}
+					}
+				}
 				ui.Row(c).Grow(1).Height(32).Padding(0, 9).Gap(7).Radius(radius).
 					Background(k.Hover).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextFaint)
 					in := ui.TextInputBase(c, &a.remoteQuery).Grow(1).FontSize(13).
 						Placeholder("Server project path…").AutoFocus()
 					if in.Submitted() {
-						path := strings.TrimSpace(a.remoteQuery)
-						if path != "" {
+						target := strings.TrimSpace(a.remoteQuery)
+						if target != "" {
 							a.remotePicker = false
-							a.later(func() { a.openRemoteProjectAsync(a.remoteHost, path) })
+							a.remoteOpening = true
+							a.later(func() { a.openRemoteProjectAsync(a.remoteHost, target) })
 						}
 					}
 				})
 				if ui.PrimaryButton(c, "Open").Clicked() {
-					path := strings.TrimSpace(a.remoteQuery)
-					if path != "" {
+					target := strings.TrimSpace(a.remoteQuery)
+					if target != "" {
 						a.remotePicker = false
 						a.remoteOpening = true
-						a.later(func() { a.openRemoteProjectAsync(a.remoteHost, path) })
+						a.later(func() { a.openRemoteProjectAsync(a.remoteHost, target) })
 					}
 				}
 			})
 			if a.remoteDirsBusy {
-				ui.Row(c).Padding(10, 10).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Padding(10, 18).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Spinner(c).Size(14, 14).Label("Reading folders")
-					ui.Text(c, "Reading folders…").FontSize(12).TextColor(k.TextFaint)
+					ui.Text(c, "Reading folders…").FontSize(rowDetail).TextColor(k.TextFaint)
 				})
 			} else {
 				var shown []session.FileEntry
@@ -218,8 +232,8 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 				a.remoteList.Key = func(i int) any { return shown[i].Rel }
 				list := ui.List(c, &a.remoteList, len(shown), func(i int) {
 					d := shown[i]
-					row := ui.Row(c.Key(d.Rel)).Height(34).Padding(0, 10).MarginY(2).
-						Gap(8).Radius(radius).Cursor(ui.CursorPointer).
+					row := ui.Row(c.Key(d.Rel)).Height(rowH).Padding(0, rowPadX).MarginY(2).
+						Gap(rowGap).Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 						Label("Open " + d.Rel)
 					if row.Hovered() {
 						row.Background(k.Hover)
@@ -229,13 +243,17 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 					}
 					row.Children(func() {
 						ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-						ui.Text(c, filepath.Base(d.Rel)).FontSize(12.5).TextColor(k.Text).
+						ui.Text(c, path.Base(d.Rel)).FontSize(rowTitle).TextColor(k.Text).
 							SingleLine().Ellipsis("…")
 					})
-				}).Grow(1).MinHeight(0).Padding(4, 6)
+				}).Grow(1).MinHeight(0).Padding(4, 10)
 				if len(shown) == 0 {
 					list.Children(func() {
-						ui.Text(c, a.remoteErr).FontSize(12).TextColor(k.TextFaint).Padding(14)
+						if a.remoteErr != "" {
+							ui.Text(c, a.remoteErr).FontSize(rowDetail).TextColor(k.Danger).Padding(10, 8)
+						} else {
+							emptyLine(c, k, "No subfolders")
+						}
 					})
 				}
 				if openRel != "" {
@@ -329,6 +347,8 @@ func (a *app) serverRow(c *ui.Context, k *colors, m ui.MenuParts, host, label st
 			a.later(func() {
 				if a.project != "" {
 					a.openProject(a.project)
+				} else if a.serverAlias != "" {
+					a.openProjectPicker()
 				}
 			})
 		} else {
@@ -525,12 +545,21 @@ func (a *app) finishHostStop(host string, err error) {
 	a.hostSetupErr = ""
 	a.hostSetupMsg = "Server stopped"
 	a.setHostRunning(host, false)
+	delete(a.remoteKeep, host)
 	if rc := a.remoteConn(host); rc != nil {
 		a.detachRemoteConn(rc)
 	}
 	for _, ws := range a.workspaces {
 		if ws.serverAlias == host {
 			closeWorkspaceTerminals(ws)
+			continue
+		}
+		for _, t := range ws.tabs {
+			for _, p := range t.panes() {
+				if p.Term != nil && p.Term.Spec.Server == host {
+					detachTerminalView(p)
+				}
+			}
 		}
 	}
 	a.invalidate()

@@ -55,20 +55,31 @@ func (h settingsHost) SetShortcut(id, value string) string {
 }
 
 func (h settingsHost) ResetShortcut(id string) {
+	if c := commandByID(id); c != nil {
+		if notice := h.a.setShortcutValue(id, c.Default()); notice != "" {
+			h.a.settings.Notice = notice
+		}
+		return
+	}
 	delete(h.a.shortcutKeys, id)
+	h.a.settings.IndexDirty = true
 }
 
-func (h settingsHost) ResetShortcuts() { h.a.shortcutKeys = nil }
+func (h settingsHost) ResetShortcuts() {
+	h.a.shortcutKeys = nil
+	h.a.settings.IndexDirty = true
+}
 
 func (h settingsHost) Commands() []settingsui.Command {
 	out := make([]settingsui.Command, 0, len(paletteCommands))
 	for _, c := range paletteCommands {
 		out = append(out, settingsui.Command{
-			ID:        c.ID,
-			Title:     c.Title,
-			Accel:     c.Default(),
-			Keys:      h.a.commandKeys(c),
-			Available: commandAvailable(c),
+			ID:          c.ID,
+			Title:       c.Title,
+			Accel:       c.Default(),
+			Keys:        h.a.commandKeys(c),
+			DefaultKeys: shortcutDisplay(c.Default()),
+			Available:   commandAvailable(c),
 		})
 	}
 	return out

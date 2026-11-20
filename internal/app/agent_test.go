@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"mojian/internal/acp"
 	"mojian/internal/fs"
 	"mojian/internal/project"
 )
@@ -51,5 +52,19 @@ func TestStopAgentTaskClearsIt(t *testing.T) {
 	a.stopAgentTask()
 	if a.agentTask != nil || a.agentOpen {
 		t.Fatalf("task = %+v, open = %v after stop", a.agentTask, a.agentOpen)
+	}
+}
+
+func TestAgentReplyCapsAt8KBWithoutResetting(t *testing.T) {
+	task := &agentTask{prompt: "summarize"}
+	a := &app{workspace: &workspace{}, agentTask: task, harness: true}
+	a.agentTaskEvent(task, acp.Event{Kind: acp.KindAgentText, Text: "START " + strings.Repeat("x", 7994)})
+	a.agentTaskEvent(task, acp.Event{Kind: acp.KindAgentText, Text: "TAIL"})
+	got := task.reply.String()
+	if !strings.HasPrefix(got, "START ") {
+		t.Fatalf("reply lost its beginning after reaching 8 KB: %q", got[:min(len(got), 20)])
+	}
+	if len(got) != 8000 {
+		t.Fatalf("reply length = %d, want 8000", len(got))
 	}
 }

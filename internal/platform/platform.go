@@ -5,6 +5,7 @@ package platform
 import (
 	"runtime"
 	"strings"
+	"unicode"
 )
 
 // TerminalsSupported reports whether this platform can run a terminal.
@@ -52,13 +53,8 @@ func NativeKeysFor(goos, s string) string {
 			j++
 		}
 		key := ""
-		if j < len(runes) {
+		if j < len(runes) && !unicode.IsSpace(runes[j]) {
 			key = shortcutKey(runes[j])
-		}
-		if key == "" {
-			out.WriteRune(runes[i])
-			i++
-			continue
 		}
 		var parts []string
 		if ctrl {
@@ -70,9 +66,14 @@ func NativeKeysFor(goos, s string) string {
 		if shift {
 			parts = append(parts, "Shift")
 		}
-		parts = append(parts, key)
-		out.WriteString(strings.Join(parts, "+"))
-		i = j + 1
+		if key != "" {
+			parts = append(parts, key)
+			out.WriteString(strings.Join(parts, "+"))
+			i = j + 1
+		} else {
+			out.WriteString(strings.Join(parts, "+"))
+			i = j
+		}
 	}
 	return out.String()
 }

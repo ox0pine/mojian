@@ -172,6 +172,9 @@ func (a *app) openNote(n *note) {
 		p.md = nil
 		p.Preview = a.MarkdownPreview && isMarkdownPath(n.Path)
 	}
+	if t.Zoom != nil && t.Zoom != p {
+		a.unzoom(t)
+	}
 	releaseAsset(p)
 	p.Note = n
 	p.Asset = nil
@@ -266,6 +269,9 @@ func (a *app) openAsset(f *assetFile) {
 		t.Root = &node{Pane: p}
 		t.Focus = p
 	}
+	if t.Zoom != nil && t.Zoom != p {
+		a.unzoom(t)
+	}
 	releaseAsset(p)
 	p.Note = nil
 	p.state = nil
@@ -310,7 +316,11 @@ func (a *app) closeTab(t *tab) {
 		a.rename = nil
 	}
 	if next := a.tab(); next != nil {
-		a.focusReq = next.editorPane()
+		if next.Focus != nil {
+			a.focusReq = next.Focus
+		} else {
+			a.focusReq = next.editorPane()
+		}
 		a.revealTab = true
 		if next.Focus != nil {
 			if next.Focus.Note != nil {
@@ -514,9 +524,15 @@ func (a *app) cycleTab(delta int) {
 	a.revealTab = true
 	a.treeDraft = nil
 	if t := a.tab(); t != nil {
-		a.focusReq = t.editorPane()
 		if t.Focus != nil {
-			a.revealInTree(t.Focus.Note)
+			a.focusReq = t.Focus
+			if t.Focus.Note != nil {
+				a.revealInTree(t.Focus.Note)
+			} else if t.Focus.Asset != nil {
+				a.revealRel(t.Focus.Asset.Rel)
+			}
+		} else {
+			a.focusReq = t.editorPane()
 		}
 	}
 	a.changed()
@@ -533,9 +549,15 @@ func (a *app) selectTab(i int) {
 	a.revealTab = true
 	a.treeDraft = nil
 	if t := a.tab(); t != nil {
-		a.focusReq = t.editorPane()
 		if t.Focus != nil {
-			a.revealInTree(t.Focus.Note)
+			a.focusReq = t.Focus
+			if t.Focus.Note != nil {
+				a.revealInTree(t.Focus.Note)
+			} else if t.Focus.Asset != nil {
+				a.revealRel(t.Focus.Asset.Rel)
+			}
+		} else {
+			a.focusReq = t.editorPane()
 		}
 	}
 	a.changed()

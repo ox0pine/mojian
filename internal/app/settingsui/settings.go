@@ -92,7 +92,7 @@ func (u *UI) settingsTitleBar(c *ui.Context, k *colors) {
 	if bar.Left == 0 {
 		dragW = 30
 	}
-	ui.Row(c).Height(44).Padding(0, 14, 0, 0).Gap(12).
+	ui.Row(c).Height(44).Padding(0, max(bar.Right, 14), 0, 0).Gap(12).
 		AlignItems(ui.Center).DragWindow().Children(func() {
 		ui.Box(c).Width(dragW).Height(44).DragWindow().
 			Cursor(ui.CursorGrab).Description("Drag Window")

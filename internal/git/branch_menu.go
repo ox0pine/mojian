@@ -13,9 +13,10 @@ import (
 // own state, instead of the title bar's menu. Switching still runs through
 // the window, so the notes it reloads and the title bar agree.
 const (
-	branchMenuW = 288
-	branchRowH  = 34
-	branchMaxH  = 338
+	branchMenuW     = 288
+	branchRowH      = 34
+	branchMaxH      = 338
+	branchMenuInset = 8
 )
 
 // ToggleBranchMenu opens the page's branch menu under its chip, or closes
@@ -129,7 +130,7 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		p.newBranchBody(c, k)
 		return
 	}
-	ui.Row(c).Padding(6, 10, 4, 10).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Padding(6, branchMenuInset, 4, branchMenuInset).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "BRANCHES").FontSize(10).FontWeight(650).TextColor(k.TextFaint)
 	})
 	d := p.Branches
@@ -143,7 +144,7 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		}
 		p.branchNote(c, k, msg, d.Err != "")
 	default:
-		ui.Scroll(c).MaxHeight(branchMaxH).Children(func() {
+		ui.Scroll(c).MaxHeight(branchMaxH).Gap(4).Children(func() {
 			for _, b := range d.Branches {
 				p.branchMenuRow(c, k, m, b)
 			}
@@ -153,7 +154,7 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		p.branchNote(c, k, p.branchErr, true)
 	}
 	ui.Divider(c).Margin(6, 0)
-	row := menuItem(m, "menu:new-branch").Height(branchRowH).Padding(0, 10).Gap(8).
+	row := menuItem(m, "menu:new-branch").Height(branchRowH).Padding(0, branchMenuInset).Gap(8).
 		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).
 		Label("New Branch…").KeepOpen()
 	if row.Highlighted() {
@@ -165,15 +166,17 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		p.branchErr = ""
 	}
 	row.Children(func() {
-		ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
+		})
 		ui.Text(c, "New Branch…").FontSize(13).TextColor(k.Text)
 	})
 }
 
 // branchMenuRow is one branch, checked when it is the current one.
 func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b Branch) {
-	row := menuItem(m, "branch:"+b.Name).Height(branchRowH).Padding(0, 10).Gap(8).
-		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(b.Name)
+	row := menuItem(m, "branch:"+b.Name).Height(branchRowH).Padding(0, branchMenuInset).Gap(8).
+		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(b.Name).KeepOpen()
 	if b.Current {
 		row.Background(k.PanelSel)
 	} else if row.Highlighted() {
@@ -187,11 +190,13 @@ func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b B
 		weight = 600
 	}
 	row.Children(func() {
-		if b.Current {
-			ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
-		} else {
-			ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
-		}
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			if b.Current {
+				ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
+			} else {
+				ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
+			}
+		})
 		ui.Text(c, b.Name).FontSize(13).FontWeight(weight).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
@@ -199,7 +204,7 @@ func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b B
 
 // newBranchBody is the name field the New Branch row swaps in.
 func (p *Page) newBranchBody(c *ui.Context, k *theme.Colors) {
-	ui.Row(c).Padding(2, 10).Gap(8).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Padding(2, branchMenuInset).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
 		in := ui.TextInputBase(c, &p.branchName).Grow(1).FontSize(12.5).
 			Placeholder("New branch name").AutoFocus()
@@ -227,5 +232,5 @@ func (p *Page) branchNote(c *ui.Context, k *theme.Colors, text string, danger bo
 	if danger {
 		face = k.Danger
 	}
-	ui.Text(c, text).FontSize(12.5).TextColor(face).Padding(6, 10)
+	ui.Text(c, text).FontSize(12.5).TextColor(face).Padding(6, branchMenuInset)
 }

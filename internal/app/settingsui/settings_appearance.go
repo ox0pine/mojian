@@ -1,6 +1,8 @@
 package settingsui
 
 import (
+	"runtime"
+
 	"mojian/internal/theme"
 
 	"github.com/egoist/mygo/ui"
@@ -14,7 +16,10 @@ var themeLabels = []string{"System", "Light", "Dark"}
 // it is a choice of two worlds rather than a look, and the look itself as a
 // grid of themes, each drawn the way the window would be.
 func (u *UI) settingsAppearancePage(c *ui.Context, k *colors) {
-	modeDetail := "Follow this Mac's light or dark appearance."
+	modeDetail := "Follow the system's light or dark appearance."
+	if runtime.GOOS == "darwin" {
+		modeDetail = "Follow this Mac's light or dark appearance."
+	}
 	switch u.Appearance {
 	case 1:
 		modeDetail = "Always use the light appearance."
@@ -31,7 +36,7 @@ func (u *UI) settingsAppearancePage(c *ui.Context, k *colors) {
 			for _, ch := range theme.Choices {
 				u.themeTile(c, k, ch, dark, &u.Theme)
 			}
-		}).Row().Wrap().Label("Theme")
+		}).Row().Wrap().Padding(10).Gap(6).Label("Theme")
 	})
 }
 

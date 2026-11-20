@@ -25,7 +25,7 @@ func (a *app) updateTitle() {
 
 // revealVault shows the vault in the file manager.
 func (a *app) revealVault() {
-	if a.store == nil || a.store.IsMemory() {
+	if a.harness || a.store == nil || a.store.IsMemory() || a.store.IsRemote() {
 		return
 	}
 	if err := mygo.Shell.OpenPath(a.store.Dir); err != nil {

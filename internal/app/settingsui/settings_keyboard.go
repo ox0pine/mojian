@@ -33,7 +33,17 @@ func (u *UI) settingsKeyboardPage(c *ui.Context, k *colors) {
 			}
 		})
 		ui.Divider(c).Margin(0, 16)
-		for _, cmd := range u.commands() {
+		cmds := u.commands()
+		filterByHits := false
+		if u.Hits != nil {
+			for _, cmd := range cmds {
+				if cmd.Available && u.Hits[strings.TrimSuffix(cmd.Title, "…")] {
+					filterByHits = true
+					break
+				}
+			}
+		}
+		for _, cmd := range cmds {
 			if !cmd.Available {
 				continue
 			}
@@ -42,7 +52,7 @@ func (u *UI) settingsKeyboardPage(c *ui.Context, k *colors) {
 			if q != "" && !strings.Contains(strings.ToLower(label+" "+keys+" "+cmd.ID), q) {
 				continue
 			}
-			if u.Hits != nil && !u.Hits[label] {
+			if filterByHits && !u.Hits[label] {
 				continue
 			}
 			u.shortcutRow(c, k, cmd)
@@ -96,8 +106,13 @@ func (u *UI) recordShortcut(cmd Command, mods ui.Modifiers, key ui.Key) bool {
 	if !ok {
 		return false
 	}
-	if mods&(ui.Super|ui.Ctrl|ui.Alt) == 0 && !strings.HasPrefix(name, "F") {
-		u.Notice = "Add ⌘, ⌥ or ⌃ to a letter; function keys work alone."
+	isFuncKey := len(name) >= 2 && name[0] == 'F' && name[1] >= '1' && name[1] <= '9'
+	if mods&(ui.Super|ui.Ctrl|ui.Alt) == 0 && !isFuncKey {
+		if runtime.GOOS == "darwin" {
+			u.Notice = "Add ⌘, ⌥ or ⌃ to a letter; function keys work alone."
+		} else {
+			u.Notice = "Add Ctrl or Alt to a letter; function keys work alone."
+		}
 		return true
 	}
 	var parts []string
@@ -133,16 +148,20 @@ func (u *UI) shortcutRow(c *ui.Context, k *colors, cmd Command) {
 	recording := u.Recording == cmd.ID
 	u.settingRow(c, k, label, "", func() {
 		if custom {
+			defTip := "Restore default"
+			if cmd.DefaultKeys != "" {
+				defTip = "Use " + cmd.DefaultKeys
+			}
 			back := ui.ButtonBase(c.Key("default-"+cmd.ID)).Size(24, 24).Radius(6).
 				Center().TextColor(k.TextFaint).Label("Use the default shortcut").
-				Tooltip("Use " + cmd.Keys)
+				Tooltip(defTip)
 			if back.Hovered() {
 				back.Background(k.Pressed).TextColor(k.Text)
 			}
 			back.Children(func() { ui.Icon(c, icons.Icon("refresh-cw")).Size(12, 12) })
 			if back.Clicked() {
-				u.ResetShortcut(cmd.ID)
 				u.Notice = ""
+				u.ResetShortcut(cmd.ID)
 				u.saveSettings()
 				u.refreshMenu()
 				u.invalidate()
