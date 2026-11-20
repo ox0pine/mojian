@@ -50,6 +50,28 @@ func TestSettingsSearchFindsRowsAndSwitchesPages(t *testing.T) {
 	}
 }
 
+func TestSettingsTextFollowsSystemTextScale(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	normal := ui.NewTester(a.settingsWindowView, 720, 500)
+	normal.Frame()
+	before, ok := normal.Find("Startup, project and working tree")
+	if !ok {
+		t.Fatal("settings page detail is missing")
+	}
+	scaled := ui.NewTesterWith(a.settingsWindowView, 720, 500, ui.TesterOptions{
+		Preferences: ui.Preferences{TextScale: 2},
+	})
+	scaled.Frame()
+	after, ok := scaled.Find("Startup, project and working tree")
+	if !ok {
+		t.Fatal("scaled settings page detail is missing")
+	}
+	if after.H < before.H*1.8 {
+		t.Fatalf("custom settings text ignored system text scale: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestSettingsTogglesWriteTheSettingBack(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)
@@ -102,7 +124,7 @@ func TestSettingsShortcutRecording(t *testing.T) {
 	a.settings.Cat = settingsKeyboard
 	tt := ui.NewTester(a.settingsWindowView, 900, 640)
 	tt.Frame()
-	if err := tt.Click("Shortcut for Save"); err != nil {
+	if err := tt.Click("Shortcut for Save All"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

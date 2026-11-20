@@ -90,7 +90,7 @@ func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
 	ui.Row(c).Height(headerH).Padding(0, 7, 0, 11).Gap(6).AlignItems(ui.Center).
 		PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, "", true) }).Children(func() {
 		ui.Icon(c, icons.FolderIcon()).Size(16, 16).TextColor(k.TextMuted)
-		ui.Text(c, "Explorer").FontSize(12.5).FontWeight(600).TextColor(k.Text)
+		ui.Text(c, "Explorer").FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text)
 		ui.Spacer(c)
 		ui.Toolbar(c, func() {
 			if iconButton(c, k, "file-plus", "New File", 22, 13).
@@ -116,7 +116,7 @@ func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
 func (u *UI) sidebarSearch(c *ui.Context, k *colors) {
 	field := ui.SearchField(c.Key("tree-search"), u.TreeQueryPtr()).
 		Height(32).Margin(0, 9, 6, 9).Padding(0, 9).Gap(6).Radius(radius).
-		Background(k.Hover).Border(0, ui.Transparent).FontSize(13).
+		Background(k.Hover).Border(0, ui.Transparent).FontSize(c.Theme().Rem(1)).
 		Placeholder("Search files…").Label("Search files").Bind(u.TreeSearch())
 	if field.Submitted() {
 		notes, assets := u.filteredFiles()
@@ -158,7 +158,7 @@ func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row
 		}
 		ui.Icon(c, icons.Icon(arrow)).Size(12, 12).TextColor(k.TextFaint)
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, n.Name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, n.Name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	})
 }
@@ -201,7 +201,7 @@ func (u *UI) treeFileRow(c *ui.Context, k *colors, n *fileNode, depth int, row u
 	row.Children(func() {
 		ui.Box(c).Size(12, 12).Shrink(0)
 		ui.Icon(c, icons.FileIcon(path)).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, n.Name).FontSize(12.5).FontWeight(500).TextColor(k.Text).
+		ui.Text(c, n.Name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(500).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Spacer(c)
 		if n.Note != nil && n.Note.Dirty() {
@@ -275,7 +275,7 @@ func (u *UI) treeDraftRow(c *ui.Context, k *colors, depth int, dir bool) {
 // treeDraftInput is the field naming a draft entry, shared by a new file
 // or folder row and the row renaming an entry.
 func (u *UI) treeDraftInput(c *ui.Context, d *Draft, placeholder string) {
-	in := ui.TextInputBase(c, &d.Name).Grow(1).MinWidth(0).FontSize(12.5).
+	in := ui.TextInputBase(c, &d.Name).Grow(1).MinWidth(0).FontSize(c.Theme().Rem(12.5 / 13)).
 		Placeholder(placeholder).AutoFocus()
 	if in.Focused() {
 		d.Focused = true
@@ -305,7 +305,7 @@ func (u *UI) emptyTree(c *ui.Context, k *colors) {
 				Children(func() {
 					ui.Icon(c, icons.Icon("file-plus")).Size(20, 20).TextColor(k.TextFaint)
 				})
-			ui.Text(c, "No files here").FontSize(13).FontWeight(600).TextColor(k.Text)
+			ui.Text(c, "No files here").FontSize(c.Theme().Rem(1)).FontWeight(600).TextColor(k.Text)
 			if ui.Button(c, "New File").Clicked() {
 				u.later(func() { u.StartNewFile() })
 			}
@@ -316,7 +316,7 @@ func (u *UI) emptyTree(c *ui.Context, k *colors) {
 func (u *UI) searchResults(c *ui.Context, k *colors) {
 	notes, assets := u.filteredFiles()
 	if len(notes) == 0 && len(assets) == 0 {
-		ui.Text(c, "No files match").FontSize(12.5).TextColor(k.TextFaint).Padding(10, 8)
+		ui.Text(c, "No files match").FontSize(c.Theme().Rem(12.5/13)).TextColor(k.TextFaint).Padding(10, 8)
 		return
 	}
 	drawRow := func(rel, title string, dirty bool, n *note) {
@@ -341,9 +341,9 @@ func (u *UI) searchResults(c *ui.Context, k *colors) {
 		row.Children(func() {
 			ui.Icon(c, icons.FileIcon(rel)).Size(15, 15).TextColor(k.TextMuted)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.Text).
+				ui.Text(c, title).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
-				ui.Text(c, rel).FontSize(12).TextColor(k.TextFaint).
+				ui.Text(c, rel).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint).
 					SingleLine().TruncateStart()
 			})
 			if dirty {

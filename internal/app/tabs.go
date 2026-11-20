@@ -96,7 +96,7 @@ func (a *app) tabMiddleClick(t *tab, ev ui.InputEvent) bool {
 // its label, and its close button.
 func tabWidth(c *ui.Context, t *tab) float32 {
 	name, detail := t.label()
-	w, _ := c.MeasureText(0, tabLabel(name, detail, ui.Color{}, ui.Color{})...)
+	w, _ := c.MeasureText(0, tabLabel(c, name, detail, ui.Color{}, ui.Color{})...)
 	tiles := float32(0)
 	if n := len(t.panes()); n > 0 {
 		tiles = float32(tileW + tileStep*min(n-1, 2) + 2)
@@ -112,10 +112,10 @@ func tabWidth(c *ui.Context, t *tab) float32 {
 }
 
 // tabLabel is the label of a tab: the name and, fainter, the detail.
-func tabLabel(name, detail string, nameColor, detailColor ui.Color) []ui.Span {
+func tabLabel(c *ui.Context, name, detail string, nameColor, detailColor ui.Color) []ui.Span {
 	return []ui.Span{
-		{Text: name, Size: 13, Weight: 500, Color: nameColor},
-		{Text: " " + detail, Size: 12, Weight: 400, Color: detailColor},
+		{Text: name, Size: c.Theme().Rem(1), Weight: 500, Color: nameColor},
+		{Text: " " + detail, Size: c.Theme().Rem(12.0 / 13), Weight: 400, Color: detailColor},
 	}
 }
 
@@ -169,10 +169,10 @@ func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, wh
 			label := ui.Row(c).Grow(1).MinWidth(0).Height(18).Gap(5).
 				AlignItems(ui.Center).ClipX()
 			label.Children(func() {
-				ui.Text(c, name).FontSize(13).FontWeight(500).TextColor(nameColor).
+				ui.Text(c, name).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(nameColor).
 					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				if detail != "" {
-					ui.Text(c, detail).FontSize(12).TextColor(detailColor).
+					ui.Text(c, detail).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(detailColor).
 						SingleLine().Shrink(0)
 				}
 			})
@@ -200,7 +200,7 @@ func (a *app) renameField(c *ui.Context, k *colors, t *tab, name string) {
 	// The unstyled input has no field padding to push its text down; the
 	// small bottom margin centers its caret on the tab label's baseline.
 	in := ui.TextInputBase(c, &a.renameText).Placeholder(name).Grow(1).MinWidth(0).Height(18).
-		FontSize(13).FontWeight(500).TextColor(k.Text).AutoFocus()
+		FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(k.Text).AutoFocus()
 	done := func(keep bool) {
 		if keep {
 			t.Name = strings.TrimSpace(a.renameText)

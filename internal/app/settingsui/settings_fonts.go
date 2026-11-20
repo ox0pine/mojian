@@ -29,7 +29,7 @@ func (u *UI) fontRow(c *ui.Context, k *colors, title, detail string, which int, 
 			u.FontList = ui.ListState{}
 		}
 		b.Children(func() {
-			ui.Text(c, label).FontSize(12).TextColor(k.Text).SingleLine().
+			ui.Text(c, label).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.Text).SingleLine().
 				Ellipsis("…").MaxWidth(200)
 			ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 		})
@@ -72,7 +72,7 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 			}
 			ui.Row(c).Padding(12, 14).Gap(9).AlignItems(ui.Center).
 				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
-				ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(k.Text)
+				ui.Text(c, title).FontSize(c.Theme().Rem(1)).FontWeight(600).TextColor(k.Text)
 				ui.Spacer(c)
 				closeBtn := ui.ButtonBase(c).Size(24, 24).Radius(radius).Center().
 					Cursor(ui.CursorPointer).Label("Close")
@@ -126,13 +126,13 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 					picked, pick = true, ch.name
 				}
 				row.Children(func() {
-					text := ui.Text(c, ch.label).FontSize(13).TextColor(k.Text).
+					text := ui.Text(c, ch.label).FontSize(c.Theme().Rem(1)).TextColor(k.Text).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 					if ch.name != "" {
 						text.Font(ch.name)
 					}
 					if ch.monospaced {
-						ui.Text(c, "Mono").FontSize(10).FontWeight(650).
+						ui.Text(c, "Mono").FontSize(c.Theme().Rem(10.0/13)).FontWeight(650).
 							TextColor(k.TextFaint).Padding(1, 4).Radius(radius).
 							Background(k.Hover).Shrink(0)
 					}
@@ -153,7 +153,7 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 				u.invalidate()
 			}
 			if q != "" && len(choices) == 1 {
-				ui.Text(c, "No matching font").FontSize(12).TextColor(k.TextFaint).Padding(14)
+				ui.Text(c, "No matching font").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint).Padding(14)
 			}
 		})
 	})

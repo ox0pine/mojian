@@ -23,10 +23,9 @@ func (a *app) welcomePage(c *ui.Context, k *colors, vw, vh float32) {
 						ui.Icon(c, brandMark(c)).Size(34, 34)
 					})
 					ui.Column(c).Gap(2).Children(func() {
-						ui.Text(c, "Welcome to Mojian").FontSize(22).FontWeight(650).
+						ui.Text(c, "Welcome to Mojian").FontSize(c.Theme().Rem(22.0 / 13)).FontWeight(650).
 							TextColor(k.Text)
-						ui.Text(c, "A quiet editor for the files in your project.").
-							FontSize(12.5).TextColor(k.TextMuted)
+						ui.Text(c, "A quiet editor for the files in your project.").FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.TextMuted)
 					})
 				})
 
@@ -89,8 +88,7 @@ func (a *app) welcomePage(c *ui.Context, k *colors, vw, vh float32) {
 					addHint(cmdOpenProject, "Open Project")
 				}
 				if len(footerHints) > 0 {
-					ui.Text(c, strings.Join(footerHints, "     ")).
-						FontSize(11).TextColor(k.TextFaint).TextAlign(ui.Center)
+					ui.Text(c, strings.Join(footerHints, "     ")).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).TextAlign(ui.Center)
 				}
 			})
 		})

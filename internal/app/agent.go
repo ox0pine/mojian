@@ -297,11 +297,11 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			t := a.agentTask
 			switch {
 			case t != nil && t.perm != nil:
-				ui.Text(c, "Permission").FontSize(15).FontWeight(600).TextColor(k.Text).Grow(1).MinWidth(0)
+				ui.Text(c, "Permission").FontSize(c.Theme().Rem(15.0 / 13)).FontWeight(600).TextColor(k.Text).Grow(1).MinWidth(0)
 			case t != nil:
-				ui.Text(c, "Agent task").FontSize(15).FontWeight(600).TextColor(k.Text).Grow(1).MinWidth(0)
+				ui.Text(c, "Agent task").FontSize(c.Theme().Rem(15.0 / 13)).FontWeight(600).TextColor(k.Text).Grow(1).MinWidth(0)
 			default:
-				in := ui.TextInputBase(c, &a.agentInput).Grow(1).FontSize(15).
+				in := ui.TextInputBase(c, &a.agentInput).Grow(1).FontSize(c.Theme().Rem(15.0 / 13)).
 					Placeholder("What should the agent do in this project?").
 					Label("Agent task").AutoFocus()
 				submit = in.Submitted()
@@ -318,7 +318,7 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Spinner(c).Size(12, 12).Label("Agent task running")
-					ui.Text(c, "Running "+t.prompt).FontSize(12.5).TextColor(k.TextMuted).
+					ui.Text(c, "Running "+t.prompt).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.TextMuted).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				})
 				if ui.Button(c, "Stop").Clicked() {
@@ -328,8 +328,7 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			return
 		}
 		ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
-			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Codex, Gemini CLI, Goose and others — in the background, and notifies you when it finishes, fails or asks for permission.").
-				FontSize(12).TextColor(k.TextFaint)
+			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Codex, Gemini CLI, Goose and others — in the background, and notifies you when it finishes, fails or asks for permission.").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint)
 			if ui.PrimaryButton(c, "Run").Clicked() {
 				submit = true
 			}
@@ -356,7 +355,7 @@ func (a *app) agentPermission(c *ui.Context, k *colors, t *agentTask) {
 		if title == "" {
 			title = "The agent needs permission to continue."
 		}
-		ui.Text(c, title).FontSize(12.5).TextColor(k.Text)
+		ui.Text(c, title).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.Text)
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			hasReject := false
 			for _, o := range t.perm.Options {

@@ -82,7 +82,7 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 			})
 		ui.Spacer(c)
 		if p.Loading || p.DiffLoad || p.HistoryLoad {
-			ui.Text(c, "Reading…").FontSize(11).TextColor(k.TextFaint)
+			ui.Text(c, "Reading…").FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint)
 		}
 		if iconButton(c, k, "refresh-cw", "Refresh", 26, 16).
 			Tooltip("Refresh").Clicked() {
@@ -122,7 +122,7 @@ func (p *Page) modeTab(c *ui.Context, k *theme.Colors, label string, mode PageMo
 		face, weight = k.Text, 600
 	}
 	b.Children(func() {
-		ui.Text(c, label).FontSize(12.5).FontWeight(weight).TextColor(face)
+		ui.Text(c, label).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(weight).TextColor(face)
 	})
 }
 
@@ -157,7 +157,7 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 	drop = b.AnimateTo("git-branch-menu", drop, motion.PopoverIn)
 	b.Children(func() {
 		ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, p.Branch).FontSize(12.5).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, p.Branch).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
@@ -182,10 +182,10 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 			if p.Mode == ModeHistory {
 				label, n = "RECENT COMMITS", len(p.Commits)
 			}
-			ui.Text(c, label).FontSize(10).FontWeight(650).TextColor(k.TextFaint)
+			ui.Text(c, label).FontSize(c.Theme().Rem(10.0 / 13)).FontWeight(650).TextColor(k.TextFaint)
 			ui.Spacer(c)
 			if n > 0 {
-				ui.Text(c, fmt.Sprintf("%d", n)).FontSize(10).TextColor(k.TextFaint).
+				ui.Text(c, fmt.Sprintf("%d", n)).FontSize(c.Theme().Rem(10.0/13)).TextColor(k.TextFaint).
 					Padding(2, 5).Radius(theme.Radius).Background(k.Hover)
 			}
 		})
@@ -214,12 +214,12 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 			row.Children(func() {
 				ui.Icon(c, icons.FileIcon(ch.Path)).Size(15, 15).TextColor(icon)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, filepath.Base(ch.Display)).FontSize(13).FontWeight(500).
+					ui.Text(c, filepath.Base(ch.Display)).FontSize(c.Theme().Rem(1)).FontWeight(500).
 						TextColor(fg).SingleLine().Ellipsis("…")
 					if dir := filepath.Dir(ch.Display); dir != "." {
 						// The folder nearest the file is the useful half
 						// of a path too long for the list.
-						ui.Text(c, dir).FontSize(12).TextColor(muted).
+						ui.Text(c, dir).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(muted).
 							SingleLine().TruncateStart()
 					}
 				})
@@ -257,9 +257,9 @@ func (p *Page) commits(c *ui.Context, k *theme.Colors) {
 		row.Children(func() {
 			ui.Icon(c, icons.Icon("git-commit")).Size(15, 15).TextColor(icon)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Text(c, commit.Subject).FontSize(13).FontWeight(500).TextColor(fg).
+				ui.Text(c, commit.Subject).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(fg).
 					SingleLine().Ellipsis("…")
-				ui.Text(c, commitMeta(commit)).FontSize(12).TextColor(muted).
+				ui.Text(c, commitMeta(commit)).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(muted).
 					SingleLine().Ellipsis("…")
 			})
 		})
@@ -322,7 +322,7 @@ func (p *Page) statusBadge(c *ui.Context, k *theme.Colors, status string, select
 		fg = c.Theme().AccentText
 		bg = fg.Alpha(0.16)
 	}
-	ui.Text(c, statusLabel(status)).FontSize(10).FontWeight(700).
+	ui.Text(c, statusLabel(status)).FontSize(c.Theme().Rem(10.0/13)).FontWeight(700).
 		TextColor(fg).Padding(2, 5).Radius(theme.Radius).Background(bg).
 		Shrink(0).Tooltip(statusLabel(status))
 }
@@ -343,15 +343,15 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 		}
 		path := p.DiffPath
 		if path == "" {
-			ui.Text(c, "No file selected").FontSize(12).TextColor(k.TextMuted)
+			ui.Text(c, "No file selected").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted)
 			ui.Spacer(c)
 			return
 		}
 		ui.Icon(c, icons.FileIcon(path)).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, filepath.Base(path)).FontSize(13).FontWeight(500).TextColor(k.Text).
+		ui.Text(c, filepath.Base(path)).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 		if dir := filepath.Dir(path); dir != "." {
-			ui.Text(c, dir).FontSize(12).TextColor(k.TextFaint).
+			ui.Text(c, dir).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		}
 		ui.Spacer(c)
@@ -359,9 +359,9 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 			p.statusBadge(c, k, status, false)
 		}
 		if p.diffAdd > 0 || p.diffDel > 0 {
-			ui.Text(c, fmt.Sprintf("+%d", p.diffAdd)).FontSize(11).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("+%d", p.diffAdd)).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(600).
 				TextColor(k.DiffAdd).Shrink(0)
-			ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(11).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(600).
 				TextColor(k.DiffDel).Shrink(0)
 		}
 		if p.h.HasPath(path) {
@@ -374,7 +374,7 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 				p.h.OpenPath(path)
 			}
 			open.Children(func() {
-				ui.Text(c, "Open").FontSize(12).FontWeight(500).TextColor(k.Text)
+				ui.Text(c, "Open").FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(500).TextColor(k.Text)
 			})
 		}
 	})
@@ -384,19 +384,19 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 func (p *Page) commitHeader(c *ui.Context, k *theme.Colors) {
 	commit, ok := p.selectedCommit()
 	if !ok {
-		ui.Text(c, "No commit selected").FontSize(12).TextColor(k.TextMuted)
+		ui.Text(c, "No commit selected").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted)
 		ui.Spacer(c)
 		return
 	}
-	ui.Text(c, commit.Short).Font(theme.NoteFont.Family).FontSize(11).
+	ui.Text(c, commit.Short).Font(theme.NoteFont.Family).FontSize(c.Theme().Rem(11.0/13)).
 		TextColor(k.TextMuted).Padding(2, 6).Radius(theme.Radius).Background(k.Hover)
-	ui.Text(c, commit.Subject).FontSize(13).FontWeight(500).TextColor(k.Text).
+	ui.Text(c, commit.Subject).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(k.Text).
 		SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 	ui.Spacer(c)
 	if p.diffAdd > 0 || p.diffDel > 0 {
-		ui.Text(c, fmt.Sprintf("+%d", p.diffAdd)).FontSize(11).FontWeight(600).
+		ui.Text(c, fmt.Sprintf("+%d", p.diffAdd)).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(600).
 			TextColor(k.DiffAdd).Shrink(0)
-		ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(11).FontWeight(600).
+		ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(600).
 			TextColor(k.DiffDel).Shrink(0)
 	}
 }
@@ -475,10 +475,10 @@ func (p *Page) state(c *ui.Context, k *theme.Colors, glyph string, col ui.Color,
 		ui.Box(c).Size(40, 40).Radius(theme.Radius).Background(col.Alpha(0.10)).Center().Children(func() {
 			ui.Icon(c, icons.Icon(glyph)).Size(20, 20).TextColor(col)
 		})
-		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, title).FontSize(c.Theme().Rem(1)).FontWeight(600).TextColor(k.Text).
 			TextAlign(ui.Center)
 		if detail != "" {
-			ui.Text(c, detail).FontSize(12).TextColor(k.TextFaint).
+			ui.Text(c, detail).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint).
 				TextAlign(ui.Center).MaxWidth(460)
 		}
 	})
@@ -583,7 +583,7 @@ func (p *Page) diffPatch(c *ui.Context, k *theme.Colors) {
 			editor.DiffView(c, p.patchViews[i]).FillWidth()
 		}
 		if p.patchCut {
-			ui.Text(c, "… diff truncated").FontSize(11).TextColor(k.TextFaint).Padding(6, 10)
+			ui.Text(c, "… diff truncated").FontSize(c.Theme().Rem(11.0/13)).TextColor(k.TextFaint).Padding(6, 10)
 		}
 	})
 }
@@ -593,17 +593,17 @@ func (p *Page) fileHeading(c *ui.Context, k *theme.Colors, file FileDiff) {
 	ui.Row(c).FillWidth().Padding(6, 10).Gap(7).AlignItems(ui.Center).
 		Background(k.Hover).Children(func() {
 		ui.Icon(c, icons.FileIcon(file.Path)).Size(13, 13).TextColor(k.TextMuted)
-		ui.Text(c, filepath.Base(file.Path)).FontSize(12).FontWeight(600).
+		ui.Text(c, filepath.Base(file.Path)).FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(600).
 			TextColor(k.Text).SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 		if dir := filepath.Dir(file.Path); dir != "." {
-			ui.Text(c, dir).FontSize(11.5).TextColor(k.TextFaint).
+			ui.Text(c, dir).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		}
 		ui.Spacer(c)
 		if file.Add > 0 || file.Del > 0 {
-			ui.Text(c, fmt.Sprintf("+%d", file.Add)).FontSize(10.5).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("+%d", file.Add)).FontSize(c.Theme().Rem(10.5 / 13)).FontWeight(600).
 				TextColor(k.DiffAdd).Shrink(0)
-			ui.Text(c, fmt.Sprintf("−%d", file.Del)).FontSize(10.5).FontWeight(600).
+			ui.Text(c, fmt.Sprintf("−%d", file.Del)).FontSize(c.Theme().Rem(10.5 / 13)).FontWeight(600).
 				TextColor(k.DiffDel).Shrink(0)
 		}
 		if file.Status != "M" {

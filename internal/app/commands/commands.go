@@ -42,7 +42,7 @@ var Palette = []*Command{
 	{ID: "open-file", Title: "Open File…", Accel: "CmdOrCtrl+P", Glyph: "file-text"},
 	{ID: "new-file", Title: "New File…", Accel: "CmdOrCtrl+N", Glyph: "file-plus"},
 	{ID: "new-folder", Title: "New Folder…", Accel: "CmdOrCtrl+Shift+N", Glyph: "folder-plus"},
-	{ID: "save", Title: "Save", Accel: "CmdOrCtrl+S", Glyph: "save"},
+	{ID: "save", Title: "Save All", Accel: "CmdOrCtrl+S", Glyph: "save"},
 	{ID: "rename", Title: "Rename…", Accel: "F2", Glyph: "pencil"},
 	{ID: "trash", Title: "Move to Trash", Display: "⌘⌫", Glyph: "trash-2"},
 	{ID: "new-tab", Title: "New Tab", Accel: "CmdOrCtrl+T", Other: "Ctrl+Shift+T", Glyph: "plus"},

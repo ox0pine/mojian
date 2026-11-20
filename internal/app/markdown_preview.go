@@ -119,7 +119,7 @@ func shieldPNG(raw string) string {
 func markdownHTMLBlock(c *ui.Context, src string, images map[string]*markdownImage, load func(string) (ui.ImageSource, error), k *colors, allowOpen bool) {
 	doc, err := html.Parse(strings.NewReader(src))
 	if err != nil {
-		ui.Text(c, src).FontSize(14).TextColor(k.TextMuted)
+		ui.Text(c, src).FontSize(c.Theme().Rem(14.0 / 13)).TextColor(k.TextMuted)
 		return
 	}
 	body := htmlBody(doc)
@@ -201,7 +201,7 @@ func htmlBlock(c *ui.Context, n *html.Node, images map[string]*markdownImage, lo
 			bullet = marker
 		}
 		ui.Row(c).AlignItems(ui.Start).Gap(6).Children(func() {
-			ui.Text(c, bullet).FontSize(14).TextColor(k.TextFaint)
+			ui.Text(c, bullet).FontSize(c.Theme().Rem(14.0 / 13)).TextColor(k.TextFaint)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				htmlChildren(c, n, images, load, k, allowOpen)
 			})
@@ -228,7 +228,7 @@ func htmlInlineNode(c *ui.Context, n *html.Node, images map[string]*markdownImag
 			if inLink {
 				col = k.Accent
 			}
-			ui.Text(c, text).FontSize(14).TextColor(col)
+			ui.Text(c, text).FontSize(c.Theme().Rem(14.0 / 13)).TextColor(col)
 		}
 	case html.ElementNode:
 		if htmlSkipped(n) {
@@ -278,7 +278,7 @@ func htmlImage(c *ui.Context, k *colors, n *html.Node, images map[string]*markdo
 			box.Role(ui.RoleImage).Label(alt)
 		}
 		box.Children(func() {
-			ui.Text(c, label).FontSize(11).TextColor(k.TextFaint)
+			ui.Text(c, label).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint)
 		})
 		return
 	}

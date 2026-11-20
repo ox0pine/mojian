@@ -167,9 +167,9 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 					ui.Icon(c, icons.Icon("server")).Size(18, 18).TextColor(k.TextMuted)
 				})
 				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, "Open Project on "+a.hostLabel(a.remoteHost)).FontSize(15).
+					ui.Text(c, "Open Project on "+a.hostLabel(a.remoteHost)).FontSize(c.Theme().Rem(15.0 / 13)).
 						FontWeight(650).TextColor(k.Text)
-					ui.Text(c, "Choose a folder on the server").FontSize(11.5).
+					ui.Text(c, "Choose a folder on the server").FontSize(c.Theme().Rem(11.5 / 13)).
 						TextColor(k.TextFaint)
 				})
 				ui.Spacer(c)
@@ -192,7 +192,7 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 				ui.Row(c).Grow(1).Height(32).Padding(0, 9).Gap(7).Radius(radius).
 					Background(k.Hover).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextFaint)
-					in := ui.TextInputBase(c, &a.remoteQuery).Grow(1).FontSize(13).
+					in := ui.TextInputBase(c, &a.remoteQuery).Grow(1).FontSize(c.Theme().Rem(1)).
 						Placeholder("Server project path…").AutoFocus()
 					if in.Submitted() {
 						target := strings.TrimSpace(a.remoteQuery)
@@ -307,7 +307,7 @@ func (a *app) serverChip(c *ui.Context, k *colors) {
 	label := a.remoteName()
 	m := ui.MenuBase(c, &a.serverOpen)
 	chip := titleChip(m.Trigger, k, a.serverOpen).Label("Switch server: " + label).
-		Tooltip("Switch server").MaxWidth(210)
+		Tooltip("Switch server: " + label).MaxWidth(210)
 	drop := float32(0)
 	if a.serverOpen {
 		drop = 1
@@ -315,7 +315,7 @@ func (a *app) serverChip(c *ui.Context, k *colors) {
 	drop = chip.AnimateTo("server-menu", drop, motion.PopoverIn)
 	chip.Children(func() {
 		ui.Icon(c, icons.Icon("server")).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, label).FontSize(12.5).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, label).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})

@@ -131,7 +131,7 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		return
 	}
 	ui.Row(c).Padding(6, branchMenuInset, 4, branchMenuInset).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, "BRANCHES").FontSize(10).FontWeight(650).TextColor(k.TextFaint)
+		ui.Text(c, "BRANCHES").FontSize(c.Theme().Rem(10.0 / 13)).FontWeight(650).TextColor(k.TextFaint)
 	})
 	d := p.Branches
 	switch {
@@ -169,7 +169,7 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
 			ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
 		})
-		ui.Text(c, "New Branch…").FontSize(13).TextColor(k.Text)
+		ui.Text(c, "New Branch…").FontSize(c.Theme().Rem(1)).TextColor(k.Text)
 	})
 }
 
@@ -197,7 +197,7 @@ func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b B
 				ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
 			}
 		})
-		ui.Text(c, b.Name).FontSize(13).FontWeight(weight).TextColor(k.Text).
+		ui.Text(c, b.Name).FontSize(c.Theme().Rem(1)).FontWeight(weight).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
 }
@@ -206,7 +206,7 @@ func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b B
 func (p *Page) newBranchBody(c *ui.Context, k *theme.Colors) {
 	ui.Row(c).Padding(2, branchMenuInset).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
-		in := ui.TextInputBase(c, &p.branchName).Grow(1).FontSize(12.5).
+		in := ui.TextInputBase(c, &p.branchName).Grow(1).FontSize(c.Theme().Rem(12.5 / 13)).
 			Placeholder("New branch name").AutoFocus()
 		if in.Submitted() {
 			p.makeBranch()
@@ -232,5 +232,5 @@ func (p *Page) branchNote(c *ui.Context, k *theme.Colors, text string, danger bo
 	if danger {
 		face = k.Danger
 	}
-	ui.Text(c, text).FontSize(12.5).TextColor(face).Padding(6, branchMenuInset)
+	ui.Text(c, text).FontSize(c.Theme().Rem(12.5/13)).TextColor(face).Padding(6, branchMenuInset)
 }

@@ -88,7 +88,7 @@ func (u *UI) settingsRowSpec(c *ui.Context, k *colors, row settings.Row) {
 		}
 		u.settingRow(c, k, row.Title, row.Detail, func() {
 			in := ui.TextInputBase(c, ptr).Width(240).Height(30).Padding(0, 9).
-				Radius(8).Background(k.Hover).FontSize(12).
+				Radius(8).Background(k.Hover).FontSize(c.Theme().Rem(12.0 / 13)).
 				Placeholder(row.Placeholder).Label(row.Title)
 			if in.Changed() {
 				u.saveSettingsSoon()

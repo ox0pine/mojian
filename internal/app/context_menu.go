@@ -28,7 +28,7 @@ func menuHeader(c *ui.Context, k *colors, title, keys string) {
 		sectionLabel(c, k, title)
 		ui.Spacer(c)
 		if keys != "" {
-			ui.Text(c, keys).FontSize(10).TextColor(k.TextFaint)
+			ui.Text(c, keys).FontSize(c.Theme().Rem(10.0 / 13)).TextColor(k.TextFaint)
 		}
 	})
 }
@@ -61,7 +61,7 @@ func menuChoice(c *ui.Context, k *colors, m ui.MenuParts, key any, icon, label s
 				ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
 			}
 		})
-		ui.Text(c, label).FontSize(13).FontWeight(weight).TextColor(k.Text).
+		ui.Text(c, label).FontSize(c.Theme().Rem(1)).FontWeight(weight).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
 	return row
@@ -79,7 +79,7 @@ func menuAction(c *ui.Context, k *colors, m ui.MenuParts, key any, icon, label s
 		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
 			ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
 		})
-		ui.Text(c, label).FontSize(13).TextColor(k.Text)
+		ui.Text(c, label).FontSize(c.Theme().Rem(1)).TextColor(k.Text)
 	})
 	return row
 }
@@ -91,7 +91,7 @@ func menuNote(c *ui.Context, k *colors, text string, danger bool) {
 	if danger {
 		face = k.Danger
 	}
-	ui.Text(c, text).FontSize(12.5).TextColor(face).Padding(6, menuInset)
+	ui.Text(c, text).FontSize(c.Theme().Rem(12.5/13)).TextColor(face).Padding(6, menuInset)
 }
 
 // menuList scrolls a menu's choices once they would run past the window.

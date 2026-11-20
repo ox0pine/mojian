@@ -13,7 +13,7 @@ func sheetHeader(c *ui.Context, k *colors, query *string, placeholder, label str
 	ui.Row(c).Height(48).Padding(0, 16).Gap(10).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
 		ui.Icon(c, icons.Icon("search")).Size(17, 17).TextColor(k.TextFaint)
-		in = ui.TextInputBase(c, query).Grow(1).FontSize(15).
+		in = ui.TextInputBase(c, query).Grow(1).FontSize(c.Theme().Rem(15.0 / 13)).
 			Placeholder(placeholder).Label(label).AutoFocus()
 		if iconButton(c, k, "x", "Close", iconBtnSm, iconGlyphSm).Clicked() {
 			*open = false

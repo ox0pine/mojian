@@ -2,6 +2,8 @@
 
 **Colors.** One `appearance` preference (System/Light/Dark) picks the light or dark world; one `theme` preference names the ten color themes, Petal by default. `internal/theme/themes.go` builds both palettes of every theme once at start: `Window` is the window's `Colors`, `Terminal` the program palette, `UI` the MyGo widget theme, `EditorTheme` the code colors, and `PaintPreview` the Settings thumbnail. Petal keeps the palettes Mojian has always drawn; every other theme derives its surfaces and program colors from one tone.
 
+**Typography.** Custom view text uses `c.Theme().Rem(size/13)`, where 13 is the default UI font size, so it follows the same system text scale as native MyGo widgets. This includes tab measurement spans and text inputs as well as labels; fixed numeric `FontSize` values bypass that scale. Settings keeps its content scrollbar visible whenever the page overflows, including without hover.
+
 ## Source of truth
 
 - [`internal/theme/theme.go`](../../internal/theme/theme.go) — `Colors`, `Radius`, the light and dark base palettes, `PaintBackground`, `RegisterFonts`.

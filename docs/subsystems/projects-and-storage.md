@@ -34,7 +34,7 @@ the save path, path guards and the asset cache.
 1. A tree row click reaches `(*app).openRel`, which asks `store.ByRelPath` for the note and calls
    `(*app).openNote`. The pane keeps a `*project.Note`; the pane renders `Note.Buffer()`, one
    `*editor.Buffer` shared by every pane showing that file.
-2. `⌘S` runs `(*app).saveNow` → `store.SaveAll` → `store.Save` → the project's `fs.Backend`. A
+2. `⌘S` (**Save All**) runs `(*app).saveNow` → `store.SaveAll` → `store.Save` → the project's `fs.Backend`. A
    `Direct` backend writes with `fs.WriteFileAtomic`; a `Server` backend calls
    `session.Client.WriteFile` for a local server and the same call over the SSH forward for a remote
    one. Before writing, `Store.Save` reads the current file and compares its exact bytes with

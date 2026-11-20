@@ -115,7 +115,7 @@ func (u *UI) settingsTitleBar(c *ui.Context, k *colors) {
 		ui.Box(c).Width(dragW).Height(44).DragWindow().
 			Cursor(ui.CursorGrab).Description("Drag Window")
 		ui.Icon(c, brandMark(c)).Size(20, 20)
-		ui.Text(c, "Settings").FontSize(13).FontWeight(600).TextColor(k.Text)
+		ui.Text(c, "Settings").FontSize(c.Theme().Rem(1)).FontWeight(600).TextColor(k.Text)
 	})
 }
 
@@ -244,7 +244,7 @@ func (u *UI) settingsRail(c *ui.Context, k *colors) {
 			})
 		})
 		if u.Found != nil && len(u.Found) == 0 {
-			ui.Text(c, "No settings match.").FontSize(12).TextColor(k.TextFaint).
+			ui.Text(c, "No settings match.").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint).
 				Padding(10)
 			return
 		}
@@ -285,7 +285,7 @@ func (u *UI) settingsContent(c *ui.Context, k *colors) {
 		u.ScrollTop = false
 	}
 	ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).FillHeight().Children(func() {
-		ui.Scroll(c).Grow(1).MinHeight(0).TrackScroll(&u.Scroll).Children(func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).TrackScroll(&u.Scroll).KeepScrollbars(true).Children(func() {
 			ui.Column(c).MaxWidth(660).FillWidth().AlignSelf(ui.Center).
 				Padding(22, 24, 40, 24).Gap(20).Children(func() {
 				cat := u.Cat
@@ -308,8 +308,8 @@ func (u *UI) settingsContent(c *ui.Context, k *colors) {
 func (u *UI) settingsPageHeader(c *ui.Context, k *colors, cat int) {
 	category := settingsCategory(cat, runtime.GOOS)
 	ui.Column(c).Gap(3).Children(func() {
-		ui.Text(c, category.Title).FontSize(20).FontWeight(650).TextColor(k.Text)
-		ui.Text(c, category.Detail).FontSize(12.5).TextColor(k.TextMuted).LineHeight(1.35)
+		ui.Text(c, category.Title).FontSize(c.Theme().Rem(20.0 / 13)).FontWeight(650).TextColor(k.Text)
+		ui.Text(c, category.Detail).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.TextMuted).LineHeight(1.35)
 	})
 }
 
@@ -322,16 +322,16 @@ func (u *UI) settingsNotice(c *ui.Context, k *colors) {
 	ui.Row(c).Padding(8, 12).Radius(8).Background(k.Hover).Gap(8).
 		AlignItems(ui.Center).Children(func() {
 		ui.Box(c).Size(6, 6).Radius(3).Background(k.Attention).Shrink(0)
-		ui.Text(c, u.Notice).FontSize(12).TextColor(k.Attention).Grow(1).MinWidth(0)
+		ui.Text(c, u.Notice).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.Attention).Grow(1).MinWidth(0)
 	})
 }
 
 func (u *UI) settingsNoResults(c *ui.Context, k *colors) {
 	ui.Column(c).Gap(10).Padding(56, 0).AlignItems(ui.Center).Children(func() {
 		ui.Icon(c, icons.Icon("search")).Size(22, 22).TextColor(k.TextFaint)
-		ui.Text(c, "No settings match “"+u.Query+"”.").FontSize(12.5).
+		ui.Text(c, "No settings match “"+u.Query+"”.").FontSize(c.Theme().Rem(12.5 / 13)).
 			TextColor(k.TextFaint).TextAlign(ui.Center)
-		ui.Text(c, "No other setting uses that word.").FontSize(11.5).
+		ui.Text(c, "No other setting uses that word.").FontSize(c.Theme().Rem(11.5 / 13)).
 			TextColor(k.TextFaint).TextAlign(ui.Center)
 	})
 }
@@ -397,7 +397,7 @@ func (u *UI) settingsSectionAction(c *ui.Context, k *colors, title string, actio
 				head.ScrollIntoView()
 			}
 			head.Children(func() {
-				ui.Text(c, title).FontSize(11).FontWeight(650).
+				ui.Text(c, title).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(650).
 					TextColor(k.TextMuted).LetterSpacing(0.5)
 				if action != nil {
 					ui.Spacer(c)
@@ -436,14 +436,14 @@ func (u *UI) settingRowFrame(c *ui.Context, k *colors, title, detail string, mon
 	}
 	row.Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.Text)
+			ui.Text(c, title).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(k.Text)
 			switch {
 			case detail == "":
 			case mono:
-				ui.Text(c, detail).FontSize(11.5).TextColor(k.TextMuted).
+				ui.Text(c, detail).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextMuted).
 					Font(noteFont.Family).SingleLine().Ellipsis("…").Tooltip(detail)
 			default:
-				ui.Text(c, detail).FontSize(11.5).TextColor(k.TextMuted).LineHeight(1.35)
+				ui.Text(c, detail).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextMuted).LineHeight(1.35)
 			}
 		})
 		if control != nil {
@@ -500,7 +500,7 @@ func (u *UI) settingsChoiceControl(c *ui.Context, k *colors, key, label string, 
 				if n == current {
 					col = k.Text
 				}
-				ui.Text(c, text).FontSize(11.5).FontWeight(550).TextColor(col)
+				ui.Text(c, text).FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(550).TextColor(col)
 			})
 		}
 	})
@@ -513,7 +513,7 @@ func (u *UI) settingsSliderRow(c *ui.Context, k *colors, title, detail string, v
 	u.settingRow(c, k, title, detail, func() {
 		v := value()
 		before := v
-		ui.Text(c, fmt.Sprintf(format, v)).FontSize(12).TextColor(k.TextMuted).
+		ui.Text(c, fmt.Sprintf(format, v)).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted).
 			Width(52).TextAlign(ui.End).Shrink(0)
 		ui.Slider(c, &v, lo, hi).Width(180).Label(title)
 		if v != before {
@@ -538,16 +538,16 @@ func (u *UI) settingsInfoRow(c *ui.Context, k *colors, title, value string) {
 		row.ScrollIntoView()
 	}
 	row.Children(func() {
-		ui.Text(c, title).FontSize(13).TextColor(k.Text).Shrink(0)
+		ui.Text(c, title).FontSize(c.Theme().Rem(1)).TextColor(k.Text).Shrink(0)
 		ui.Spacer(c)
-		ui.Text(c, value).FontSize(12).TextColor(k.TextMuted).SingleLine().
+		ui.Text(c, value).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted).SingleLine().
 			TruncateStart().MaxWidth(360).Shrink(1).MinWidth(0).
 			TextAlign(ui.End).Tooltip(value)
 	})
 }
 
 func (u *UI) settingsNote(c *ui.Context, k *colors, text string) {
-	ui.Text(c, text).FontSize(11.5).TextColor(k.TextFaint).LineHeight(1.4).Padding(0, 2)
+	ui.Text(c, text).FontSize(c.Theme().Rem(11.5/13)).TextColor(k.TextFaint).LineHeight(1.4).Padding(0, 2)
 }
 
 func settingsButton(c *ui.Context, label string, primary bool) ui.Element {

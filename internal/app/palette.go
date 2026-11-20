@@ -164,8 +164,8 @@ func (a *app) palette(c *ui.Context, k *colors) {
 	reveal := false
 	chosen := -1
 	commandDialog(c, k, &a.paletteOpen, func() {
-		in := sheetHeader(c, k, &a.paletteQuery, "Type a command, or the name of a file…",
-			"Search commands", &a.paletteOpen)
+		in := sheetHeader(c, k, &a.paletteQuery, "Type a command, file, or tab name…",
+			"Search commands, files, and tabs", &a.paletteOpen)
 		if listNav(in, &a.paletteSel, len(items), &reveal) {
 			chosen = a.paletteSel
 		}
@@ -199,7 +199,7 @@ func (a *app) palette(c *ui.Context, k *colors) {
 					if i == a.paletteSel {
 						chipFg, chipBg = fg, fg.Alpha(0.16)
 					}
-					ui.Text(c, it.keys).FontSize(12).TextColor(chipFg).
+					ui.Text(c, it.keys).FontSize(c.Theme().Rem(12.0/13)).TextColor(chipFg).
 						Padding(2, 7).Radius(radius).Background(chipBg).Shrink(0)
 				}
 			})

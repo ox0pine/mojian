@@ -84,15 +84,40 @@ func TestCompactPaneKeepsTitle(t *testing.T) {
 	if !ok {
 		t.Fatalf("compact pane header not found: %q", tt.Texts())
 	}
-	title, ok := tt.Find("Reading notes")
+	title, ok := tt.Find("Pane title Reading notes")
 	if !ok {
 		t.Fatal("compact pane has no file title")
 	}
 	if title.Y < header.Y || title.Y >= header.Y+header.H {
 		t.Fatalf("the only file title is outside the compact header: header=%+v title=%+v", header, title)
 	}
-	if title.W < 24 {
+	if title.W < 80 {
 		t.Fatalf("compact title has no useful visible width: %+v", title)
+	}
+	actions, ok := tt.Find("Pane actions Reading notes")
+	if !ok || actions.W > 44 {
+		t.Fatalf("compact pane kept the full toolbar: %+v", actions)
+	}
+}
+
+func TestUltraCompactPaneKeepsTitleAndDragHandle(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.splitWith(a.store.ByRelPath("Reading notes.md"))
+	a.splitWith(a.store.ByRelPath("Welcome.md"))
+	tt := ui.NewTester(a.view, 760, 460)
+	tt.Frame()
+	tt.Frame()
+	title, ok := tt.Find("Pane title Reading notes")
+	if !ok || title.W < 56 {
+		t.Fatalf("ultra compact pane lost its readable title: %+v", title)
+	}
+	if _, ok := tt.Find("Move Pane Reading notes"); !ok {
+		t.Fatal("ultra compact pane lost its drag handle")
+	}
+	actions, ok := tt.Find("Pane actions Reading notes")
+	if !ok || actions.W > 22 {
+		t.Fatalf("ultra compact pane kept more than overflow: %+v", actions)
 	}
 }
 

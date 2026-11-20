@@ -112,8 +112,9 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 	if bar.Left == 0 {
 		dragW = 30 // in full screen, or beside no controls
 	}
-	ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, 0).Gap(14).
-		AlignItems(ui.Center).DragWindow().Children(func() {
+	row := ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, 0).Gap(14).
+		AlignItems(ui.Center).DragWindow()
+	row.Children(func() {
 		// The title bar band right of the traffic lights moves the
 		// window, and leaves the corner itself to the resize edge.
 		ui.Box(c).Width(dragW).Height(titleH).DragWindow().
@@ -125,6 +126,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// The machine, project and branch of the frame sit in a track
 		// that matches the tabs: the same height, radius and border, and
 		// the chip whose menu is open lifts to the active tab's face.
+		compactContext := row.Bounds().W > 0 && row.Bounds().W < 900
 		ui.Row(c).Height(tabH+4).Padding(2).Gap(4).Radius(radius).
 			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(1).MinWidth(0).ClipX().
 			Children(func() {
@@ -132,7 +134,9 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 					a.serverChip(c, k)
 				}
 				a.projectChip(c, k)
-				a.branchChip(c, k)
+				if !a.git.Open {
+					a.branchChip(c, k, compactContext)
+				}
 			})
 		a.tabStrip(c, k)
 		if iconButton(c, k, "plus", "New Tab", iconBtnMd, iconGlyphMd).
@@ -142,7 +146,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// The title bar between the tabs and the buttons drags the
 		// window, and a double click on it zooms the window.
 		ui.Box(c).Grow(1).MinWidth(24)
-		ui.Toolbar(c, func() {
+		tools := ui.Toolbar(c, func() {
 			if iconButton(c, k, "command", "Command Palette", iconBtnLg, iconGlyphLg).
 				Tooltip(a.tip("Command Palette", cmdPalette)).Clicked() {
 				a.openPalette()
@@ -162,6 +166,9 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 				a.later(func() { a.openSettingsWindow() })
 			}
 		}).Label("View").Padding(0).Gap(2).Shrink(0)
+		if compactContext {
+			tools.MaxWidth(62)
+		}
 	})
 }
 
@@ -284,7 +291,7 @@ func (a *app) errorBanner(c *ui.Context, k *colors) {
 				Border(1, k.PanelBorder).Shadow(0, 8, 24, 0, k.ShadowFocused).
 				AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Background(k.Danger)
-				ui.Text(c, a.err).FontSize(12.5).TextColor(k.Text).MaxWidth(520)
+				ui.Text(c, a.err).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.Text).MaxWidth(520)
 				if iconButton(c, k, "x", "Dismiss", iconBtnSm, iconGlyphSm).Clicked() {
 					a.err = ""
 				}

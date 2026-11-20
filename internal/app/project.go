@@ -175,7 +175,7 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 	drop = chip.AnimateTo("project-menu", drop, motion.PopoverIn)
 	chip.Children(func() {
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, a.projectName()).FontSize(12.5).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, a.projectName()).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
@@ -281,9 +281,9 @@ func (a *app) projectRowBase(c *ui.Context, k *colors, m ui.MenuParts, s project
 				}
 			})
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, s.title).FontSize(12.5).FontWeight(weight).TextColor(k.Text).
+				ui.Text(c, s.title).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(weight).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
-				ui.Text(c, s.detail).FontSize(11).TextColor(k.TextFaint).
+				ui.Text(c, s.detail).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
 					SingleLine().TruncateStart()
 			})
 		})

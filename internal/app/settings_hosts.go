@@ -26,7 +26,7 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 					nameField := ui.Row(c).Width(140).Height(30).Padding(0, 9).
 						Radius(radius).Background(k.Hover).AlignItems(ui.Center)
 					nameField.Children(func() {
-						name = ui.TextInputBase(c, &a.hostDraftName).Grow(1).FontSize(12).
+						name = ui.TextInputBase(c, &a.hostDraftName).Grow(1).FontSize(c.Theme().Rem(12.0 / 13)).
 							Placeholder("Name").Label("Host name")
 					})
 					if addr.Submitted() || name.Submitted() {
@@ -36,8 +36,7 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 						a.addHostChecked()
 					}
 				})
-				ui.Text(c, "Anything ssh accepts: buildbox, me@devbox, or ssh://me@devbox:2222.").
-					FontSize(11.5).TextColor(k.TextFaint)
+				ui.Text(c, "Anything ssh accepts: buildbox, me@devbox, or ssh://me@devbox:2222.").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
 			})
 		})
 	}
@@ -54,8 +53,7 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 					a.hostSettingsRow(c, k, h.Address, h.Name, label, h.Address, a.serverAlias == h.Address)
 				}
 				if len(a.hosts()) == 0 {
-					ui.Text(c, "No SSH servers yet. Add one above.").
-						FontSize(12).TextColor(k.TextFaint).Padding(12, 10)
+					ui.Text(c, "No SSH servers yet. Add one above.").FontSize(c.Theme().Rem(12.0/13)).TextColor(k.TextFaint).Padding(12, 10)
 				}
 			}
 		})
@@ -108,8 +106,8 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, de
 			info.Children(func() {
 				ui.Icon(c, icons.Icon("server")).Size(16, 16).TextColor(k.TextMuted)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.Text)
-					ui.Text(c, detail).FontSize(11.5).TextColor(k.TextFaint).
+					ui.Text(c, label).FontSize(c.Theme().Rem(1)).FontWeight(500).TextColor(k.Text)
+					ui.Text(c, detail).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).
 						SingleLine().Ellipsis("…").Tooltip(detail)
 				})
 				if selected {
@@ -141,7 +139,7 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, de
 		}
 		if host != "" && a.hostRemoveAddr == host {
 			ui.Row(c).Padding(0, 6, 10, 6).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Remove this server?").FontSize(12).TextColor(k.TextMuted).Grow(1)
+				ui.Text(c, "Remove this server?").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted).Grow(1)
 				if settingsButton(c, "Cancel", false).Clicked() {
 					a.hostRemoveAddr = ""
 					a.invalidate()
@@ -218,7 +216,7 @@ func (a *app) serverControlRow(c *ui.Context, k *colors, s serverRowSpec) {
 			if s.busy {
 				ui.Spinner(c).Size(12, 12).Label("Server state")
 			}
-			ui.Text(c, s.status).FontSize(11).TextColor(s.color).Grow(1).MinWidth(0).LineHeight(1.35)
+			ui.Text(c, s.status).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(s.color).Grow(1).MinWidth(0).LineHeight(1.35)
 			if s.action != "" {
 				if settingsButton(c, s.action, false).Disabled(s.disabled).Clicked() {
 					s.act()
@@ -227,8 +225,7 @@ func (a *app) serverControlRow(c *ui.Context, k *colors, s serverRowSpec) {
 		})
 		if s.stopAsk {
 			ui.Row(c).Padding(0, 6, 10, 6).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Stop this server? Its terminals and the processes in them end.").
-					FontSize(11.5).TextColor(k.TextMuted).Grow(1).LineHeight(1.35)
+				ui.Text(c, "Stop this server? Its terminals and the processes in them end.").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextMuted).Grow(1).LineHeight(1.35)
 				if settingsButton(c, "Cancel", false).Clicked() {
 					s.cancel()
 				}
@@ -432,7 +429,7 @@ func (a *app) hostEditRow(c *ui.Context, k *colors, host, label string) {
 			nameField := ui.Row(c).Width(140).Height(30).Padding(0, 9).
 				Radius(radius).Background(k.Hover).AlignItems(ui.Center)
 			nameField.Children(func() {
-				name := ui.TextInputBase(c, &a.hostEditName).Grow(1).FontSize(12).
+				name := ui.TextInputBase(c, &a.hostEditName).Grow(1).FontSize(c.Theme().Rem(12.0 / 13)).
 					Placeholder("Name").Label("Host name")
 				if name.Submitted() {
 					a.saveHostEdit(host)
@@ -446,8 +443,7 @@ func (a *app) hostEditRow(c *ui.Context, k *colors, host, label string) {
 				a.saveHostEdit(host)
 			}
 		})
-		ui.Text(c, "Editing "+label+". A new address takes effect the next time it connects.").
-			FontSize(11.5).TextColor(k.TextFaint)
+		ui.Text(c, "Editing "+label+". A new address takes effect the next time it connects.").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
 	})
 }
 

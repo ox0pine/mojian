@@ -109,7 +109,7 @@ The remote server and its terminals stay alive when Mojian or the SSH connection
 
 ## Updates
 
-Open **Settings › Updates** to check the latest signed GitHub release:
+Open **Settings › About › Software Update** to check the latest signed GitHub release:
 
 - **Check for Updates** reports whether a newer version is available.
 - **Install Update** downloads it and verifies its signature.
@@ -129,7 +129,7 @@ The labels in Mojian follow the platform. These are the default bindings; **Sett
 | New folder | `⇧⌘N` | `Ctrl+Shift+N` |
 | Rename selected entry | `F2` | `F2` |
 | Move selected entry to Trash | `⌘⌫` | `Ctrl+Backspace` |
-| Save | `⌘S` | `Ctrl+S` |
+| Save all | `⌘S` | `Ctrl+S` |
 | New tab | `⌘T` | `Ctrl+Shift+T` |
 | Close pane / tab | `⌘W` / `⌥⌘W` | `Ctrl+Shift+W` / `Ctrl+Alt+W` |
 | Next / previous tab | `⇧⌘]` / `⇧⌘[` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |

@@ -497,9 +497,9 @@ func (a *app) remoteBusyView(c *ui.Context, k *colors) {
 			panel.Children(func() {
 				ui.Spinner(c).Size(18, 18).Label("Working")
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-					ui.Text(c, "Connecting to a server").FontSize(13).
+					ui.Text(c, "Connecting to a server").FontSize(c.Theme().Rem(1)).
 						FontWeight(600).TextColor(k.Text)
-					ui.Text(c, a.remoteBusyMsg).FontSize(12).TextColor(k.TextMuted).
+					ui.Text(c, a.remoteBusyMsg).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted).
 						LineHeight(1.35)
 				})
 				if ui.Button(c, "Cancel").Clicked() {

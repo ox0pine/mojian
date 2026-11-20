@@ -68,7 +68,7 @@ func (u *UI) themeTile(c *ui.Context, k *colors, ch theme.Choice, dark bool, cho
 			if sel {
 				col, weight = k.Text, 650
 			}
-			ui.Text(c, ch.Name).FontSize(12.5).FontWeight(weight).
+			ui.Text(c, ch.Name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(weight).
 				TextColor(col).TextAlign(ui.Center).FillWidth()
 		})
 	})

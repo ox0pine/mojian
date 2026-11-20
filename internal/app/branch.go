@@ -88,7 +88,7 @@ func (a *app) openBranchPicker() {
 
 // branchChip is the branch name in the title bar, right of the project,
 // and the menu that switches it.
-func (a *app) branchChip(c *ui.Context, k *colors) {
+func (a *app) branchChip(c *ui.Context, k *colors, compact bool) {
 	if a.store == nil || a.store.IsMemory() {
 		return
 	}
@@ -121,8 +121,12 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 		name = "detached at " + d.Current
 	}
 	m := ui.MenuBase(c, &a.branch.open)
+	maxWidth := float32(210)
+	if compact {
+		maxWidth = 56
+	}
 	chip := titleChip(m.Trigger, k, a.branch.open).Label("Switch branch: " + name).
-		Tooltip(a.tip("Branch "+name, cmdBranch)).MaxWidth(210)
+		Tooltip(a.tip("Branch "+name, cmdBranch)).MaxWidth(maxWidth)
 	if m.Open() && !a.branch.shown {
 		// Opened by the chip or a command: forget a name being typed
 		// and read the branches again.
@@ -136,8 +140,10 @@ func (a *app) branchChip(c *ui.Context, k *colors) {
 	drop = chip.AnimateTo("branch-menu", drop, motion.PopoverIn)
 	chip.Children(func() {
 		ui.Icon(c, icons.Icon("git-branch")).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
-			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		if !compact {
+			ui.Text(c, name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
+				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		}
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	m.Popup(func(panel ui.Element) {
@@ -163,7 +169,7 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 		submit := false
 		ui.Row(c).Padding(2, menuInset).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icons.Icon("plus")).Size(15, 15).TextColor(k.TextMuted)
-			in := ui.TextInputBase(c, &a.branch.name).Grow(1).FontSize(12.5).
+			in := ui.TextInputBase(c, &a.branch.name).Grow(1).FontSize(c.Theme().Rem(12.5 / 13)).
 				Placeholder("New branch name").AutoFocus()
 			submit = in.Submitted()
 		})

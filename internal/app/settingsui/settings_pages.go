@@ -135,9 +135,9 @@ func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
 				wordmark = "wordmark-reversed"
 			}
 			ui.Icon(c, icons.Brand(wordmark)).Size(150, 36).AlignSelf(ui.Start)
-			ui.Text(c, "A quiet text editor for plain files.").FontSize(12).
+			ui.Text(c, "A quiet text editor for plain files.").FontSize(c.Theme().Rem(12.0 / 13)).
 				TextColor(k.TextMuted)
-			ui.Text(c, "Version "+appVersion()).FontSize(11.5).TextColor(k.TextFaint)
+			ui.Text(c, "Version "+appVersion()).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
 		})
 	})
 	u.settingsSection(c, k, "SOFTWARE UPDATE", func() {
@@ -175,7 +175,7 @@ func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
 		u.settingsNote(c, k, msg)
 	}
 	if msg := u.updateError(); msg != "" {
-		ui.Text(c, msg).FontSize(12).TextColor(k.Danger).Padding(0, 4)
+		ui.Text(c, msg).FontSize(c.Theme().Rem(12.0/13)).TextColor(k.Danger).Padding(0, 4)
 	}
 	u.settingsSection(c, k, "SYSTEM", func() {
 		u.settingsInfoRow(c, k, "System", runtime.GOOS+" · "+runtime.GOARCH)
@@ -189,7 +189,7 @@ func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
 	})
 	u.settingsSection(c, k, "LINKS", func() {
 		u.settingRow(c, k, "GitHub", "Source code, releases and issues.", func() {
-			ui.Link(c, "github.com/"+update.Repo, update.RepoURL).FontSize(12)
+			ui.Link(c, "github.com/"+update.Repo, update.RepoURL).FontSize(c.Theme().Rem(12.0 / 13))
 		})
 	})
 }

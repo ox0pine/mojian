@@ -59,7 +59,7 @@ func (u *UI) settingsKeyboardPage(c *ui.Context, k *colors) {
 			shown++
 		}
 		if shown == 0 {
-			ui.Text(c, "No shortcuts match.").FontSize(12).TextColor(k.TextFaint).
+			ui.Text(c, "No shortcuts match.").FontSize(c.Theme().Rem(12.0/13)).TextColor(k.TextFaint).
 				Padding(14, 16)
 		}
 	})
@@ -71,7 +71,7 @@ func (u *UI) settingsKeyboardPage(c *ui.Context, k *colors) {
 
 func (u *UI) settingsFixedKeys(c *ui.Context, k *colors, title, keys, detail string) {
 	u.settingRow(c, k, title, detail, func() {
-		ui.Text(c, keys).FontSize(11.5).TextColor(k.TextFaint).Font(noteFont.Family)
+		ui.Text(c, keys).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).Font(noteFont.Family)
 	})
 }
 
@@ -207,11 +207,11 @@ func (u *UI) shortcutRow(c *ui.Context, k *colors, cmd Command) {
 		chip.Children(func() {
 			switch {
 			case recording:
-				ui.Text(c, "Type shortcut…").FontSize(11.5).TextColor(k.Text)
+				ui.Text(c, "Type shortcut…").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.Text)
 			case keys == "None":
-				ui.Text(c, "None").FontSize(11.5).TextColor(k.TextFaint)
+				ui.Text(c, "None").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
 			default:
-				ui.Text(c, keys).FontSize(11.5).TextColor(k.Text).Font(noteFont.Family).
+				ui.Text(c, keys).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.Text).Font(noteFont.Family).
 					SingleLine()
 			}
 		})

@@ -162,9 +162,8 @@ func (a *app) pickerHeader(c *ui.Context, k *colors) {
 			ui.Icon(c, icons.FolderIcon()).Size(18, 18).TextColor(k.TextMuted)
 		})
 		ui.Column(c).Gap(1).Children(func() {
-			ui.Text(c, "Open Folder").FontSize(15).FontWeight(650).TextColor(k.Text)
-			ui.Text(c, "Choose a folder to open as the project").
-				FontSize(11.5).TextColor(k.TextFaint)
+			ui.Text(c, "Open Folder").FontSize(c.Theme().Rem(15.0 / 13)).FontWeight(650).TextColor(k.Text)
+			ui.Text(c, "Choose a folder to open as the project").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
 		})
 		ui.Spacer(c)
 		if iconButton(c, k, "x", "Close", iconBtnMd, iconGlyphMd).Clicked() {
@@ -252,7 +251,7 @@ func (a *app) pickerMain(c *ui.Context, k *colors) {
 				Background(k.Hover).AlignItems(ui.Center)
 			field.Children(func() {
 				ui.Icon(c, icons.FolderIcon()).Size(14, 14).TextColor(k.TextFaint)
-				in := ui.TextInputBase(c, &a.pickerInput).Grow(1).FontSize(13).
+				in := ui.TextInputBase(c, &a.pickerInput).Grow(1).FontSize(c.Theme().Rem(1)).
 					Placeholder("Folder path").AutoFocus()
 				if in.Submitted() {
 					a.later(func() { a.setPickerPath(a.pickerInput) })
@@ -323,7 +322,7 @@ func (a *app) pickerFooter(c *ui.Context, k *colors) {
 		target := a.pickerTarget()
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 			sectionLabel(c, k, "Open")
-			ui.Text(c, shortPath(target)).FontSize(12).TextColor(k.TextMuted).
+			ui.Text(c, shortPath(target)).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextMuted).
 				SingleLine().TruncateStart()
 		})
 		a.pickerHiddenSwitch(c, k)

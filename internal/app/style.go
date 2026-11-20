@@ -30,14 +30,14 @@ const (
 // sectionLabel is the one caption a group of rows carries, in the title
 // bar menus, the pickers, the Git page and the welcome page.
 func sectionLabel(c *ui.Context, k *colors, title string) ui.Element {
-	return ui.Text(c, strings.ToUpper(title)).FontSize(10).FontWeight(650).
+	return ui.Text(c, strings.ToUpper(title)).FontSize(c.Theme().Rem(10.0 / 13)).FontWeight(650).
 		TextColor(k.TextFaint)
 }
 
 // emptyLine is the quiet line a list shows when it has no rows: the same
 // size and place in every picker.
 func emptyLine(c *ui.Context, k *colors, text string) {
-	ui.Text(c, text).FontSize(12.5).TextColor(k.TextFaint).Padding(10, 8)
+	ui.Text(c, text).FontSize(c.Theme().Rem(12.5/13)).TextColor(k.TextFaint).Padding(10, 8)
 }
 
 // emptyState is the centered block a whole surface shows when it has
@@ -49,7 +49,7 @@ func emptyState(c *ui.Context, k *colors, glyph string, col ui.Color, title, det
 			Children(func() {
 				ui.Icon(c, icons.Icon(glyph)).Size(20, 20).TextColor(col)
 			})
-		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, title).FontSize(c.Theme().Rem(1)).FontWeight(600).TextColor(k.Text).
 			TextAlign(ui.Center)
 		if detail != "" {
 			ui.Text(c, detail).FontSize(rowDetail).TextColor(k.TextFaint).

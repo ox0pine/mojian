@@ -187,10 +187,9 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 			case failed:
 				ui.Box(c).Grow(1).MinHeight(0).Center().Padding(24).Children(func() {
 					ui.Column(c).Center().Gap(6).Children(func() {
-						ui.Text(c, fmt.Sprintf("Page %d of this PDF could not be drawn.", page+1)).
-							FontSize(12).FontWeight(550).TextColor(k.TextMuted).
+						ui.Text(c, fmt.Sprintf("Page %d of this PDF could not be drawn.", page+1)).FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(550).TextColor(k.TextMuted).
 							TextAlign(ui.Center).MaxWidth(460)
-						ui.Text(c, errText).FontSize(11).TextColor(k.TextFaint).
+						ui.Text(c, errText).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
 							TextAlign(ui.Center).MaxWidth(460)
 					})
 				})
@@ -207,8 +206,8 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 func pdfStatus(c *ui.Context, k *colors, title, note string) {
 	ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
 		ui.Icon(c, icons.Icon("file-text")).Size(26, 26).TextColor(k.TextMuted)
-		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(k.Text)
-		ui.Text(c, note).FontSize(11.5).TextColor(k.TextFaint)
+		ui.Text(c, title).FontSize(c.Theme().Rem(1)).FontWeight(600).TextColor(k.Text)
+		ui.Text(c, note).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
 	})
 }
 
@@ -217,8 +216,8 @@ func (a *app) pdfFooter(c *ui.Context, k *colors, p *pane) {
 	n := v.pdfCount
 	ui.Row(c).Height(31).Padding(0, 12, 0, 12).Gap(8).AlignItems(ui.Center).
 		Children(func() {
-			ui.Text(c, "PDF").FontSize(10.5).FontWeight(600).TextColor(k.TextFaint)
-			ui.Text(c, "·").FontSize(10).TextColor(k.TextFaint)
+			ui.Text(c, "PDF").FontSize(c.Theme().Rem(10.5 / 13)).FontWeight(600).TextColor(k.TextFaint)
+			ui.Text(c, "·").FontSize(c.Theme().Rem(10.0 / 13)).TextColor(k.TextFaint)
 			if n > 1 {
 				if iconButton(c, k, "chevron-left", "Previous Page", iconBtnSm, iconGlyphSm).
 					Disabled(v.pdfPage <= 0).Clicked() {
@@ -226,8 +225,7 @@ func (a *app) pdfFooter(c *ui.Context, k *colors, p *pane) {
 					v.pdfImage = nil
 					a.invalidate()
 				}
-				ui.Text(c, fmt.Sprintf("Page %d of %d", v.pdfPage+1, n)).
-					FontSize(10.5).TextColor(k.TextMuted)
+				ui.Text(c, fmt.Sprintf("Page %d of %d", v.pdfPage+1, n)).FontSize(c.Theme().Rem(10.5 / 13)).TextColor(k.TextMuted)
 				if iconButton(c, k, "chevron-right", "Next Page", iconBtnSm, iconGlyphSm).
 					Disabled(v.pdfPage >= n-1).Clicked() {
 					v.pdfPage++
@@ -235,10 +233,10 @@ func (a *app) pdfFooter(c *ui.Context, k *colors, p *pane) {
 					a.invalidate()
 				}
 			} else {
-				ui.Text(c, "Page 1 of 1").FontSize(10.5).TextColor(k.TextMuted)
+				ui.Text(c, "Page 1 of 1").FontSize(c.Theme().Rem(10.5 / 13)).TextColor(k.TextMuted)
 			}
 			ui.Spacer(c)
-			ui.Text(c, fileSize(p.Asset.Size)).FontSize(10.5).TextColor(k.TextFaint)
+			ui.Text(c, fileSize(p.Asset.Size)).FontSize(c.Theme().Rem(10.5 / 13)).TextColor(k.TextFaint)
 			a.openButton(c, k, p)
 		})
 }
@@ -249,9 +247,9 @@ func (a *app) assetError(c *ui.Context, k *colors, p *pane, err error) {
 			Border(1, k.CardBorderFocused).Center().Children(func() {
 			ui.Icon(c, icons.Icon("file-text")).Size(24, 24).TextColor(k.TextMuted)
 		})
-		ui.Text(c, p.Asset.Name).FontSize(14).FontWeight(600).TextColor(k.Text).
+		ui.Text(c, p.Asset.Name).FontSize(c.Theme().Rem(14.0 / 13)).FontWeight(600).TextColor(k.Text).
 			TextAlign(ui.Center).MaxWidth(460)
-		ui.Text(c, err.Error()).FontSize(11.5).TextColor(k.TextFaint).
+		ui.Text(c, err.Error()).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).
 			TextAlign(ui.Center).MaxWidth(460)
 		a.openButton(c, k, p)
 	})
@@ -260,9 +258,9 @@ func (a *app) assetError(c *ui.Context, k *colors, p *pane, err error) {
 func (a *app) assetFooter(c *ui.Context, k *colors, p *pane, kind string) {
 	ui.Row(c).Height(31).Padding(0, 12, 0, 12).Gap(8).AlignItems(ui.Center).
 		Children(func() {
-			ui.Text(c, kind).FontSize(10.5).FontWeight(600).TextColor(k.TextFaint)
-			ui.Text(c, "·").FontSize(10).TextColor(k.TextFaint)
-			ui.Text(c, fileSize(p.Asset.Size)).FontSize(10.5).TextColor(k.TextFaint)
+			ui.Text(c, kind).FontSize(c.Theme().Rem(10.5 / 13)).FontWeight(600).TextColor(k.TextFaint)
+			ui.Text(c, "·").FontSize(c.Theme().Rem(10.0 / 13)).TextColor(k.TextFaint)
+			ui.Text(c, fileSize(p.Asset.Size)).FontSize(c.Theme().Rem(10.5 / 13)).TextColor(k.TextFaint)
 			ui.Spacer(c)
 			a.openButton(c, k, p)
 		})
@@ -283,7 +281,7 @@ func (a *app) openButton(c *ui.Context, k *colors, p *pane) {
 		}
 	}
 	b.Children(func() {
-		ui.Text(c, "Open").FontSize(11.5).FontWeight(550).TextColor(k.Text)
+		ui.Text(c, "Open").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(550).TextColor(k.Text)
 	})
 }
 

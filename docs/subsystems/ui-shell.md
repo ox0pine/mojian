@@ -97,10 +97,15 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   that turns `k.TabActive` with the active tab's shadows while its menu is open, so the open chip
   reads as the raised tab above its popover. The track and chips shrink before the active tab
   disappears: a chip keeps a 56-pixel minimum, the tab track keeps at least `tabMinW`, and an
-  oversized active tab keeps its close action revealed. A tab name of only whitespace resets to the
+  oversized active tab keeps its close action revealed. Below 900 pixels the branch becomes a
+  56-pixel icon-only chip and the view toolbar keeps its first action plus overflow in 62 pixels,
+  before the server and project lose their names. While the Git page is open its own branch chip is
+  the only one; the title bar does not repeat it. A tab name of only whitespace resets to the
   focused pane's automatic name.
-- A compact pane keeps its ellipsized file title; its `ui.Toolbar` moves actions that no longer fit
-  into the built-in overflow menu instead of discarding the pane's identity.
+- Below 360 pixels a pane keeps its ellipsized file title; its `ui.Toolbar` is capped at 44 pixels
+  and moves actions that no longer fit into the built-in overflow menu instead of discarding the
+  pane's identity. Below 160 pixels the type icon yields too, the toolbar keeps only overflow in
+  22 pixels, and the drag handle remains available.
 - The three title-bar menus are `ui.MenuBase` menus, so the chip is the menu button and
   Up/Down/Home/End, type-ahead, Escape/Tab and focus return come from MyGo. Their shared look
   lives in `internal/app/context_menu.go`: `menuSurface` (one width, inset and shadow for all of
