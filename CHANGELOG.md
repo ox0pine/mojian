@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.3
+
+- Compact layouts keep file identity: pane titles stay readable at narrow splits, long branches
+  yield to the server and project context, the Git page owns the only branch control while open,
+  and Settings keeps its scrollbar visible when a page overflows.
+- Custom interface text follows the system text scale everywhere, from labels and inputs to tab
+  measurements and every Settings page.
+- The batch save command is now Save All, the command palette advertises commands, files and tabs,
+  and update instructions point at Settings › About › Software Update.
+
 ## 0.5.2
 
 - Compact windows keep their controls and file identity: title-bar chips shrink without losing the
