@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.1
+
+- Theme contrast and UI alignment fixes: WCAG-checked accent text across all
+  ten light and dark themes, visible accent fill on the blank split picker's
+  selected row, matched 28 px title-bar chip and tab heights, scrollable
+  folder-picker sidebar, responsive remote folder picker with parent-folder
+  navigation, centered list rows and attaching states, stable pane/Explorer
+  toolbars during animations and refreshes, and PDF footers that stay visible
+  while turning pages.
+- Preferences, window and workspace fixes: disabling terminal bell and exit
+  notifications persists across launches; closing the main window on macOS no
+  longer blocks reopening from the menu bar tray or CLI; closing a remote
+  project, removing an active host, or switching back to Local preserves the
+  previous local project; editing a host address cleans up pooled connections
+  and cached workspaces; and Settings › Keyboard fixes bare `F` recording,
+  category search filtering, reset tooltips and conflict cleanup.
+- Session server, Git and background agent fixes: control RPCs no longer
+  block terminal streams on the multiplexed connection; reattaching a
+  terminal resizes the PTY and guards `libghostty-vt` on exit; Windows remote
+  probing and uploads use POSIX paths; atomic writes preserve existing file
+  permissions; both branch menus stay open with their error note on dirty
+  edits; Git refresh reloads the active diff and uses `LC_ALL=C` on server
+  runners; and background ACP agent tasks cancel cleanly, stop on project
+  switches and cap replies at 8 KB without discarding earlier text.
+
 ## 0.5.0
 
 - Remote hosts work on Windows: the app reaches a host's server over the
