@@ -34,15 +34,15 @@ func (h explorerHost) ReloadProject(force bool)                { h.a.reloadProje
 func (h explorerHost) Refreshing() bool {
 	return h.a.reloadStore != nil && h.a.reloadStore == h.a.store
 }
-func (h explorerHost) RefreshGit()                 { h.a.refreshGit() }
-func (h explorerHost) GitOpen() bool               { return h.a.git.Open }
-func (h explorerHost) AutoRefreshGit() bool        { return !h.a.NoGitAutoRefresh }
-func (h explorerHost) FilteredNotes() []*note      { return h.a.filteredNotes() }
-func (h explorerHost) ActiveWorkspaceKey() string  { return h.a.activeWorkspaceKey() }
-func (h explorerHost) NativeWindow() bool          { return h.a.win != nil }
-func (h explorerHost) RemotePath() string          { return h.a.remotePath }
-func (h explorerHost) ServerAlias() string         { return h.a.serverAlias }
-func (h explorerHost) Tip(label, id string) string { return h.a.tip(label, commandByID(id)) }
+func (h explorerHost) RefreshGit()                            { h.a.refreshGit() }
+func (h explorerHost) GitOpen() bool                          { return h.a.git.Open }
+func (h explorerHost) AutoRefreshGit() bool                   { return !h.a.NoGitAutoRefresh }
+func (h explorerHost) FilteredFiles() ([]*note, []*assetFile) { return h.a.filteredFiles() }
+func (h explorerHost) ActiveWorkspaceKey() string             { return h.a.activeWorkspaceKey() }
+func (h explorerHost) NativeWindow() bool                     { return h.a.win != nil }
+func (h explorerHost) RemotePath() string                     { return h.a.remotePath }
+func (h explorerHost) ServerAlias() string                    { return h.a.serverAlias }
+func (h explorerHost) Tip(label, id string) string            { return h.a.tip(label, commandByID(id)) }
 
 func (h explorerHost) ResetRenamedStates(notes []*note, before map[*note]string) {
 	h.a.resetRenamedStates(notes, before)

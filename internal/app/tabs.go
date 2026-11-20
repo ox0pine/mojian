@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strings"
+
 	"github.com/egoist/mygo/ui"
 
 	"mojian/internal/icons"
@@ -32,13 +34,13 @@ func (a *app) tabStrip(c *ui.Context, k *colors) {
 	// The strip scrolls rather than shrinking tabs into unreadable
 	// slivers: every tab keeps its name, and the active one is revealed
 	// when it changes.
-	track := ui.ScrollHorizontal(c).Basis(total).Shrink(1).MinWidth(0).Height(tabH+4).
+	track := ui.ScrollHorizontal(c).Basis(total).Shrink(1).MinWidth(min(total, tabMinW)).Height(tabH+4).
 		Radius(radius).Background(k.Track).Border(0.5, k.TrackBorder).
 		ClipX().DragWindow().Role(ui.RoleTabList).Label("Tabs").Scrollbars(false).
 		TrackScroll(&a.tabScroll)
 	tabs := append([]*tab(nil), a.tabs...)
 	viewport := track.Bounds().W
-	if a.revealTab {
+	if a.revealTab || (a.active >= 0 && a.active < len(widths) && viewport < widths[a.active]) {
 		start := float32(2)
 		for i := 0; i < a.active && i < len(widths); i++ {
 			start += widths[i] + 2
@@ -56,7 +58,7 @@ func (a *app) tabStrip(c *ui.Context, k *colors) {
 		case end > x+viewport:
 			x = end - viewport
 		}
-		if a.active <= 0 {
+		if a.active <= 0 && a.active < len(widths) && viewport >= widths[a.active] {
 			x = 0
 		}
 		a.tabScroll.X = max(x, 0)
@@ -70,9 +72,9 @@ func (a *app) tabStrip(c *ui.Context, k *colors) {
 		ui.Row(c).Height(tabH+4).Width(total).Padding(0, 2).Gap(2).AlignItems(ui.Center).Children(func() {
 			x := float32(2)
 			for i, t := range tabs {
-				// A tab cut by the left edge shows a blank pill rather
-				// than a stray tail of its name.
-				whole := viewport <= 0 || x >= offset-0.5
+				// An inactive tab cut by the left edge shows a blank pill;
+				// the active tab keeps its name and close action visible.
+				whole := i == a.active || viewport <= 0 || x >= offset-0.5
 				a.tabItem(c, k, i, t, widths[i], whole)
 				x += widths[i] + 2
 			}
@@ -135,8 +137,7 @@ func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, wh
 	e.Transition(motion.Tab)
 	if e.Clicked() {
 		if a.git.Open {
-			a.git.Open = false
-			a.invalidate()
+			a.CloseGit()
 		}
 		if !active {
 			a.active = i
@@ -202,7 +203,7 @@ func (a *app) renameField(c *ui.Context, k *colors, t *tab, name string) {
 		FontSize(13).FontWeight(500).TextColor(k.Text).AutoFocus()
 	done := func(keep bool) {
 		if keep {
-			t.Name = a.renameText
+			t.Name = strings.TrimSpace(a.renameText)
 		}
 		a.rename = nil
 		a.renameFocus = false

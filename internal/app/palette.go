@@ -203,7 +203,7 @@ func (a *app) palette(c *ui.Context, k *colors) {
 						Padding(2, 7).Radius(radius).Background(chipBg).Shrink(0)
 				}
 			})
-		}).MaxHeight(sheetListH).Padding(6)
+		}).MaxHeight(sheetListHeight(c)).Padding(6)
 		if len(items) == 0 {
 			list.Children(func() { emptyLine(c, k, "No matches") })
 		}
@@ -226,18 +226,26 @@ func (a *app) palette(c *ui.Context, k *colors) {
 	}
 }
 
-func (a *app) filteredNotes() []*note {
+func (a *app) filteredFiles() ([]*note, []*assetFile) {
 	if a.store == nil {
-		return nil
+		return nil, nil
 	}
 	q := strings.ToLower(strings.TrimSpace(a.treeQuery))
-	var out []*note
+	match := func(s string) bool { return q == "" || fuzzy(strings.ToLower(s), q) }
+	var notes []*note
 	for _, n := range a.store.Sorted() {
-		if q == "" || fuzzy(strings.ToLower(n.Title+" "+n.Rel), q) {
-			out = append(out, n)
+		if match(n.Title + " " + n.Rel) {
+			notes = append(notes, n)
 		}
 	}
-	return out
+	var assets []*assetFile
+	for _, f := range a.store.Assets {
+		if match(f.Name + " " + f.Rel) {
+			assets = append(assets, f)
+		}
+	}
+	sort.Slice(assets, func(i, j int) bool { return assets[i].Rel < assets[j].Rel })
+	return notes, assets
 }
 
 // shortcuts gives the browser the keys the menus give a native window,

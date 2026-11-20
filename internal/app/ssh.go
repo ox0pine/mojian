@@ -64,7 +64,7 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 			connected = filtered[a.sshSel].Address
 		}
 		if len(a.hosts()) == 0 {
-			ui.Column(c).Height(sheetListH).Children(func() {
+			ui.Column(c).Height(sheetListHeight(c)).Children(func() {
 				emptyState(c, k, "server", k.TextMuted, "No servers configured",
 					"Add a server in Settings › Hosts, then come back here.", func() {
 						if ui.Button(c, "Open Settings › Hosts").Clicked() {
@@ -106,7 +106,7 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 				ui.Text(c, h.Address).FontSize(rowDetail).TextColor(muted).
 					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			})
-		}).MaxHeight(sheetListH).Padding(6)
+		}).MaxHeight(sheetListHeight(c)).Padding(6)
 		if len(filtered) == 0 {
 			list.Children(func() { emptyLine(c, k, "No hosts match") })
 		}

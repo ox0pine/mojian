@@ -446,23 +446,18 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 			ui.Icon(c, icons.Icon("grip-vertical")).Size(gripSize, gripSize).TextColor(k.TextFaint)
 		})
 		ui.Icon(c, ic).Size(iconSize, iconSize).TextColor(k.Text).Tooltip(name)
-		if compact {
-			ui.Spacer(c)
+		ui.Row(c).Grow(1).MinWidth(0).Gap(5).AlignItems(ui.Center).ClipX().Children(func() {
+			ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
+				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			if p.Note != nil && p.Note.Dirty() {
-				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize / 2).Background(k.Attention).
+				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
 					Tooltip("Unsaved edits")
 			}
-		} else {
-			ui.Row(c).Grow(1).MinWidth(0).Gap(5).AlignItems(ui.Center).ClipX().Children(func() {
-				ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.Text).
-					SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-				if p.Note != nil && p.Note.Dirty() {
-					ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
-						Tooltip("Unsaved edits")
-				}
-			})
-		}
-		if p.Note != nil && isMarkdownPath(p.Note.Path) {
+		})
+		previewAction := func() {
+			if p.Note == nil || !isMarkdownPath(p.Note.Path) {
+				return
+			}
 			glyph, label := "file-text", "Preview"
 			if p.Preview {
 				glyph, label = "pencil", "Edit"
@@ -478,7 +473,10 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				a.changed()
 			}
 		}
-		actions := ui.Toolbar(c, func() {
+		if !compact {
+			previewAction()
+		}
+		splitRightAction := func() {
 			if iconButton(c, k, "columns-2", "Split Right"+suffix, btn, isize).
 				Tooltip(a.tip("Split Right", cmdSplitRight)).Clicked() {
 				a.later(func() {
@@ -486,6 +484,8 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 					a.splitFocusedSide(splitRight)
 				})
 			}
+		}
+		splitDownAction := func() {
 			if iconButton(c, k, "rows-2", "Split Down"+suffix, btn, isize).
 				Tooltip(a.tip("Split Down", cmdSplitDown)).Clicked() {
 				a.later(func() {
@@ -493,6 +493,8 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 					a.splitFocusedSide(splitDown)
 				})
 			}
+		}
+		zoomAction := func() {
 			zoom, label := "maximize-2", "Zoom"
 			if t.Zoom == p {
 				zoom, label = "minimize-2", "Unzoom"
@@ -501,11 +503,32 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				t.Focus = p
 				a.toggleZoom()
 			}
+		}
+		closeAction := func() {
 			if iconButton(c, k, "x", "Close Pane"+suffix, btn, isize).
 				Tooltip(a.tip("Close Pane", cmdClosePane)).Clicked() {
 				a.laterPane(p)
 			}
+		}
+		actions := ui.Toolbar(c, func() {
+			if compact {
+				closeAction()
+				previewAction()
+				splitRightAction()
+				splitDownAction()
+				zoomAction()
+			} else {
+				splitRightAction()
+				splitDownAction()
+				zoomAction()
+				closeAction()
+			}
 		}).Label("Pane actions").Padding(0).Gap(1).Shrink(0)
+		if compact {
+			// Leave enough of the title to distinguish adjacent files. MyGo
+			// keeps the close action and moves the rest into its overflow.
+			actions.MaxWidth(68)
+		}
 		if overlay {
 			// Keep the buttons visible while the copy fades, but let no
 			// click reach them.

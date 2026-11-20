@@ -88,6 +88,8 @@ the save path, path guards and the asset cache.
   `.mojian-trash` are hidden by name. Patterns follow Git: `#` comments, `!` negation, a trailing
   `/` for folders, a `/` inside anchoring the pattern to the `.gitignore`'s folder, `**` crossing
   folders, and a deeper `.gitignore` overriding its parents.
+- The Explorer's search filters the same notes and assets that Quick Open lists: an image or PDF
+  match stays visible and opens through `openRel`, and Enter opens the first note or asset match.
 - `Memory` lists nothing and refuses file operations with `errReadOnly` (its `Write` is a no-op); the browser build keeps its editor in memory.
 
 ## Verification

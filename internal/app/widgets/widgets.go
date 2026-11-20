@@ -31,12 +31,34 @@ func ListNav(in ui.Element, sel *int, n int, reveal *bool) bool {
 	return in.Submitted()
 }
 
+const (
+	commandDialogTop        = 78
+	commandDialogBottom     = 24
+	commandDialogMaxH       = 440
+	commandDialogListMaxH   = 384
+	commandDialogListChrome = commandDialogMaxH - commandDialogListMaxH
+)
+
+// commandDialogHeight is the tallest panel that leaves room below its top
+// edge, capped at the size the sheet has in a large window.
+func commandDialogHeight(c *ui.Context) float32 {
+	_, height := c.Size()
+	return min(commandDialogMaxH, max(height-commandDialogTop-commandDialogBottom, 0))
+}
+
+// CommandListHeight is the tallest list that fits CommandDialog in this
+// frame. The chrome allowance keeps its default maximum 56 DIPs below the
+// panel's, as the search header and existing spacing require.
+func CommandListHeight(c *ui.Context) float32 {
+	return max(commandDialogHeight(c)-commandDialogListChrome, 0)
+}
+
 // CommandDialog is the search sheet the palette, quick open and the SSH
 // picker share: one width, one top edge and one shadow.
 func CommandDialog(c *ui.Context, k *theme.Colors, open *bool, body func()) {
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.Backdrop).Justify(ui.Start).Padding(78, 0, 0, 0)
-		panel.Width(560).MaxHeight(440).Radius(theme.Radius).Background(k.Panel).
+		backdrop.Background(k.Backdrop).Justify(ui.Start).Padding(commandDialogTop, 0, 0, 0)
+		panel.Width(560).MaxHeight(commandDialogHeight(c)).Radius(theme.Radius).Background(k.Panel).
 			Border(1, k.PanelBorder).
 			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip()
 		body()

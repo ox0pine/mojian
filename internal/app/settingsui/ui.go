@@ -203,7 +203,6 @@ func (u *UI) updateInstalling() bool                     { return u.UpdateState(
 func (u *UI) updateReady() bool                          { return u.UpdateState().Ready }
 func (u *UI) updateChecked() bool                        { return u.UpdateState().Checked }
 func (u *UI) updateError() string                        { return u.UpdateState().Err }
-func (u *UI) pendingVersion() string                     { return u.UpdateState().PendingVersion }
 func (u *UI) updateSummary() string                      { return u.UpdateState().Summary }
 func (u *UI) checkForUpdates()                           { u.CheckForUpdates() }
 func (u *UI) installAvailableUpdate()                    { u.InstallAvailableUpdate() }

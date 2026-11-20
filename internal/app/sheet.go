@@ -6,10 +6,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// sheetListH is the tallest list a search sheet shows before it scrolls:
-// the panel's 440 less the header and its border.
-const sheetListH = 384
-
 // sheetHeader is the one search row the palette, quick open and the SSH
 // picker start with: the magnifier, the field and the close button.
 func sheetHeader(c *ui.Context, k *colors, query *string, placeholder, label string, open *bool) ui.Element {

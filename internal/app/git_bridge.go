@@ -21,6 +21,18 @@ func (a *app) toggleGit() {
 	a.invalidate()
 }
 
+// CloseGit returns to the active workspace and restores its pane focus.
+func (a *app) CloseGit() {
+	a.git.Open = false
+	if t := a.tab(); t != nil {
+		a.focusReq = t.Focus
+		if a.focusReq == nil {
+			a.focusReq = t.editorPane()
+		}
+	}
+	a.invalidate()
+}
+
 // refreshGit rereads the working tree for the open page.
 func (a *app) refreshGit() { a.git.Refresh() }
 

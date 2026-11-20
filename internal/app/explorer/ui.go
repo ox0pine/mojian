@@ -56,7 +56,7 @@ type Host interface {
 	AutoRefreshGit() bool
 
 	Tip(label, commandID string) string
-	FilteredNotes() []*project.Note
+	FilteredFiles() ([]*project.Note, []*project.Asset)
 	ActiveWorkspaceKey() string
 	NativeWindow() bool
 	RemotePath() string
@@ -88,28 +88,28 @@ type Host interface {
 // UI is the Explorer view; the app sets Host before using it.
 type UI struct{ Host }
 
-func (u *UI) store() *project.Store                       { return u.Store() }
-func (u *UI) currentNote() *project.Note                  { return u.CurrentNote() }
-func (u *UI) fail(err error)                              { u.Fail(err) }
-func (u *UI) later(fn func())                             { u.Later(fn) }
-func (u *UI) invalidate()                                 { u.Invalidate() }
-func (u *UI) changed()                                    { u.Changed() }
-func (u *UI) openRel(rel string)                          { u.OpenRel(rel) }
-func (u *UI) openNote(n *project.Note)                    { u.OpenNote(n) }
-func (u *UI) openNoteInTab(n *project.Note)               { u.OpenNoteInTab(n) }
-func (u *UI) openAssetInTab(f *project.Asset)             { u.OpenAssetInTab(f) }
-func (u *UI) closeNotes(match func(*project.Note) bool)   { u.CloseNotes(match) }
-func (u *UI) closeAssets(match func(*project.Asset) bool) { u.CloseAssets(match) }
-func (u *UI) refreshing() bool                            { return u.Refreshing() }
-func (u *UI) afterRefresh()                               { u.AfterRefresh() }
-func (u *UI) refreshGit()                                 { u.RefreshGit() }
-func (u *UI) gitOpen() bool                               { return u.GitOpen() }
-func (u *UI) autoRefreshGit() bool                        { return u.AutoRefreshGit() }
-func (u *UI) filteredNotes() []*project.Note              { return u.FilteredNotes() }
-func (u *UI) activeWorkspaceKey() string                  { return u.ActiveWorkspaceKey() }
-func (u *UI) nativeWindow() bool                          { return u.NativeWindow() }
-func (u *UI) remotePath() string                          { return u.RemotePath() }
-func (u *UI) serverAlias() string                         { return u.ServerAlias() }
+func (u *UI) store() *project.Store                              { return u.Store() }
+func (u *UI) currentNote() *project.Note                         { return u.CurrentNote() }
+func (u *UI) fail(err error)                                     { u.Fail(err) }
+func (u *UI) later(fn func())                                    { u.Later(fn) }
+func (u *UI) invalidate()                                        { u.Invalidate() }
+func (u *UI) changed()                                           { u.Changed() }
+func (u *UI) openRel(rel string)                                 { u.OpenRel(rel) }
+func (u *UI) openNote(n *project.Note)                           { u.OpenNote(n) }
+func (u *UI) openNoteInTab(n *project.Note)                      { u.OpenNoteInTab(n) }
+func (u *UI) openAssetInTab(f *project.Asset)                    { u.OpenAssetInTab(f) }
+func (u *UI) closeNotes(match func(*project.Note) bool)          { u.CloseNotes(match) }
+func (u *UI) closeAssets(match func(*project.Asset) bool)        { u.CloseAssets(match) }
+func (u *UI) refreshing() bool                                   { return u.Refreshing() }
+func (u *UI) afterRefresh()                                      { u.AfterRefresh() }
+func (u *UI) refreshGit()                                        { u.RefreshGit() }
+func (u *UI) gitOpen() bool                                      { return u.GitOpen() }
+func (u *UI) autoRefreshGit() bool                               { return u.AutoRefreshGit() }
+func (u *UI) filteredFiles() ([]*project.Note, []*project.Asset) { return u.FilteredFiles() }
+func (u *UI) activeWorkspaceKey() string                         { return u.ActiveWorkspaceKey() }
+func (u *UI) nativeWindow() bool                                 { return u.NativeWindow() }
+func (u *UI) remotePath() string                                 { return u.RemotePath() }
+func (u *UI) serverAlias() string                                { return u.ServerAlias() }
 func (u *UI) resetRenamedStates(notes []*project.Note, before map[*project.Note]string) {
 	u.ResetRenamedStates(notes, before)
 }

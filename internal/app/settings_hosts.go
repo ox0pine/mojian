@@ -104,13 +104,13 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, de
 		row := ui.Row(c).MinHeight(48).Padding(0, 6).Gap(10).AlignItems(ui.Center)
 		row.Children(func() {
 			info := ui.ButtonBase(c).Grow(1).MinWidth(0).Gap(10).Justify(ui.Start).
-				Cursor(ui.CursorPointer).Label("Server " + label)
+				Cursor(ui.CursorPointer).Label(hostControlLabel("Server", label, detail)).Tooltip(detail)
 			info.Children(func() {
 				ui.Icon(c, icons.Icon("server")).Size(16, 16).TextColor(k.TextMuted)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.Text)
 					ui.Text(c, detail).FontSize(11.5).TextColor(k.TextFaint).
-						SingleLine().Ellipsis("…")
+						SingleLine().Ellipsis("…").Tooltip(detail)
 				})
 				if selected {
 					ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.TextMuted)
@@ -120,13 +120,13 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, de
 				a.selectServer(host)
 			}
 			if host != "" {
-				edit := iconButton(c, k, "pencil", "Edit server "+label, iconBtnSm, iconGlyphSm)
+				edit := iconButton(c, k, "pencil", hostControlLabel("Edit server", label, detail), iconBtnSm, iconGlyphSm)
 				if edit.Clicked() {
 					a.hostEditAddr, a.hostEditName, a.hostEditAddress = host, rawName, host
 					a.hostRemoveAddr, a.settings.Notice = "", ""
 					a.invalidate()
 				}
-				remove := iconButton(c, k, "x", "Remove server "+label, iconBtnSm, iconGlyphSm)
+				remove := iconButton(c, k, "x", hostControlLabel("Remove server", label, detail), iconBtnSm, iconGlyphSm)
 				if remove.Clicked() {
 					a.hostRemoveAddr = host
 					a.settings.Notice = ""
@@ -152,6 +152,14 @@ func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, de
 			})
 		}
 	})
+}
+
+// hostControlLabel keeps controls distinct when hosts share a display name.
+func hostControlLabel(action, label, detail string) string {
+	if detail != "" && detail != label {
+		label += " (" + detail + ")"
+	}
+	return action + " " + label
 }
 
 // hostState is what the app knows about one host's server: whether this
@@ -181,15 +189,16 @@ func (a *app) hostStateFor(host string) *hostState {
 // serverRowSpec is one server's status line, its primary action and the
 // stop confirmation beneath it.
 type serverRowSpec struct {
-	busy    bool
-	status  string
-	color   ui.Color
-	action  string
-	stopAsk bool
-	search  bool
-	act     func()
-	stop    func()
-	cancel  func()
+	busy     bool
+	disabled bool
+	status   string
+	color    ui.Color
+	action   string
+	stopAsk  bool
+	search   bool
+	act      func()
+	stop     func()
+	cancel   func()
 }
 
 // serverControlRow draws the status line used by the Local row and every
@@ -209,9 +218,9 @@ func (a *app) serverControlRow(c *ui.Context, k *colors, s serverRowSpec) {
 			if s.busy {
 				ui.Spinner(c).Size(12, 12).Label("Server state")
 			}
-			ui.Text(c, s.status).FontSize(11).TextColor(s.color).Grow(1).SingleLine().Ellipsis("…")
-			if !s.busy && s.action != "" {
-				if settingsButton(c, s.action, false).Clicked() {
+			ui.Text(c, s.status).FontSize(11).TextColor(s.color).Grow(1).MinWidth(0).LineHeight(1.35)
+			if s.action != "" {
+				if settingsButton(c, s.action, false).Disabled(s.disabled).Clicked() {
 					s.act()
 				}
 			}
@@ -223,7 +232,7 @@ func (a *app) serverControlRow(c *ui.Context, k *colors, s serverRowSpec) {
 				if settingsButton(c, "Cancel", false).Clicked() {
 					s.cancel()
 				}
-				if settingsButton(c, "Stop", false).TextColor(k.Danger).Clicked() {
+				if settingsButton(c, "Stop", false).TextColor(k.Danger).Disabled(s.disabled).Clicked() {
 					s.stop()
 				}
 			})
@@ -258,23 +267,22 @@ func (a *app) hostSetupRow(c *ui.Context, k *colors, host string) {
 		col = k.TextMuted
 	}
 	action := ""
-	if !busy {
-		switch {
-		case running:
-			action = "Stop Server"
-		case st.stopped:
-			action = "Start Server"
-		default:
-			action = "Set Up Server"
-		}
+	switch {
+	case running:
+		action = "Stop Server"
+	case st.stopped:
+		action = "Start Server"
+	default:
+		action = "Set Up Server"
 	}
 	a.serverControlRow(c, k, serverRowSpec{
-		busy:    busy,
-		status:  msg,
-		color:   col,
-		action:  action,
-		stopAsk: a.hostStopAddr == host,
-		search:  true,
+		busy:     busy,
+		disabled: a.hostSetupBusy,
+		status:   msg,
+		color:    col,
+		action:   action,
+		stopAsk:  a.hostStopAddr == host,
+		search:   true,
 		act: func() {
 			if action == "Stop Server" {
 				a.hostStopAddr = host
@@ -315,10 +323,11 @@ func (a *app) localServerRow(c *ui.Context, k *colors) {
 		action = "Stop Server"
 	}
 	a.serverControlRow(c, k, serverRowSpec{
-		status:  msg,
-		color:   col,
-		action:  action,
-		stopAsk: a.localStopAsk,
+		disabled: a.hostSetupBusy,
+		status:   msg,
+		color:    col,
+		action:   action,
+		stopAsk:  a.localStopAsk,
 		act: func() {
 			if running {
 				a.localStopAsk = true

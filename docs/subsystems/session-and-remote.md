@@ -105,7 +105,10 @@ its bundled `ssh.exe`.
   socket still exists, so a server left running by the previous launch shows Stop Server rather
   than Set Up Server. Each host's row sets up, starts and stops that host's server; stopping
   removes the pooled connection and the terminal views it owned, and starting again reconnects the
-  loaded projects on that host.
+  loaded projects on that host. While any setup or stop is active, every host's setup/start/stop
+  action and final stop confirmation is disabled instead of silently rejecting the click. Status
+  and error text wraps, truncated addresses keep full tooltips, and address-qualified accessible
+  labels distinguish hosts that share a display name.
 - Opening a remote project runs off the UI thread behind the loading card, so an unreachable host
   cannot block the window. The card's Cancel button cancels the task's context, which kills the
   `ssh` commands it waits on and closes the card at once; a result the cancelled task still

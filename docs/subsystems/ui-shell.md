@@ -95,7 +95,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 - The title bar's left end is one track, as a tab strip: `serverChip`, `projectChip` and
   `branchChip` sit in a `k.Track` frame at `radius`, and `titleChip` gives each a `tabH`-tall face
   that turns `k.TabActive` with the active tab's shadows while its menu is open, so the open chip
-  reads as the raised tab above its popover.
+  reads as the raised tab above its popover. The track and chips shrink before the active tab
+  disappears: a chip keeps a 56-pixel minimum, the tab track keeps at least `tabMinW`, and an
+  oversized active tab keeps its close action revealed. A tab name of only whitespace resets to the
+  focused pane's automatic name.
+- A compact pane keeps its ellipsized file title; its `ui.Toolbar` moves actions that no longer fit
+  into the built-in overflow menu instead of discarding the pane's identity.
 - The three title-bar menus are `ui.MenuBase` menus, so the chip is the menu button and
   Up/Down/Home/End, type-ahead, Escape/Tab and focus return come from MyGo. Their shared look
   lives in `internal/app/context_menu.go`: `menuSurface` (one width, inset and shadow for all of
@@ -113,10 +118,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   empty pages. Settings keeps its own denser scale inside its own window.
 - The palette, quick open and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
   below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
-  close button); their lists scroll after `sheetListH` (384) and say "no matches" with
-  `emptyLine`. `theme.Colors.ShadowDialog` is the dialog shadow; `k.ShadowFocused` stays for
-  popovers and floating overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through
-  `iconBtnLg` (30), rather than a pair per call site.
+  close button). The panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
+  the remaining height instead. `CommandListHeight` subtracts the 56-pixel sheet chrome, up to the
+  original 384 list maximum, so the last row stays inside the window. Empty results use `emptyLine`.
+  `theme.Colors.ShadowDialog` is the dialog shadow; `k.ShadowFocused` stays for popovers and floating
+  overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through `iconBtnLg` (30), rather than
+  a pair per call site.
 - `internal/app/theme_bridge.go` is the only file in `internal/app` that names `internal/theme`
   (besides `settings_host.go`); `archtest` enforces it.
 

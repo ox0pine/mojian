@@ -3,11 +3,27 @@ package settingsui
 import (
 	"math"
 	"reflect"
+	"runtime"
 
 	"mojian/internal/settings"
 
 	"github.com/egoist/mygo/ui"
 )
+
+// settingsRowAvailable is the one platform filter used by both the page
+// and its search index, so search never reveals a row that is not drawn.
+func settingsRowAvailable(row settings.Row, goos string) bool {
+	switch row.ID {
+	case "option-alt":
+		return goos == "darwin"
+	case "shell-command":
+		return shellCommandAvailable(goos)
+	default:
+		return true
+	}
+}
+
+func shellCommandAvailable(goos string) bool { return goos != "windows" }
 
 // settingsGenericPage renders a page whose rows are declared in the
 // settings table: sections and rows come from the same list the search
@@ -26,7 +42,7 @@ func (u *UI) settingsGenericPage(c *ui.Context, k *colors, cat int) {
 		})
 	}
 	for _, row := range settings.Rows {
-		if row.Cat != cat {
+		if row.Cat != cat || !settingsRowAvailable(row, runtime.GOOS) {
 			continue
 		}
 		if row.Section != section {

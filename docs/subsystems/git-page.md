@@ -84,7 +84,11 @@ also reads, switches and creates the project's branches and reloads open notes a
   `C` conflict. `statusLetter` maps `??` to `U` and any code containing `U`, plus `AA`/`DD`, to `C`.
 - A change row is the window's list row: 34 tall, a 15-pixel file icon, 13-pixel name, 12-pixel
   directory and the status badge at 10. The panel's two headers are `headerH` tall, like the
-  Explorer's and a pane's.
+  Explorer's and a pane's. The file list is 248 wide, narrowing to 190 below a 900-wide window to
+  leave the diff useful room.
+- Closing Changes or History through the shortcut, the page's close button or the active tab goes
+  through `Host.CloseGit`; the app restores the active pane's editor or terminal focus before the
+  workspace is rebuilt.
 - A change row takes its double click from the list's `Submitted`, never from `DoubleClicked` read
   inside the row builder: that call applies the pending pointer input mid build and swallows the
   row's own click, so a single click changed nothing. `Clicked` inside the builder has the same

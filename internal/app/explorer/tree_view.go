@@ -119,9 +119,13 @@ func (u *UI) sidebarSearch(c *ui.Context, k *colors) {
 		Background(k.Hover).Border(0, ui.Transparent).FontSize(13).
 		Placeholder("Search files…").Label("Search files").Bind(u.TreeSearch())
 	if field.Submitted() {
-		if notes := u.filteredNotes(); len(notes) > 0 {
+		notes, assets := u.filteredFiles()
+		if len(notes) > 0 {
 			u.SetTreeSel(notes[0].Rel)
 			u.openNote(notes[0])
+		} else if len(assets) > 0 {
+			u.SetTreeSel(assets[0].Rel)
+			u.openRel(assets[0].Rel)
 		}
 	}
 }
@@ -310,38 +314,47 @@ func (u *UI) emptyTree(c *ui.Context, k *colors) {
 
 // searchResults lists the files matching the search field.
 func (u *UI) searchResults(c *ui.Context, k *colors) {
-	notes := u.filteredNotes()
-	if len(notes) == 0 {
+	notes, assets := u.filteredFiles()
+	if len(notes) == 0 && len(assets) == 0 {
 		ui.Text(c, "No files match").FontSize(12.5).TextColor(k.TextFaint).Padding(10, 8)
 		return
 	}
-	for _, n := range notes {
-		n := n
-		row := ui.Row(c.Key("result:"+n.Rel)).Height(34).Padding(0, 10).Gap(10).Radius(radius).
+	drawRow := func(rel, title string, dirty bool, n *note) {
+		row := ui.Row(c.Key("result:"+rel)).Height(34).Padding(0, 10).Gap(10).Radius(radius).
 			AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleTreeItem).
-			Focusable().FocusRing(false).Label(n.Title).
-			PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, n.Rel, false) })
-		if n.Rel == u.TreeSel() {
+			Focusable().FocusRing(false).Label(title).
+			PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, rel, false) })
+		if rel == u.TreeSel() {
 			row.Background(k.PanelSel)
 		} else if row.Hovered() {
 			row.Background(k.Hover)
 		}
 		if row.Clicked() {
-			u.SetTreeSel(n.Rel)
-			u.openNote(n)
+			u.SetTreeSel(rel)
+			if n != nil {
+				u.openNote(n)
+			} else {
+				u.openRel(rel)
+			}
 		}
-		u.treeRowKeys(row, n.Rel)
+		u.treeRowKeys(row, rel)
 		row.Children(func() {
-			ui.Icon(c, icons.FileIcon(n.Path)).Size(15, 15).TextColor(k.TextMuted)
+			ui.Icon(c, icons.FileIcon(rel)).Size(15, 15).TextColor(k.TextMuted)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, n.Title).FontSize(13).FontWeight(500).TextColor(k.Text).
+				ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.Text).
 					SingleLine().Ellipsis("…")
-				ui.Text(c, n.Rel).FontSize(12).TextColor(k.TextFaint).
+				ui.Text(c, rel).FontSize(12).TextColor(k.TextFaint).
 					SingleLine().TruncateStart()
 			})
-			if n.Dirty() {
+			if dirty {
 				ui.Box(c).Size(6, 6).Radius(3).Background(k.Attention).Shrink(0)
 			}
 		})
+	}
+	for _, n := range notes {
+		drawRow(n.Rel, n.Title, n.Dirty(), n)
+	}
+	for _, f := range assets {
+		drawRow(f.Rel, f.Name, false, nil)
 	}
 }

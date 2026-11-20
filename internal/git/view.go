@@ -90,7 +90,7 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 		}
 		if iconButton(c, k, "x", "Close "+p.Title(), 26, 16).
 			Tooltip("Close").Clicked() {
-			p.Open = false
+			p.h.CloseGit()
 			p.h.Invalidate()
 		}
 	})
@@ -172,7 +172,11 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 }
 
 func (p *Page) files(c *ui.Context, k *theme.Colors) {
-	ui.Column(c).Width(248).Shrink(0).FillHeight().Children(func() {
+	width := float32(248)
+	if w := c.Root().Bounds().W; w > 0 && w < 900 {
+		width = 190
+	}
+	ui.Column(c).Width(width).Shrink(0).FillHeight().Children(func() {
 		ui.Row(c).Height(headerH).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
 			label, n := "WORKING TREE", len(p.Changes)
 			if p.Mode == ModeHistory {

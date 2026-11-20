@@ -45,6 +45,71 @@ func TestGitPage(t *testing.T) {
 	}
 }
 
+func TestGitCloseRestoresEditorFocus(t *testing.T) {
+	registerFonts()
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "# A\n\nold\n", "keep.go": "package x\n"})
+	testutil.InitRepo(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n\nnew\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{workspace: &workspace{treeOpen: true}}
+	s, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.store = s
+	a.focusFirstNote()
+	n := a.currentNote()
+	tt := ui.NewTester(a.view, 1100, 700)
+	a.focusReq = a.tab().Focus
+	tt.Frame()
+	a.toggleGit()
+	for range 3 {
+		tt.Frame()
+	}
+	if !a.git.Open {
+		t.Fatal("the diff page did not open")
+	}
+	a.toggleGit()
+	for range 3 {
+		tt.Frame()
+	}
+	tt.Type("focus-return")
+	if !strings.Contains(n.Text(), "focus-return") {
+		t.Fatal("typing after closing Git did not reach the editor")
+	}
+}
+
+func TestGitListUsesCompactWidth(t *testing.T) {
+	registerFonts()
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "# A\n\nold\n"})
+	testutil.InitRepo(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n\nnew\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{workspace: &workspace{}}
+	s, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.store = s
+	a.focusFirstNote()
+	tt := ui.NewTester(a.view, 800, 500)
+	a.toggleGit()
+	for range 3 {
+		tt.Frame()
+	}
+	row, ok := tt.Find("a.md")
+	if !ok {
+		t.Fatalf("change row not found: %q", tt.Texts())
+	}
+	if row.W <= 0 || row.W > 190 {
+		t.Fatalf("change row did not use the compact list width: %+v", row)
+	}
+}
+
 func TestGitOutsideRepo(t *testing.T) {
 	registerFonts()
 	dir := t.TempDir()

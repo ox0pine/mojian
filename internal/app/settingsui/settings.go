@@ -2,6 +2,7 @@ package settingsui
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,20 @@ const (
 	settingsAbout      = settings.About
 )
 
+// settingsCategory is the category metadata search and the page header
+// both use. Advanced describes only the controls its platform draws.
+func settingsCategory(cat int, goos string) settings.Category {
+	category := settings.Categories[cat]
+	switch {
+	case cat == settingsTerminal && goos != "darwin":
+		category.Words = "terminal shell font cursor blink scrollback clipboard notifications bell exit"
+	case cat == settingsAdvanced && !shellCommandAvailable(goos):
+		category.Detail = "Data, settings file and reset"
+		category.Words = "advanced data settings file reset paths server session socket"
+	}
+	return category
+}
+
 // settingsEntry is one thing Settings' search finds: the page, the label
 // its row or group shows, and words that find it besides.
 type settingsEntry struct {
@@ -39,6 +54,9 @@ func (u *UI) settingsIndex() []settingsEntry {
 	out := make([]settingsEntry, 0, len(settings.Rows)+len(u.commands()))
 	seenSection := map[string]bool{}
 	for _, row := range settings.Rows {
+		if !settingsRowAvailable(row, runtime.GOOS) {
+			continue
+		}
 		if row.Section != "" {
 			key := strconv.Itoa(row.Cat) + "\x00" + row.Section
 			if !seenSection[key] {
@@ -124,10 +142,11 @@ func (u *UI) prepareSettingsSearch() {
 		return true
 	}
 	found := map[int][]string{}
-	for i, cat := range settings.Categories {
+	for i := range settings.Categories {
 		if !settingsCatAvailable(i) {
 			continue
 		}
+		cat := settingsCategory(i, runtime.GOOS)
 		if match(cat.Title + " " + cat.Detail + " " + cat.Words) {
 			found[i] = []string{}
 		}
@@ -277,7 +296,7 @@ func (u *UI) settingsContent(c *ui.Context, k *colors) {
 					u.settingsNoResults(c, k)
 					return
 				}
-				u.settingsPageHeader(c, k, settings.Categories[cat])
+				u.settingsPageHeader(c, k, cat)
 				u.settingsNotice(c, k)
 				u.settingsPage(c, k, cat)
 			})
@@ -286,10 +305,11 @@ func (u *UI) settingsContent(c *ui.Context, k *colors) {
 }
 
 // settingsPageHeader names the page and says what it holds.
-func (u *UI) settingsPageHeader(c *ui.Context, k *colors, cat settings.Category) {
+func (u *UI) settingsPageHeader(c *ui.Context, k *colors, cat int) {
+	category := settingsCategory(cat, runtime.GOOS)
 	ui.Column(c).Gap(3).Children(func() {
-		ui.Text(c, cat.Title).FontSize(20).FontWeight(650).TextColor(k.Text)
-		ui.Text(c, cat.Detail).FontSize(12.5).TextColor(k.TextMuted).LineHeight(1.35)
+		ui.Text(c, category.Title).FontSize(20).FontWeight(650).TextColor(k.Text)
+		ui.Text(c, category.Detail).FontSize(12.5).TextColor(k.TextMuted).LineHeight(1.35)
 	})
 }
 

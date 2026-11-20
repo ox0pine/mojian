@@ -14,7 +14,7 @@ import (
 )
 
 func (u *UI) settingsAdvancedPage(c *ui.Context, k *colors) {
-	if runtime.GOOS != "windows" {
+	if shellCommandAvailable(runtime.GOOS) {
 		u.settingsSection(c, k, "COMMAND LINE", func() {
 			u.shellCommandRow(c, k)
 		})
@@ -101,6 +101,30 @@ func (u *UI) resetPreferences() {
 // ResetPreferences restores the defaults, for the app's reset command.
 func (u *UI) ResetPreferences() { u.resetPreferences() }
 
+// installUpdateAction describes the always-present Install row and whether
+// its pending release can be installed now.
+func installUpdateAction(state UpdateState) (detail string, disabled bool) {
+	version := state.PendingVersion
+	switch {
+	case state.Ready:
+		if version == "" {
+			return "The update is installed and ready to restart.", true
+		}
+		return "Mojian " + version + " is installed and ready to restart.", true
+	case state.Installing:
+		if version == "" {
+			return "Installing the pending update…", true
+		}
+		return "Installing Mojian " + version + "…", true
+	case state.Checking:
+		return "Checking for a newer release…", true
+	case version == "":
+		return "Check for updates before installing.", true
+	default:
+		return "Download and install Mojian " + version + ".", false
+	}
+}
+
 // settingsAboutPage is the app's identity, its updates and the machine it
 // runs on.
 func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
@@ -133,15 +157,13 @@ func (u *UI) settingsAboutPage(c *ui.Context, k *colors) {
 				u.checkForUpdates()
 			}
 		})
-		if u.pendingVersion() != "" && !u.updateReady() {
-			u.settingRow(c, k, "Install", "Download and install the release it finds.", func() {
-				busy := u.updateChecking() || u.updateInstalling()
-				install := ui.PrimaryButton(c, "Install Update").Disabled(busy)
-				if install.Clicked() {
-					u.installAvailableUpdate()
-				}
-			})
-		}
+		detail, disabled := installUpdateAction(u.UpdateState())
+		u.settingRow(c, k, "Install", detail, func() {
+			install := ui.PrimaryButton(c, "Install Update").Disabled(disabled)
+			if install.Clicked() {
+				u.installAvailableUpdate()
+			}
+		})
 		u.settingRow(c, k, "Restart", "Restart into the installed update.", func() {
 			restart := ui.PrimaryButton(c, "Restart to Update").Disabled(!u.updateReady())
 			if restart.Clicked() {

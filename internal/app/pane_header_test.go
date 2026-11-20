@@ -71,6 +71,31 @@ func TestMarkdownPreviewKeepsHeaderButtonsWhenUnfocused(t *testing.T) {
 	}
 }
 
+func TestCompactPaneKeepsTitle(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.treeOpen = false
+	a.splitWith(a.store.ByRelPath("Reading notes.md"))
+	a.splitWith(a.store.ByRelPath("Welcome.md"))
+	tt := ui.NewTester(a.view, 760, 460)
+	tt.Frame()
+	tt.Frame()
+	header, ok := tt.Find("Move Pane Reading notes")
+	if !ok {
+		t.Fatalf("compact pane header not found: %q", tt.Texts())
+	}
+	title, ok := tt.Find("Reading notes")
+	if !ok {
+		t.Fatal("compact pane has no file title")
+	}
+	if title.Y < header.Y || title.Y >= header.Y+header.H {
+		t.Fatalf("the only file title is outside the compact header: header=%+v title=%+v", header, title)
+	}
+	if title.W < 24 {
+		t.Fatalf("compact title has no useful visible width: %+v", title)
+	}
+}
+
 func countText(texts []string, want string) int {
 	n := 0
 	for _, text := range texts {

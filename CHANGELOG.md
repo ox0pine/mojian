@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.2
+
+- Compact windows keep their controls and file identity: title-bar chips shrink without losing the
+  active tab's close action, command sheets fit the remaining viewport, compact panes retain short
+  titles with close and overflow actions, and the Git file list leaves more room for diffs.
+- Closing Git restores editor or terminal focus; Explorer search finds and opens pictures and PDFs;
+  remote setup/start/stop controls disable during another host operation; and whitespace-only tab
+  names restore the automatic title.
+- Settings search matches visible controls on every platform: Install always has a disabled or
+  actionable state, Option as Alt is macOS-only, Windows no longer finds a hidden Shell command,
+  and host diagnostics wrap with address-qualified labels and full-value tooltips.
+
 ## 0.5.1
 
 - Theme contrast and UI alignment fixes: WCAG-checked accent text across all

@@ -58,6 +58,7 @@ type Host interface {
 	GitRunner() Runner
 	Window() *mygo.Window
 	Invalidate()
+	CloseGit()
 	Fail(error)
 	HasPath(string) bool
 	OpenPath(string)
@@ -162,7 +163,7 @@ func (p *Page) Toggle(h Host) {
 	p.runner = h.GitRunner()
 	p.CloseBranchMenu()
 	if p.Open {
-		p.Open = false
+		p.h.CloseGit()
 		h.Invalidate()
 		return
 	}

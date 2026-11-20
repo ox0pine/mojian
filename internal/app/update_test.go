@@ -52,8 +52,9 @@ func TestSettingsUpdateActions(t *testing.T) {
 	if !tt.HasText("Mojian 0.1.2 is ready. Restart to apply it.") {
 		t.Fatalf("ready update status: %q", tt.Texts())
 	}
-	if tt.HasText("Install Update") {
-		t.Fatalf("the install button survived a staged update: %q", tt.Texts())
+	install, ok := tt.AccessByRole(ui.RoleButton, "Install Update")
+	if !ok || !install.Disabled {
+		t.Fatalf("staged update should keep Install visible and disabled: %+v, found %v", install, ok)
 	}
 
 	relaunched := false

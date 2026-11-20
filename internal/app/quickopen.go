@@ -50,7 +50,7 @@ func (a *app) quickOpenModal(c *ui.Context, k *colors) {
 			if clicked {
 				chosen = i
 			}
-		}).MaxHeight(sheetListH).Padding(6)
+		}).MaxHeight(sheetListHeight(c)).Padding(6)
 		if len(choices) == 0 {
 			list.Children(func() { emptyLine(c, k, "No files match") })
 		}

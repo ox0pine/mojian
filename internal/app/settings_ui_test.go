@@ -213,7 +213,7 @@ func TestSettingsHostRemoveButtons(t *testing.T) {
 	a.settings.Cat = settingsHosts
 	tt := ui.NewTester(a.settingsWindowView, 900, 640)
 	tt.Frame()
-	if err := tt.Click("Remove server Dev"); err != nil {
+	if err := tt.Click("Remove server Dev (me@devbox)"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -226,6 +226,107 @@ func TestSettingsHostRemoveButtons(t *testing.T) {
 	tt.Frame()
 	if len(a.hosts()) != 0 {
 		t.Fatalf("host survived remove: %+v", a.hosts())
+	}
+}
+
+func TestSettingsHostActionsDisabledDuringAnySetup(t *testing.T) {
+	if !remoteSupported() {
+		t.Skip("remote projects are unavailable")
+	}
+	registerFonts()
+	a := newProjectApp(t)
+	a.hostService().SetHosts([]hostConfig{
+		{Name: "Fedora", Address: "fedora"},
+		{Name: "Dev", Address: "me@devbox"},
+		{Name: "Build", Address: "buildbox"},
+	})
+	for _, host := range []string{"fedora", "me@devbox", "buildbox"} {
+		a.hostStateFor(host).checked = true
+	}
+	a.hostStateFor("fedora").running = true
+	a.hostStateFor("me@devbox").stopped = true
+	a.hostSetupBusy = true
+	a.hostSetupAddr = "fedora"
+	a.hostSetupMsg = "Stopping the server on Fedora"
+	a.hostStopAddr = "fedora"
+	a.settings.Cat = settingsHosts
+	tt := ui.NewTester(a.settingsWindowView, 900, 1400)
+	tt.Frame()
+
+	found := map[string]bool{}
+	for _, access := range tt.AccessAll() {
+		if access.Role != ui.RoleButton {
+			continue
+		}
+		switch access.Name {
+		case "Set Up Server", "Start Server", "Stop Server", "Stop":
+			found[access.Name] = true
+			if !access.Disabled {
+				t.Errorf("%q stayed enabled during the Fedora operation", access.Name)
+			}
+		}
+	}
+	for _, name := range []string{"Set Up Server", "Start Server", "Stop Server", "Stop"} {
+		if !found[name] {
+			t.Errorf("test did not render %q: %q", name, tt.Texts())
+		}
+	}
+	cancel, ok := tt.AccessByRole(ui.RoleButton, "Cancel")
+	if !ok || cancel.Disabled {
+		t.Fatalf("stop confirmation Cancel should remain enabled: %+v, found %v", cancel, ok)
+	}
+}
+
+func TestSettingsDuplicateHostNamesHaveUniqueControls(t *testing.T) {
+	if !remoteSupported() {
+		t.Skip("remote projects are unavailable")
+	}
+	registerFonts()
+	a := newProjectApp(t)
+	longAddress := "me@buildbox-with-a-very-long-name.example:2222"
+	a.hostService().SetHosts([]hostConfig{
+		{Name: "Dev", Address: "me@devbox"},
+		{Name: "Dev", Address: longAddress},
+	})
+	for _, host := range []string{"me@devbox", longAddress} {
+		a.hostStateFor(host).checked = true
+	}
+	a.settings.Cat = settingsHosts
+	tt := ui.NewTester(a.settingsWindowView, 900, 1000)
+	tt.Frame()
+	for _, address := range []string{"me@devbox", longAddress} {
+		for _, action := range []string{"Server", "Edit server", "Remove server"} {
+			name := action + " Dev (" + address + ")"
+			if _, ok := tt.AccessByRole(ui.RoleButton, name); !ok {
+				t.Errorf("missing unique host control %q", name)
+			}
+		}
+	}
+	address, ok := tt.AccessByRole(ui.RoleButton, "Server Dev ("+longAddress+")")
+	if !ok || address.Description != longAddress {
+		t.Fatalf("long address lost its full-value tooltip: %+v, found %v", address, ok)
+	}
+}
+
+func TestSettingsHostDiagnosticsWrap(t *testing.T) {
+	if !remoteSupported() {
+		t.Skip("remote projects are unavailable")
+	}
+	registerFonts()
+	a := newProjectApp(t)
+	a.hostService().SetHosts([]hostConfig{{Name: "Fedora", Address: "fedora"}})
+	a.hostStateFor("fedora").checked = true
+	a.hostSetupAddr = "fedora"
+	a.hostSetupErr = "Server setup failed because the remote host rejected the uploaded binary and returned a detailed diagnostic that must remain readable."
+	a.settings.Cat = settingsHosts
+	tt := ui.NewTester(a.settingsWindowView, 640, 900)
+	tt.Frame()
+	box, ok := tt.Find(a.hostSetupErr)
+	if !ok {
+		t.Fatalf("host diagnostic is missing: %q", tt.Texts())
+	}
+	if box.H <= 22 {
+		t.Fatalf("host diagnostic stayed on one ellipsized line: bounds=%+v", box)
 	}
 }
 
@@ -274,6 +375,44 @@ func TestSettingsSearchFindsTheme(t *testing.T) {
 	}
 	if a.settings.Cat != settingsAppearance {
 		t.Fatalf("page after searching meadow: %d", a.settings.Cat)
+	}
+}
+
+func TestSettingsOptionAsAltSearchOnDarwin(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Option as Alt is Darwin-only")
+	}
+	registerFonts()
+	a := newProjectApp(t)
+	a.settings.Cat = settingsTerminal
+	tt := ui.NewTester(a.settingsWindowView, 900, 900)
+	tt.Frame()
+	a.settings.Query = "option alt"
+	tt.Frame()
+	tt.Frame()
+	if !a.settings.Hits["Option as Alt"] || !tt.HasText("Option as Alt") {
+		t.Fatalf("Option as Alt is not rendered and searchable: hits=%v texts=%q", a.settings.Hits, tt.Texts())
+	}
+}
+
+func TestSettingsInstallSearchAlwaysHasVisibleRow(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.settings.Cat = settingsAbout
+	tt := ui.NewTester(a.settingsWindowView, 900, 900)
+	tt.Frame()
+	a.settings.Query = "updates install"
+	tt.Frame()
+	tt.Frame()
+	if a.settings.Cat != settingsAbout || !a.settings.Hits["Install"] {
+		t.Fatalf("Install search did not select its About row: cat=%d hits=%v", a.settings.Cat, a.settings.Hits)
+	}
+	if !tt.HasText("Install") || !tt.HasText("Check for updates before installing.") {
+		t.Fatalf("Install search has no visible needs-check row: %q", tt.Texts())
+	}
+	install, ok := tt.AccessByRole(ui.RoleButton, "Install Update")
+	if !ok || !install.Disabled {
+		t.Fatalf("Install Update without a pending release: %+v, found %v", install, ok)
 	}
 }
 
@@ -454,7 +593,7 @@ func TestSettingsTableRendersEveryGenericRow(t *testing.T) {
 		a.settings.Cat = cat
 		tt.Frame()
 		for _, row := range settings.Rows {
-			if row.Cat != cat {
+			if row.Cat != cat || (row.ID == "option-alt" && runtime.GOOS != "darwin") {
 				continue
 			}
 			if !tt.HasText(row.Title) {
@@ -522,7 +661,11 @@ func TestSettingsPagesHaveHeaders(t *testing.T) {
 		}
 		a.settings.Cat = cat
 		tt.Frame()
-		if !tt.HasText(category.Detail) {
+		detail := category.Detail
+		if cat == settingsAdvanced && runtime.GOOS == "windows" {
+			detail = "Data, settings file and reset"
+		}
+		if !tt.HasText(detail) {
 			t.Fatalf("%s has no header: %q", category.Title, tt.Texts())
 		}
 	}

@@ -126,7 +126,7 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// that matches the tabs: the same height, radius and border, and
 		// the chip whose menu is open lifts to the active tab's face.
 		ui.Row(c).Height(tabH+4).Padding(2).Gap(4).Radius(radius).
-			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(0).
+			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(1).MinWidth(0).ClipX().
 			Children(func() {
 				if terminalsSupported() {
 					a.serverChip(c, k)
@@ -180,7 +180,7 @@ func (a *app) tip(label string, cmd *commands.Command) string {
 // filled like the active tab while its menu is open.
 func titleChip(e ui.Element, k *colors, open bool) ui.Element {
 	e.Height(tabH).Gap(6).Padding(0, 8, 0, 6).Radius(radius - 2).
-		Justify(ui.Start).Cursor(ui.CursorPointer).Shrink(0).ClipX().
+		Justify(ui.Start).Cursor(ui.CursorPointer).Shrink(1).MinWidth(56).ClipX().
 		Transition(motion.Colors)
 	switch {
 	case open:

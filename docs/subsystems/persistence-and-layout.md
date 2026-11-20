@@ -31,8 +31,12 @@ that produce both files, and the environment overrides that move them.
    without remote support clears `server`, `remotePath`, `remoteProjects` and `hosts`, so a
    settings file copied from a full build cannot start a remote connection. A missing or
    unreadable file leaves the defaults in place.
-3. A preference change calls `saveSettingsSoon`, which debounces the write so dragging a slider
-   writes once; the write goes through `fs.WriteFileAtomic`.
+- A preference change calls `saveSettingsSoon`, which debounces the write so dragging a slider
+  writes once; the write goes through `fs.WriteFileAtomic`.
+- Settings rendering and search share platform availability: Option as Alt exists only on Darwin,
+  Shell command and its Advanced metadata are absent on Windows, and an unavailable row or section
+  cannot be found by search. About's Install row always exists; `installUpdateAction` derives its
+  explanation and disabled state from the updater, so update searches always land on a real row.
 4. A layout change calls `changed`, which marks the layout dirty and arms the timer;
    `persistLayout` saves once 550 ms pass without another change. `saveLayout` snapshots the tabs
    through `snapshotLayout` and writes atomically.
