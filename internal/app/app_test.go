@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -487,8 +488,8 @@ func TestSettingsCategoriesAndFontFamily(t *testing.T) {
 		if a.settings.Cat != settingsTerminal {
 			t.Fatalf("category after Terminal: %d", a.settings.Cat)
 		}
-		if !settings.HasText("Option as Alt") {
-			t.Fatalf("terminal settings texts: %q", settings.Texts())
+		if got := settings.HasText("Option as Alt"); got != (runtime.GOOS == "darwin") {
+			t.Fatalf("Option as Alt visibility = %v, platform %s: %q", got, runtime.GOOS, settings.Texts())
 		}
 	}
 	if err := settings.Click("Editor"); err != nil {
