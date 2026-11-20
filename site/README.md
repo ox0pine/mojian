@@ -9,9 +9,9 @@ nothing under `internal/` depends on it.
 - React 19 + TypeScript 7
 - Vite 8
 - Base UI (`@base-ui/react`) for the theme and mobile menus
-- Hand-written CSS with the same tokens and layout as the official MyGo site:
-  the `frame` rails, the `label` utility, a 56px sticky header, hairline grids
-  and Geist / Geist Mono
+- Hand-written CSS with a paper-and-ink editorial system: serif display type,
+  warm neutrals, a 1200px content shell, a 68px sticky header, native product
+  scenes, hairline dividers and Geist / Geist Mono for interface text
 
 Tailwind and TanStack are deliberately not used. The official MyGo site uses
 them, but this page is a single static landing page; the CSS already carries the
@@ -34,7 +34,7 @@ bun run typecheck
 | Path | Purpose |
 |---|---|
 | `index.html` | document shell, metadata, pre-paint theme script, `#root` |
-| `src/App.tsx` | header, hero, stats, screenshot, features, files, downloads, footer |
+| `src/App.tsx` | header, editorial hero, real product screenshot, native workspace and feature scenes, file story, platform downloads, footer |
 | `src/components/Menus.tsx` | Base UI theme and mobile menus |
 | `src/components/Icons.tsx` | inline SVG icons |
 | `src/i18n-data.ts` | the four locale dictionaries |

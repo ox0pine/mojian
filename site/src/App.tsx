@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react"
 
 import { asset, LATEST, RELEASES, REPO, useRelease, type AssetKey, type Release } from "./release"
-import { detectLang, T, tagOf, titleParts, type Dict, type Lang } from "./i18n"
+import { T, tagOf, titleParts, type Dict, type Lang } from "./i18n"
 import { useTheme, type Theme } from "./theme"
 import { MobileMenu, ThemeMenu } from "./components/Menus"
 import {
@@ -27,21 +27,13 @@ const STATS = [
 ] as const
 
 const FEATURES = [
-  ["f1Title", "f1Body", "projects-and-files"],
-  ["f2Title", "f2Body", "tabs-panes-and-terminals"],
-  ["f3Title", "f3Body", "remote-projects"],
-  ["f4Title", "f4Body", "writing-and-previewing"],
-  ["f5Title", "f5Body", "git"],
-  ["f6Title", "f6Body", "settings"],
+  ["f3Title", "f3Body", "remote-projects", "terminal"],
+  ["f4Title", "f4Body", "writing-and-previewing", "preview"],
+  ["f5Title", "f5Body", "git", "git"],
+  ["f6Title", "f6Body", "settings", "themes"],
 ] as const
 
-const PLATFORM_LINKS = [
-  ["dlIntel", "mac-amd64"],
-  ["dlArm", "linux-arm64"],
-  ["dlRpm", "linux-amd64-rpm"],
-  ["dlWinX64", "windows-amd64"],
-  ["dlWinArm", "windows-arm64"],
-] as const
+type FeatureKind = (typeof FEATURES)[number][3]
 
 type Platform = {
   name: string
@@ -88,6 +80,19 @@ const PLATFORMS: Platform[] = [
 
 const POINTS = ["point1", "point2", "point3"] as const
 
+const THEME_COLORS = [
+  ["Petal", "#e7b7bd"],
+  ["Mist", "#aabcc2"],
+  ["Meadow", "#a8b89c"],
+  ["Dusk", "#8d879e"],
+  ["Tide", "#7ea5aa"],
+  ["Apricot", "#dfa47f"],
+  ["Aurora", "#8fa3c4"],
+  ["Dune", "#c6ae86"],
+  ["Paper", "#ded8ca"],
+  ["Plain", "#a5a5a0"],
+] as const
+
 function Header({
   t,
   lang,
@@ -102,8 +107,8 @@ function Header({
   onTheme: (theme: Theme) => void
 }) {
   return (
-    <header className="frame site-header">
-      <div className="bar">
+    <header className="site-header">
+      <div className="bar shell">
         <a className="brand" href="#top" aria-label="Mojian">
           <span className="brand-mark" aria-hidden="true" />
         </a>
@@ -141,19 +146,19 @@ function Header({
 function Hero({ t, release }: { t: Dict; release: Release }) {
   const [first, second] = titleParts(t.title)
   return (
-    <section className="hero">
+    <section className="hero shell">
       <div className="hero-copy">
-        <a className="version" href={LATEST}>
+        <a className="version hero-enter" href={LATEST}>
           <span className="dot" aria-hidden="true" />
           <b>v{release.version}</b>
           <span>{t.badge}</span>
         </a>
-        <h1>
+        <h1 className="hero-enter">
           {first}
           <span>{second}</span>
         </h1>
-        <p className="lede">{t.lede}</p>
-        <div className="actions">
+        <p className="lede hero-enter">{t.lede}</p>
+        <div className="actions hero-enter">
           <a className="btn btn-primary" href="#download">
             <DownloadIcon />
             <span>{t.ctaDownload}</span>
@@ -163,71 +168,20 @@ function Hero({ t, release }: { t: Dict; release: Release }) {
             <span>{t.ctaGithub}</span>
           </a>
         </div>
-        <p className="platforms">
-          {PLATFORM_LINKS.map(([label, key]) => (
-            <a key={key} href={asset(release, key)} data-download={key}>
-              {t[label]}
-            </a>
-          ))}
-          <a href={RELEASES}>{t.dlAll}</a>
-        </p>
-      </div>
-      <div className="hero-art" aria-hidden="true">
-        <div className="mini">
-          <div className="mini-bar">
-            <span className="mini-dots">
-              <i />
-              <i />
-              <i />
-            </span>
-            <span className="mini-title">Explorer</span>
-            <span style={{ marginLeft: "auto" }}>Reading notes.md</span>
-          </div>
-          <div className="mini-body">
-            <div className="mini-side">
-              <div className="mini-row on"><i /> Reading notes.md</div>
-              <div className="mini-row"><i /> Ideas</div>
-              <div className="mini-row"><i /> scripts</div>
-              <div className="mini-row"><i /> Welcome.md</div>
-              <div className="mini-row"><i /> README.md</div>
-            </div>
-            <div className="mini-editor">
-              <div><b>#</b> Reading notes</div>
-              <div>A quiet place to keep</div>
-              <div>the sentences that matter.</div>
-              <div>&nbsp;</div>
-              <div><span className="c">##</span> Morning</div>
-              <div>The cursor stays<span className="mini-caret" /></div>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   )
 }
 
-function Stats({ t }: { t: Dict }) {
-  return (
-    <dl className="stats">
-      {STATS.map(([label, value]) => (
-        <div className="stat" key={label}>
-          <dt className="label">{t[label]}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
 function Proof({ t }: { t: Dict }) {
   return (
-    <section className="proof">
+    <section className="proof shell" aria-label={t.proofCaption}>
       <figure className="shot">
         <img
           id="shot"
           src="/home-1000.webp"
           srcSet="/home-1000.webp 1000w, /home-1466.webp 1466w"
-          sizes="(max-width: 1160px) calc(100vw - 32px), 1040px"
+          sizes="(max-width: 1280px) calc(100vw - 80px), 1120px"
           width={1466}
           height={919}
           fetchPriority="high"
@@ -240,21 +194,166 @@ function Proof({ t }: { t: Dict }) {
   )
 }
 
+function Stats({ t }: { t: Dict }) {
+  return (
+    <dl className="stats shell">
+      {STATS.map(([label, value]) => (
+        <div className="stat" key={label}>
+          <dt>{t[label]}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function WorkspaceVisual() {
+  return (
+    <div className="workspace-demo" aria-hidden="true">
+      <div className="workspace-tabs">
+        <span className="active">notes.md</span>
+        <span>Terminal</span>
+        <span className="tab-plus">+</span>
+      </div>
+      <div className="workspace-body">
+        <div className="workspace-files">
+          <span className="demo-label">EXPLORER</span>
+          <span>Ideas/</span>
+          <span className="selected">notes.md</span>
+          <span>research.pdf</span>
+          <span>assets/</span>
+          <span>README.md</span>
+        </div>
+        <div className="workspace-editor">
+          <span className="editor-kicker"># Field notes</span>
+          <span className="editor-title">A quieter place<br />for words and work.</span>
+          <span className="editor-line" />
+          <span className="editor-line short" />
+          <span className="editor-line" />
+          <span className="editor-caret" />
+        </div>
+        <div className="workspace-terminal">
+          <span className="demo-label">TERMINAL</span>
+          <span><i>$</i> git status</span>
+          <span className="terminal-success">On branch main</span>
+          <span>nothing to commit</span>
+          <span><i>$</i> <b className="terminal-caret" /></span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TerminalVisual() {
+  return (
+    <div className="terminal-demo" aria-hidden="true">
+      <div className="terminal-head">
+        <span><i /> SSH · studio</span>
+        <span>zsh</span>
+      </div>
+      <div className="terminal-copy">
+        <span><i>$</i> mojian ~/notes</span>
+        <span className="terminal-muted">Connected. Session restored.</span>
+        <span><i>$</i> git switch writing</span>
+        <span className="terminal-success">Switched to branch 'writing'</span>
+        <span><i>$</i> <b className="terminal-caret" /></span>
+      </div>
+    </div>
+  )
+}
+
+function PreviewVisual() {
+  return (
+    <div className="preview-demo" aria-hidden="true">
+      <div className="image-page">
+        <svg viewBox="0 0 200 130">
+          <rect width="200" height="130" rx="5" />
+          <circle cx="151" cy="32" r="14" />
+          <path d="M0 112 58 55l39 35 29-25 74 65H0Z" />
+        </svg>
+        <span>landscape.png</span>
+      </div>
+      <div className="pdf-page">
+        <div className="pdf-sheet">
+          <b>PDF</b>
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        <span>reference.pdf</span>
+      </div>
+    </div>
+  )
+}
+
+function GitVisual() {
+  return (
+    <div className="diff-demo" aria-hidden="true">
+      <div className="diff-head"><span>notes.md</span><span>+4 −2</span></div>
+      <div className="diff-row muted"><span>12</span><span>## Morning pages</span></div>
+      <div className="diff-row removed"><span>13</span><span>- Make room for more tools.</span></div>
+      <div className="diff-row added"><span>13</span><span>+ Make room for more words.</span></div>
+      <div className="diff-row muted"><span>14</span><span>&nbsp;</span></div>
+      <div className="diff-row added"><span>15</span><span>+ Keep the work in reach.</span></div>
+    </div>
+  )
+}
+
+function ThemesVisual() {
+  return (
+    <div className="themes-demo" aria-hidden="true">
+      {THEME_COLORS.map(([name, color]) => (
+        <div className="theme-swatch" key={name}>
+          <span style={{ backgroundColor: color }} />
+          <small>{name}</small>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function FeatureVisual({ kind }: { kind: FeatureKind }) {
+  if (kind === "terminal") return <TerminalVisual />
+  if (kind === "preview") return <PreviewVisual />
+  if (kind === "git") return <GitVisual />
+  return <ThemesVisual />
+}
+
 function Features({ t }: { t: Dict }) {
   return (
-    <section className="section" id="features">
-      <p className="eyebrow">{t.featuresEyebrow}</p>
-      <h2>{t.featuresTitle}</h2>
-      <p className="section-lede">{t.featuresLede}</p>
+    <section className="section shell" id="features">
+      <div className="section-head feature-section-head">
+        <div>
+          <p className="eyebrow">{t.featuresEyebrow}</p>
+          <h2>{t.featuresTitle}</h2>
+        </div>
+        <p className="section-lede">{t.featuresLede}</p>
+      </div>
+
+      <a className="workspace-feature" href={`${REPO}#tabs-panes-and-terminals`}>
+        <div className="workspace-copy">
+          <span className="feature-index">01 / 05</span>
+          <h3>{t.f2Title}</h3>
+          <p>{t.f2Body}</p>
+          <span className="feature-arrow"><ArrowRightIcon /></span>
+        </div>
+        <div className="workspace-visual"><WorkspaceVisual /></div>
+      </a>
+
       <div className="feature-grid">
-        {FEATURES.map(([title, body, anchor]) => (
-          <article className="feature" key={title}>
+        {FEATURES.map(([title, body, anchor, kind], index) => (
+          <article className={`feature feature-${kind}`} key={title}>
             <a className="feature-link" href={`${REPO}#${anchor}`}>
-              <h3>
-                <span>{t[title]}</span>
-                <ArrowRightIcon />
-              </h3>
-              <p>{t[body]}</p>
+              <div className="feature-visual"><FeatureVisual kind={kind} /></div>
+              <div className="feature-content">
+                <span className="feature-index">0{index + 2}</span>
+                <h3>
+                  <span>{t[title]}</span>
+                  <ArrowRightIcon />
+                </h3>
+                <p>{t[body]}</p>
+              </div>
             </a>
           </article>
         ))}
@@ -265,9 +364,9 @@ function Features({ t }: { t: Dict }) {
 
 function Files({ t }: { t: Dict }) {
   return (
-    <section className="section" id="files">
-      <div className="files-grid">
-        <div>
+    <section className="files-wrap" id="files">
+      <div className="files-panel shell">
+        <div className="files-copy">
           <p className="eyebrow">{t.filesEyebrow}</p>
           <h2>{t.filesTitle}</h2>
           <p className="section-lede">{t.filesBody}</p>
@@ -280,7 +379,7 @@ function Files({ t }: { t: Dict }) {
             ))}
           </ul>
         </div>
-        <div>
+        <div className="files-art">
           <div className="tree-card">
             <div className="tree-head">
               <span>{t.treeLabel}</span>
@@ -306,7 +405,7 @@ function Files({ t }: { t: Dict }) {
 
 function Downloads({ t, release }: { t: Dict; release: Release }) {
   return (
-    <section className="section" id="download">
+    <section className="section downloads shell" id="download">
       <div className="section-head">
         <div>
           <p className="eyebrow">{t.downloadsEyebrow}</p>
@@ -318,7 +417,7 @@ function Downloads({ t, release }: { t: Dict; release: Release }) {
           <ArrowRightIcon />
         </a>
       </div>
-      <div className="download-grid">
+      <div className="download-list">
         {PLATFORMS.map((platform) => (
           <article className="platform-card" key={platform.name}>
             <div className="platform-head">
@@ -327,20 +426,22 @@ function Downloads({ t, release }: { t: Dict; release: Release }) {
               <span className="tag">{platform.tag}</span>
             </div>
             <p>{t[platform.req]}</p>
-            <a
-              className="btn btn-secondary"
-              href={asset(release, platform.primary)}
-              data-download={platform.primary}
-            >
-              <span>{t[platform.primaryLabel]}</span>
-              <DownloadIcon />
-            </a>
-            <div className="sub-links">
-              {platform.sub.map((sub) => (
-                <a key={sub.key} href={asset(release, sub.key)} data-download={sub.key}>
-                  {t[sub.label]}
-                </a>
-              ))}
+            <div className="platform-actions">
+              <a
+                className="btn btn-secondary"
+                href={asset(release, platform.primary)}
+                data-download={platform.primary}
+              >
+                <span>{t[platform.primaryLabel]}</span>
+                <DownloadIcon />
+              </a>
+              <div className="sub-links">
+                {platform.sub.map((sub) => (
+                  <a key={sub.key} href={asset(release, sub.key)} data-download={sub.key}>
+                    {t[sub.label]}
+                  </a>
+                ))}
+              </div>
             </div>
           </article>
         ))}
@@ -352,17 +453,19 @@ function Downloads({ t, release }: { t: Dict; release: Release }) {
 
 function Footer({ t, release }: { t: Dict; release: Release }) {
   return (
-    <footer className="frame site-footer">
-      <div className="footer-row label">
-        <span>
-          Mojian <b>v{release.version}</b> ·{" "}
-          <a href={`${REPO}/blob/main/LICENSE`}>{t.footerLicense}</a>
-        </span>
-        <nav className="footer-links" aria-label="Footer">
-          <a href={REPO}>GitHub</a>
-          <a href={RELEASES}>{t.navDownload}</a>
-          <a href="https://mygo.run">{t.footerBuilt}</a>
-        </nav>
+    <footer className="site-footer">
+      <div className="footer-row shell">
+        <a className="brand footer-brand" href="#top" aria-label="Mojian">
+          <span className="brand-mark" aria-hidden="true" />
+        </a>
+        <div className="footer-meta">
+          <span>Mojian <b>v{release.version}</b> · <a href={`${REPO}/blob/main/LICENSE`}>{t.footerLicense}</a></span>
+          <nav className="footer-links" aria-label="Footer">
+            <a href={REPO}>GitHub</a>
+            <a href={RELEASES}>{t.navDownload}</a>
+            <a href="https://mygo.run">{t.footerBuilt}</a>
+          </nav>
+        </div>
       </div>
     </footer>
   )
@@ -405,10 +508,10 @@ export default function App({ initialLang }: { initialLang: Lang }) {
   return (
     <>
       <Header t={t} lang={lang} onLang={chooseLang} theme={theme} onTheme={setTheme} />
-      <main className="frame" id="top">
+      <main id="top">
         <Hero t={t} release={release} />
-        <Stats t={t} />
         <Proof t={t} />
+        <Stats t={t} />
         <Features t={t} />
         <Files t={t} />
         <Downloads t={t} release={release} />

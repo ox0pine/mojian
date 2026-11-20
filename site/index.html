@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mojian · 墨间：字在纸上，工具退后</title>
 <meta name="description" content="Mojian 是一个安静的原生纯文本编辑器。文件夹就是项目，标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。没有数据库、账号、webview 或 cgo。支持 macOS、Linux 与 Windows。">
-<meta name="theme-color" content="#fcfbf9">
+<meta name="theme-color" content="#f7f5ef">
 <meta property="og:title" content="Mojian · 墨间：字在纸上，工具退后">
 <meta property="og:description" content="安静的原生纯文本编辑器。标签页是工作区：文本、图片、PDF、终端与 Git diff 同屏并排。macOS、Linux 与 Windows，开源免费。">
 <meta property="og:type" content="website">
@@ -19,14 +19,14 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" as="font" href="/fonts/geist-latin.woff2" type="font/woff2" crossorigin>
 <link rel="preload" as="font" href="/fonts/geist-mono-latin.woff2" type="font/woff2" crossorigin>
-<link rel="preload" as="image" href="/home-1000.webp" imagesrcset="/home-1000.webp 1000w, /home-1466.webp 1466w" imagesizes="(max-width: 1160px) calc(100vw - 32px), 1040px" fetchpriority="high">
+<link rel="preload" as="image" href="/home-1000.webp" imagesrcset="/home-1000.webp 1000w, /home-1466.webp 1466w" imagesizes="(max-width: 1280px) calc(100vw - 80px), 1120px" fetchpriority="high">
 <script>
 // The theme is chosen before the first paint, so the page never flashes the wrong one.
 try {
   var saved = localStorage.getItem("mojian:theme");
   var dark = saved === "dark" || (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
-  document.querySelector('meta[name="theme-color"]').content = dark ? "#0e0d0b" : "#fcfbf9";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#121712" : "#f7f5ef";
 } catch (e) {}
 </script>
 <script type="application/ld+json">
