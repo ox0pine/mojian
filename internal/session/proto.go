@@ -21,7 +21,8 @@ import (
 // ProtocolVersion changes when the wire protocol does. Version 4 framed
 // every message and multiplexed control requests and terminal streams
 // over one connection. Version 5 added chunked control responses. Version
-// 6 lists binary files and preserves not-exist errors across the wire.
+// 6 lists binary files, preserves not-exist errors across the wire, and
+// adds project search, session working directories, and remote ACP tasks.
 const ProtocolVersion = 6
 
 // The frame types. A connection starts with a frameHello each way; after
@@ -162,7 +163,32 @@ type Request struct {
 	Args  []string `json:"args,omitempty"`
 	Env   []string `json:"env,omitempty"`
 	// Timeout is how long a command may run, in milliseconds.
-	Timeout int `json:"timeout,omitempty"`
+	Timeout int            `json:"timeout,omitempty"`
+	Search  *SearchOptions `json:"search,omitempty"`
+}
+
+// SearchOptions describes a project-wide text search.
+type SearchOptions struct {
+	Query         string `json:"query"`
+	CaseSensitive bool   `json:"caseSensitive,omitempty"`
+	Regex         bool   `json:"regex,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
+}
+
+// SearchMatch is one matching line inside a project file.
+type SearchMatch struct {
+	Rel  string `json:"rel"`
+	Line int    `json:"line"` // 1-based line number
+	Col  int    `json:"col"`  // 0-based byte offset within the original line
+	End  int    `json:"end"`  // 0-based byte end offset within the original line
+	Text string `json:"text"` // trimmed line excerpt
+}
+
+// SearchResult is the bounded result of a project search.
+type SearchResult struct {
+	Matches   []SearchMatch `json:"matches,omitempty"`
+	Files     int           `json:"files,omitempty"`
+	Truncated bool          `json:"truncated,omitempty"`
 }
 
 // Response answers a Request with the same ID.
@@ -189,6 +215,7 @@ type SessionInfo struct {
 	ID       string    `json:"id"`
 	PID      int       `json:"pid"`
 	Shell    string    `json:"shell"`
+	Dir      string    `json:"dir,omitempty"`
 	Created  time.Time `json:"created"`
 	Cols     int       `json:"cols"`
 	Rows     int       `json:"rows"`

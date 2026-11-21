@@ -149,9 +149,12 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 					tv.Focus()
 					a.focusReq = nil
 				}
-				if !overlay && tv.Focused() && t.Focus != p {
-					t.Focus = p
-					a.changed()
+				if !overlay && tv.Focused() {
+					clearPaneAttention(p)
+					if t.Focus != p {
+						t.Focus = p
+						a.changed()
+					}
 				}
 				return
 			}
@@ -163,7 +166,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				return
 			}
 			if p.Preview && isMarkdownPath(p.Note.Path) {
-				a.markdownBody(c, k, p)
+				a.markdownBody(c, k, p, overlay)
 				return
 			}
 			st := p.state
@@ -181,6 +184,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			st.NoAutoClose = a.NoAutoClose
 			st.NoScrollPastEnd = a.NoScrollPastEnd
 			st.ScrollMargin = a.EditorScrollMargin
+			st.DiffBase = a.noteDiffBase(p.Note)
 			st.Label = p.Note.Title
 			if a.HideLineNumbers {
 				st.LineNumbers = editor.LineNumbersOff
@@ -217,12 +221,15 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 	if p.dragging || (overTarget && overZone != dropNone && overZone != dropCenter) {
 		card.Border(2, k.Text)
 	}
-	if !overlay && card.Pressed() && t.Focus != p {
-		t.Focus = p
-		if !p.Preview && (p.Note != nil || p.Term != nil) {
-			a.focusReq = p
+	if !overlay && card.Pressed() {
+		clearPaneAttention(p)
+		if t.Focus != p {
+			t.Focus = p
+			if !p.Preview && (p.Note != nil || p.Term != nil) {
+				a.focusReq = p
+			}
+			a.changed()
 		}
-		a.changed()
 	}
 	return card
 }
@@ -383,7 +390,7 @@ func paneName(p *pane) string {
 	case p.Asset != nil:
 		return p.Asset.Name
 	case p.Term != nil:
-		return p.Term.Spec.title()
+		return p.Term.displayTitle()
 	default:
 		return "New Pane"
 	}
@@ -404,7 +411,7 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 	case p.Asset != nil:
 		name, ic = p.Asset.Name, icons.FileIcon(p.Asset.Path)
 	case p.Term != nil:
-		name, ic = p.Term.Spec.title(), icons.Icon("square-terminal")
+		name, ic = p.Term.displayTitle(), icons.Icon("square-terminal")
 	}
 	hpad, hgap := float32(12), float32(7)
 	btn, isize := float32(iconBtnMd), float32(iconGlyphMd)
@@ -420,10 +427,13 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 	h := ui.Row(c).Height(headerH).Padding(0, 6, 0, hpad).Gap(hgap).
 		AlignItems(ui.Center).MinWidth(0)
 	if !overlay && h.DoubleClicked() {
-		t.Focus = p
-		a.toggleZoom()
+		a.later(func() {
+			t.Focus = p
+			a.toggleZoom()
+		})
 	}
 	if !overlay && h.Clicked() {
+		clearPaneAttention(p)
 		t.Focus = p
 		if !p.Preview {
 			a.focusReq = p
@@ -457,6 +467,13 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 			if p.Note != nil && p.Note.Dirty() {
 				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
 					Tooltip("Unsaved edits")
+			} else if p.Term != nil && p.Term.attention {
+				tip := "Needs attention"
+				if p.Term.attentionNote != "" {
+					tip = p.Term.attentionNote
+				}
+				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
+					Tooltip(tip)
 			}
 		})
 		previewAction := func() {
@@ -505,8 +522,10 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				zoom, label = "minimize-2", "Unzoom"
 			}
 			if iconButton(c, k, zoom, label+suffix, btn, isize).Tooltip(a.tip(label, cmdZoom)).Clicked() {
-				t.Focus = p
-				a.toggleZoom()
+				a.later(func() {
+					t.Focus = p
+					a.toggleZoom()
+				})
 			}
 		}
 		closeAction := func() {

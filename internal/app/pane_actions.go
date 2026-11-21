@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+
+	"github.com/egoist/mygo/ui/editor"
 )
 
 // tab returns the active workspace.
@@ -199,6 +201,36 @@ func (a *app) openRel(rel string) {
 	if f := a.store.AssetByRel(rel); f != nil {
 		a.openAsset(f)
 	}
+}
+
+// openNoteAt opens a project text file in editor mode and moves the caret
+// to the 1-based line and 0-based byte span [col, end).
+func (a *app) openNoteAt(rel string, line, col, end int) {
+	if a.store == nil {
+		return
+	}
+	n := a.store.ByRelPath(rel)
+	if n == nil {
+		return
+	}
+	a.openNote(n)
+	p := a.focusPane()
+	if p == nil || p.Note != n {
+		return
+	}
+	p.Preview = false
+	if p.state == nil {
+		p.state = n.NewState()
+	}
+	lineIdx := max(line-1, 0)
+	colIdx := max(col, 0)
+	p.state.GoTo(editor.Pos{Line: lineIdx, Col: colIdx})
+	if end > colIdx {
+		startOff := p.state.Cursor()
+		p.state.Select(startOff, startOff+(end-colIdx))
+	}
+	a.focusReq = p
+	a.invalidate()
 }
 
 // openAssetInTab shows a picture or PDF in a tab of its own.

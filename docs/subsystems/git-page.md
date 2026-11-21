@@ -3,9 +3,10 @@
 ## Responsibilities
 
 The working-tree page: reading status and diffs for the open project, parsing Git's output, the page
-state and its view, and the two runners that reach Git (a local command or the project's session
-server). A second mode lists the repository's commits and shows the patch of the one selected. It
-also reads, switches and creates the project's branches and reloads open notes after a checkout.
+state and its view, working-tree staging/unstaging/discarding/committing, and the two runners that
+reach Git (a local command or the project's session server). A second mode lists the repository's
+commits and shows the patch of the one selected. It also reads, switches and creates the project's
+branches and reloads open notes after a checkout.
 
 ## Source of truth
 
@@ -121,11 +122,17 @@ also reads, switches and creates the project's branches and reloads open notes a
   trailing spaces and reporting a failed `pwd` instead of treating its output as a path.
 - Failures render inside the page (`Page.Err`, `Page.DiffErr`) instead of the app's error banner; a
   stale result is dropped, never shown over a newer one.
-- The diff pane is MyGo's `editor.DiffView` over one `editor.DiffState` per loaded diff. The states
+- The diff pane is MyGo's `editor.DiffView` over one `editor.DiffState` per loaded diff, with
+  word-level inline highlights (`DiffInlineWordAlt`) and a Unified/Split layout toggle (`Page.SplitDiff`). The states
   are built on the frame that first draws them (`buildDiffViews`, `newDiffView`), where the window's
   theme and font are known, and kept for that diff's generation (`diffGen`/`viewsGen`); a new diff
   clears them and starts at the top. `Host.EditorTheme` is the editor theme with the pane's card as
   its background, because the viewer mixes change tints against the background it is given.
+- Working-tree mutations (`Stage`, `Unstage`, `Discard`, `CreateCommit` in `internal/git/actions.go`) run
+  through the active `Runner` (local or remote server) off the UI thread, guarded by `ActionBusy`
+  and `ActionSeq`. `Discard` requires a second confirmation click (`Confirm Discard`) and calls
+  `Host.ReloadFiles` so open clean notes reflect the restored file; every completed mutation calls
+  `Host.AfterGitMutation` and refreshes the page.
 - `toFilePatch` turns a parsed `FileDiff` into the viewer's `editor.FilePatch`: hunk headers keep
   their counts and section text, a blank context line regains its space prefix, and a `\ No newline`
   line stays as it is. Every other line is cut at `diffLineRunes` (2000) with `…` after its prefix,
@@ -139,6 +146,10 @@ also reads, switches and creates the project's branches and reloads open notes a
   its heading; the 2500-line budget cuts whole hunks (`cutFileDiff`) and still ends with the
   "… diff truncated" note. The viewer brings selection, copy, find, go-to-line and its own
   scrollbar, and draws its gutter, so the page no longer draws rows, numbers or per-line colors.
+- Editor panes in a Git repository asynchronously read each open file's `HEAD` text through
+  `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/diffbase.go`)
+  and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation. Switching
+  branches or mutating Git from the page invalidates the cache.
 - `BranchData.Current` is the checked-out branch, or the short hash of a detached HEAD with
   `Detached` set; no branch is marked `Current` in that case. `Root` is empty outside a repository,
   which hides the chip; the command reports "This folder is not a Git repository." in the banner.

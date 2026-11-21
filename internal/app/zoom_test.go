@@ -52,3 +52,31 @@ func TestZoomFadesHiddenPanesAndRevealsThem(t *testing.T) {
 		t.Fatalf("unzoom changed the split: panes=%d focus=%v", got, tb.Focus)
 	}
 }
+
+func TestZoomMarkdownPreviewDoesNotDoubleBindScrollHandle(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	first := a.tab().Focus
+	first.Preview = true
+	a.splitWith(a.store.ByRelPath("Reading notes.md"))
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	tt.Frame()
+
+	// Click the Zoom button on the second pane while the first pane is a
+	// Markdown preview; this previously double-bound p.previewScroll in the
+	// same frame when the hidden pane overlay rendered.
+	if err := tt.Click("Zoom Reading notes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if a.tab().Zoom == nil {
+		t.Fatal("expected zoomed pane after clicking Zoom")
+	}
+	// Also test rendering an overlay copy alongside the live pane directly.
+	a.unzoom(a.tab())
+	a.paneOverlays = append(a.paneOverlays, &paneOverlay{p: first, t: a.tab(), rect: first.lastBounds, kind: paneCopyHidden})
+	tt.Frame()
+	tt.Frame()
+}

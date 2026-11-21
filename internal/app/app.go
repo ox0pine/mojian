@@ -9,6 +9,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -76,27 +77,29 @@ type app struct {
 	// fileClip is the app's own clipboard: absolute local paths, or paths
 	// relative to a remote project (fileClipRemote). A cut is a one-shot
 	// intent and is cleared when the project changes.
-	fileClip       []string
-	fileCut        bool
-	fileClipRemote bool
-	fileClipHost   string
-	fileClipRoot   string
-	hostDraftName  string
-	hostDraftAddr  string
-	serverOpen     bool
-	remotePicker   bool
-	remoteHost     string
-	remoteQuery    string
-	remoteDirs     []session.FileEntry
-	remoteList     ui.ListState
-	remoteErr      string
-	pickerPath     string
-	pickerInput    string
-	pickerEntries  []pickerEntry
-	pickerList     ui.ListState
-	pickerSel      int
-	pickerErr      string
-	pickerHidden   bool
+	fileClip            []string
+	fileCut             bool
+	fileClipRemote      bool
+	fileClipHost        string
+	fileClipRoot        string
+	hostDraftName       string
+	hostDraftAddr       string
+	sshImportOpen       bool
+	sshImportCandidates []hostConfig
+	serverOpen          bool
+	remotePicker        bool
+	remoteHost          string
+	remoteQuery         string
+	remoteDirs          []session.FileEntry
+	remoteList          ui.ListState
+	remoteErr           string
+	pickerPath          string
+	pickerInput         string
+	pickerEntries       []pickerEntry
+	pickerList          ui.ListState
+	pickerSel           int
+	pickerErr           string
+	pickerHidden        bool
 
 	paneOverlays []*paneOverlay
 
@@ -104,6 +107,16 @@ type app struct {
 	sshQuery string
 	sshSel   int
 	sshList  ui.ListState
+
+	sessionPick   bool
+	sessionQuery  string
+	sessionSel    int
+	sessionList   ui.ListState
+	sessionItems  []session.SessionInfo
+	sessionBusy   bool
+	sessionErr    string
+	sessionSeq    int
+	sessionServer string
 
 	treeSearch ui.Handle
 	treeDraft  *treeDraft
@@ -138,9 +151,15 @@ type app struct {
 	// agentTask is the one background ACP task this window runs; it has
 	// no pane, so its sheet is the only place to ask for a prompt or a
 	// permission.
-	agentTask  *agentTask
-	agentOpen  bool
-	agentInput string
+	agentTask         *agentTask
+	agentOpen         bool
+	agentInput        string
+	agentChoices      []string
+	agentChoiceSeq    int
+	agentSelected     string
+	agentLastAgent    string
+	agentLastSummary  string
+	agentLastDuration string
 
 	paletteOpen  bool
 	paletteQuery string
@@ -151,6 +170,19 @@ type app struct {
 	quickQuery string
 	quickSel   int
 	quickList  ui.ListState
+
+	searchOpen    bool
+	searchQuery   string
+	searchCase    bool
+	searchRegex   bool
+	searchLastKey string
+	searchBusy    bool
+	searchErr     string
+	searchResult  session.SearchResult
+	searchSel     int
+	searchList    ui.ListState
+	searchSeq     int
+	searchCancel  func()
 
 	rename      *tab
 	renameText  string
@@ -184,6 +216,10 @@ type app struct {
 	settingsTimer  *time.Timer
 	reloadStore    *store
 	reloadSeq      int
+	watchCancel    context.CancelFunc
+	watchDir       string
+	watchSeq       int
+	watchStarter   func(ctx context.Context, dir string, ignore func(string, bool) bool) (fileWatcher, error)
 	reloadMutation uint64
 	lastReload     time.Time
 	lastReloadFor  *store
@@ -385,6 +421,7 @@ func (a *app) open() {
 	a.checkHosts()
 	a.registerActiveWorkspace()
 	a.refreshBranch()
+	a.syncProjectWatcher()
 	a.updateTitle()
 }
 

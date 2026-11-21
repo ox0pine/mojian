@@ -22,9 +22,25 @@ type termTab struct {
 	Client *session.Client
 	stream *session.Stream
 
-	startErr   string
-	connecting bool
-	connectSeq uint64
+	startErr      string
+	connecting    bool
+	connectSeq    uint64
+	attention     bool
+	attentionNote string
+}
+
+// displayTitle returns the terminal program's live OSC title when set,
+// otherwise the fallback spec title ("Terminal" or "SSH · host").
+func (t *termTab) displayTitle() string {
+	if t == nil {
+		return "Terminal"
+	}
+	if t.Term != nil {
+		if title := strings.TrimSpace(t.Term.Title()); title != "" {
+			return title
+		}
+	}
+	return t.Spec.title()
 }
 
 // beginConnect marks a new attach attempt as the only one that may update
@@ -343,6 +359,7 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 		Padding:      terminal.Padding{X: 10, Y: 8},
 		OnBell: func() {
 			update(func() {
+				a.markTerminalAttention(tt, "Bell")
 				if a.NotifyBell && !a.harness && !a.quitting && (a.win == nil || !a.win.IsFocused()) {
 					a.notifyTerminal("Terminal", tt, "")
 				}
@@ -351,6 +368,7 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 		},
 		OnExit: func(code int) {
 			update(func() {
+				a.markTerminalAttention(tt, "exit "+strconv.Itoa(code))
 				if a.NotifyExit && !a.harness && !a.quitting && (a.win == nil || !a.win.IsFocused()) {
 					a.notifyTerminal("Terminal finished", tt, "exit "+strconv.Itoa(code))
 				}

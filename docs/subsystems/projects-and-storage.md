@@ -118,6 +118,11 @@ the save path, path guards and the asset cache.
   binary match stays visible and opens through `openRel`, and Enter opens the first note or asset
   match. A binary pane shows its name, size and a not-editable-as-text explanation; a local file can
   open in its default app, while a remote binary is never downloaded just to show that metadata.
+- Local desktop projects also run a coarse recursive `mygo.WatchFiles` watcher (`HintsOnly`,
+  debounced, skipping `.git`, `.gitignore`-excluded directories and `.mojian-*` atomic temp files
+  in `internal/app/watch.go`). When external tools or agents modify files on disk, the watcher
+  reloads clean open notes, updates the Explorer tree and refreshes an open Git page while leaving
+  dirty notes intact. The watcher stops on project switch, remote switch, or window close.
 - `Memory` lists nothing and refuses file operations with `errReadOnly` (its `Write` is a no-op); the browser build keeps its editor in memory.
 
 ## Verification

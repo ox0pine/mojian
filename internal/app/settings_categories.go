@@ -22,13 +22,13 @@ const (
 // commandAvailable hides the commands the platform does not have, as the
 // palette does.
 func commandAvailable(c *commands.Command) bool {
-	if !terminalsSupported() && c == cmdTerminal {
+	if !terminalsSupported() && (c == cmdTerminal || c == cmdAttachSession) {
 		return false
 	}
 	if !remoteSupported() && c == cmdSSH {
 		return false
 	}
-	if runtime.GOOS == "js" && (c == cmdTerminal || c == cmdOpenProject || c == cmdNewFolder || c == cmdBranch) {
+	if runtime.GOOS == "js" && (c == cmdTerminal || c == cmdAttachSession || c == cmdOpenProject || c == cmdNewFolder || c == cmdBranch) {
 		return false
 	}
 	return true

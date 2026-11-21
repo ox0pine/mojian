@@ -41,6 +41,8 @@ func (h *pageHost) EditorTheme(*ui.Context) *editor.Theme {
 func (h *pageHost) EditorFont() (ui.Font, float32, int) { return ui.Font{}, 16, 4 }
 func (h *pageHost) SwitchBranch(string, string) error   { return nil }
 func (h *pageHost) CreateBranch(string, string) error   { return nil }
+func (h *pageHost) ReloadFiles()                        {}
+func (h *pageHost) AfterGitMutation()                   {}
 
 func TestRunGitRejectsOutputOverLimit(t *testing.T) {
 	dir := t.TempDir()

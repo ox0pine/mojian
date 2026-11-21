@@ -149,9 +149,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   search results, the Welcome page's recents, the folder pickers and the Git change list take
   those numbers; `sectionLabel`, `emptyLine` and `emptyState` draw their captions, empty lines and
   empty pages. Settings keeps its own denser scale inside its own window.
-- The palette, quick open and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
+- The palette, quick open, project search and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
   below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
-  close button). The panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
+  close button). Project search (`find-in-files`, `⇧⌘F` / `Ctrl+Shift+F`, `internal/app/search.go`)
+  adds Match Case (`Aa`) and Regular Expression (`.*`) toggles, runs `project.Search` off the UI
+  thread with dirty-buffer overrides, and jumps the focused pane directly to the matched line and
+  span. The panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
   the remaining height instead. `CommandListHeight` subtracts the 56-pixel sheet chrome, up to the
   original 384 list maximum, so the last row stays inside the window. Empty results use `emptyLine`.
   `theme.Colors.ShadowDialog` is the dialog shadow; `k.ShadowFocused` stays for popovers and floating

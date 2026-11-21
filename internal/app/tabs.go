@@ -105,7 +105,7 @@ func tabWidth(c *ui.Context, t *tab) float32 {
 	// only while it shows one: a clean, short tab should not carry blank
 	// space beside its title.
 	actions := float32(18)
-	if t.dirty() {
+	if t.dirty() || t.hasAttention() {
 		actions += 11
 	}
 	return min(max(6+tiles+9+w+9+actions+4, tabMinW), tabMaxW)
@@ -184,6 +184,9 @@ func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, wh
 				if t.dirty() {
 					ui.Box(c).Size(dotSize, dotSize).Radius(dotSize / 2).Background(k.Attention).Shrink(0).
 						Tooltip("Unsaved edits")
+				} else if t.hasAttention() {
+					ui.Box(c).Size(dotSize, dotSize).Radius(dotSize / 2).Background(k.Attention).Shrink(0).
+						Tooltip("Terminal needs attention")
 				}
 				if iconButton(c, k, "x", "Close Tab", iconBtnXs, iconGlyphXs).Tooltip("Close Tab").Clicked() {
 					a.later(func() { a.closeTab(t) })

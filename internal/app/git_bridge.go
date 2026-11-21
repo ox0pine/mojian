@@ -145,6 +145,24 @@ func (a *app) OpenPath(rel string) { a.openRel(rel) }
 
 func (a *app) FileMenu(m *ui.Menu, rel string) { a.nodeMenu(m, rel, false) }
 
+// ReloadFiles reloads clean open notes after the Git page mutates the
+// working tree (for example discarding changes).
+func (a *app) ReloadFiles() {
+	if a.store == nil || a.store.IsMemory() {
+		return
+	}
+	if err := a.store.Reload(); err != nil {
+		a.fail(err)
+	}
+}
+
+// AfterGitMutation refreshes branch state and editor gutter diff bases
+// after staging, discarding, or committing from the Git page.
+func (a *app) AfterGitMutation() {
+	a.invalidateDiffBases()
+	a.refreshBranch()
+}
+
 // SwitchBranch checks out a branch chosen in the Git page's own menu, then
 // reloads every clean note from the files the branch holds.
 func (a *app) SwitchBranch(root, name string) error {

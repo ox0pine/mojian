@@ -34,9 +34,11 @@ type workspace struct {
 	openDirs   map[string]bool
 	tabScroll  ui.ScrollState
 
-	git       gitpage.Page
-	branch    branchState
-	revealTab bool
+	git         gitpage.Page
+	branch      branchState
+	diffBases   map[string]*diffBaseEntry
+	diffBaseGen int
+	revealTab   bool
 }
 
 func workspaceKeyLocal(dir string) string {
@@ -136,6 +138,7 @@ func (a *app) activateWorkspace(ws *workspace) {
 		a.focusReq = t.editorPane()
 	}
 	a.refreshBranch()
+	a.syncProjectWatcher()
 	a.updateTitle()
 	a.invalidate()
 }
@@ -144,6 +147,7 @@ func (a *app) activateWorkspace(ws *workspace) {
 // without keeping it as the active workspace. The cached entry, if any,
 // stays for a later reconnect.
 func (a *app) abandonActiveWorkspace() {
+	a.stopProjectWatcher()
 	if a.workspace == nil {
 		return
 	}
@@ -161,6 +165,8 @@ func (a *app) closeModals() {
 	a.paletteOpen = false
 	a.agentOpen = false
 	a.quickOpen = false
+	a.closeSearch()
+	a.sessionPick = false
 	a.sshPick = false
 	a.remotePicker = false
 	a.branch.open = false
@@ -232,6 +238,7 @@ func (a *app) registerActiveWorkspace() {
 // closeWorkspaces detaches every loaded project's terminals and remote
 // connection, as quitting the app does. The servers keep running.
 func (a *app) closeWorkspaces() {
+	a.stopProjectWatcher()
 	a.initWorkspaces()
 	a.remoteClosing = true
 	// A closing pane has already left its tab's split tree. Finish those

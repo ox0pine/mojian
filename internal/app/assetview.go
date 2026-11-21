@@ -21,22 +21,31 @@ import (
 const maxPDFPageSide = 4096
 
 // markdownBody shows a note as rendered Markdown, with the same buffer
-// the editor writes.
-func (a *app) markdownBody(c *ui.Context, k *colors, p *pane) {
+// the editor writes. An overlay copy fading out skips TrackScroll so it
+// never binds the same scroll handle twice in one frame.
+func (a *app) markdownBody(c *ui.Context, k *colors, p *pane, overlay bool) {
 	if p.Note == nil {
 		return
 	}
-	if a.focusReq == p {
+	if !overlay && a.focusReq == p {
 		a.focusReq = nil
 	}
-	scroll := ui.Scroll(c).Grow(1).MinHeight(0).TrackScroll(&p.previewScroll)
+	scroll := ui.Scroll(c).Grow(1).MinHeight(0)
+	if !overlay {
+		scroll.TrackScroll(&p.previewScroll)
+	}
 	scroll.Children(func() {
 		ui.Column(c).MaxWidth(780).AlignSelf(ui.Center).
 			Padding(26, 34, 44, 34).Children(func() {
 			if p.md == nil {
 				opts := &markdown.Options{}
 				local := a.store == nil || !a.store.IsRemote()
-				load := markdownImages(filepath.Dir(p.Note.Path), local)
+				var remoteRead func(string) ([]byte, error)
+				if !local && a.store != nil {
+					backend := a.store.FS
+					remoteRead = backend.Read
+				}
+				load := markdownImages(filepath.Dir(p.Note.Path), local, p.Note.Rel, remoteRead)
 				// HTML blocks carry a README's badges and linked
 				// pictures, which the view would otherwise show as
 				// source.

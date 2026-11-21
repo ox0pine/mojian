@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,18 +28,44 @@ type markdownImage struct {
 }
 
 // markdownImages loads the pictures of a Markdown preview: files beside
-// the note, and pictures on the web, as a README's badges are. Relative
-// files are read only for a local project.
-func markdownImages(dir string, local bool) func(string) (ui.ImageSource, error) {
+// the note (locally or via remoteRead on an SSH host), and pictures on the
+// web, as a README's badges are.
+func markdownImages(dir string, local bool, noteRel string, remoteRead func(rel string) ([]byte, error)) func(string) (ui.ImageSource, error) {
 	files := markdown.FileImages(dir)
+	noteDir := path.Dir(filepath.ToSlash(noteRel))
 	return func(raw string) (ui.ImageSource, error) {
 		if isWebImage(raw) {
 			return fetchWebImage(raw)
 		}
+		cleanRaw := localImagePath(raw)
 		if !local {
-			return nil, os.ErrNotExist
+			if remoteRead == nil || strings.Contains(cleanRaw, "://") || strings.HasPrefix(cleanRaw, "data:") {
+				return nil, os.ErrNotExist
+			}
+			rel := strings.TrimPrefix(cleanRaw, "file:")
+			if strings.HasPrefix(rel, "/") {
+				return nil, os.ErrNotExist
+			}
+			if noteDir != "." && noteDir != "" {
+				rel = path.Join(noteDir, rel)
+			}
+			rel = path.Clean(rel)
+			if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+				return nil, os.ErrNotExist
+			}
+			data, err := remoteRead(rel)
+			if err != nil {
+				return nil, err
+			}
+			if len(data) > maxWebImageBytes {
+				return nil, errors.New("image is too large")
+			}
+			if strings.EqualFold(path.Ext(rel), ".svg") {
+				return ui.ParseSVG(data)
+			}
+			return ui.DecodeBitmapScaled(data, maxWebImageSide)
 		}
-		return files(localImagePath(raw))
+		return files(cleanRaw)
 	}
 }
 

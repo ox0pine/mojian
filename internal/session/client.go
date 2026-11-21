@@ -615,11 +615,16 @@ type Stream struct {
 	rows int
 }
 
-// openRequest asks the server to attach a new stream to a session.
+// openRequest asks the server to attach a new stream to a session or start
+// an ACP task stream when Kind == "acp".
 type openRequest struct {
-	SID  string `json:"sid"`
-	Cols int    `json:"cols,omitempty"`
-	Rows int    `json:"rows,omitempty"`
+	SID    string `json:"sid,omitempty"`
+	Cols   int    `json:"cols,omitempty"`
+	Rows   int    `json:"rows,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+	Dir    string `json:"dir,omitempty"`
+	Agent  string `json:"agent,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // openReply answers an openRequest on the same stream.
@@ -712,5 +717,12 @@ func (c *Client) ListDirs(path string) (out []FileEntry, err error) {
 }
 func (c *Client) ListDirsContext(ctx context.Context, path string) (out []FileEntry, err error) {
 	err = c.callContext(ctx, Request{Op: "listDirs", Path: path}, &out)
+	return
+}
+func (c *Client) Search(root string, opts SearchOptions) (out SearchResult, err error) {
+	return c.SearchContext(context.Background(), root, opts)
+}
+func (c *Client) SearchContext(ctx context.Context, root string, opts SearchOptions) (out SearchResult, err error) {
+	err = c.callContext(ctx, Request{Op: "search", Path: root, Search: &opts}, &out)
 	return
 }
