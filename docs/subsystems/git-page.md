@@ -110,8 +110,9 @@ also reads, switches and creates the project's branches and reloads open notes a
   `hash-object -t tree /dev/null`), not just the index. An `AM` file thus includes both its staged
   addition and subsequent unstaged lines.
 - Before reading an untracked file, `untrackedDiff` asks Git for a raw no-index diff. Mode `120000`
-  takes Git's symlink patch, whose added line is the link target path; neither local nor remote
-  runners open the target file. Regular files keep the existing size and binary limits.
+  builds a symlink patch whose added line is the exact target text from `Runner.Readlink` — local
+  `os.Readlink` or the host's `readlink` — so Windows' Git/Go path normalization cannot make it read
+  the target file. Regular files keep the existing size and binary limits.
 - `gitenv.Env` removes the variables that redirect Git at another repository, so a hook or a parent
   process cannot change what the page reads.
 - Failures render inside the page (`Page.Err`, `Page.DiffErr`) instead of the app's error banner; a

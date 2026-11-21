@@ -34,6 +34,9 @@ type Runner interface {
 	// RealPath resolves symlinks where the project lives. A remote path
 	// must be resolved on its host, not here.
 	RealPath(path string) (string, error)
+	// Readlink returns the link's target text where the project lives,
+	// without opening the target itself.
+	Readlink(dir, rel string) (string, error)
 }
 
 // LocalRunner runs Git in the local project.
@@ -42,6 +45,10 @@ type LocalRunner struct{}
 func (LocalRunner) Run(dir string, args ...string) (string, error) { return runGit(dir, args...) }
 
 func (LocalRunner) RealPath(path string) (string, error) { return filepath.EvalSymlinks(path) }
+
+func (LocalRunner) Readlink(dir, rel string) (string, error) {
+	return os.Readlink(filepath.Join(dir, filepath.FromSlash(rel)))
+}
 
 func (LocalRunner) ReadFile(dir, rel string, limit int) ([]byte, error) {
 	f, err := os.Open(filepath.Join(dir, filepath.FromSlash(rel)))

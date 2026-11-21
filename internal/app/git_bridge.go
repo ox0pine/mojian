@@ -100,6 +100,17 @@ func (r serverGitRunner) RealPath(path string) (string, error) {
 	return strings.TrimSpace(res.Stdout), nil
 }
 
+func (r serverGitRunner) Readlink(dir, rel string) (string, error) {
+	res, err := r.client.Exec(dir, []string{"readlink", "--", rel}, nil, 5*time.Second)
+	if err != nil {
+		return "", err
+	}
+	if res.Code != 0 {
+		return "", errors.New(strings.TrimSpace(res.Stderr))
+	}
+	return strings.TrimSuffix(res.Stdout, "\n"), nil
+}
+
 func (r serverGitRunner) ReadFile(dir, rel string, limit int) ([]byte, error) {
 	data, err := r.client.ReadFile(path.Join(dir, rel))
 	if err != nil {

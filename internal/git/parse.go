@@ -188,12 +188,11 @@ func untrackedDiff(r Runner, root, path, display string) (string, error) {
 		return "", rawErr
 	}
 	if fields := strings.Fields(raw); len(fields) > 1 && fields[1] == "120000" {
-		out, err := r.Run(root, "--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", path)
-		if err != nil && out == "" {
+		target, err := r.Readlink(root, path)
+		if err != nil {
 			return "", err
 		}
-		// A no-index difference has exit status 1, not a read failure.
-		return out, nil
+		return "diff --git a/" + display + " b/" + display + "\nnew file mode 120000\n--- /dev/null\n+++ b/" + display + "\n@@ -0,0 +1 @@\n+" + target + "\n\\ No newline at end of file\n", nil
 	}
 	data, err := r.ReadFile(root, path, 512*1024)
 	if err != nil {

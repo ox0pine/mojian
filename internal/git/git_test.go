@@ -17,6 +17,7 @@ type pageRunner func(dir string, args ...string) (string, error)
 func (r pageRunner) Run(dir string, args ...string) (string, error) { return r(dir, args...) }
 func (pageRunner) ReadFile(string, string, int) ([]byte, error)     { return nil, nil }
 func (pageRunner) RealPath(path string) (string, error)             { return path, nil }
+func (pageRunner) Readlink(string, string) (string, error)          { return "", nil }
 
 type pageHost struct {
 	dir    string
