@@ -167,7 +167,11 @@ esac
 
 func TestDialClassifiesProtocolError(t *testing.T) {
 	installFakeSSH(t, `case "$command" in
-*stdio*) `+framedHello(session.ProtocolVersion-1)+` ;;
+*stdio*)
+	cat >/dev/null &
+	`+framedHello(session.ProtocolVersion-1)+`
+	wait
+	;;
 esac
 `)
 	i := &Install{dir: "/tmp/mojian", binPath: "/tmp/mojian/current/mojian-server", runtimeDir: "/tmp/runtime", sock: "/tmp/runtime/sessions.sock"}

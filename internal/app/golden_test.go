@@ -22,6 +22,9 @@ import (
 func TestSettingsWindowGolden(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)
+	// Keep the displayed project path out of the temp directory's random
+	// suffix; otherwise every runner paints a different golden.
+	a.store.Dir = "/tmp/project"
 	a.settingsPath = t.TempDir() + "/settings.json"
 	tt := ui.NewTester(a.settingsWindowView, 900, 640)
 	tt.Advance(time.Second) // every spring the page starts has settled
