@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.1
+
+- Quitting no longer loops or stalls after synchronous saves, and quit retries still run after
+  every window has closed.
+- Background agents queue concurrent permission requests, preserve successful results across
+  process shutdown, report refusals and truncated turns accurately, clear cancelled permissions,
+  and refresh project files when a turn ends.
+- Remote terminals attach only the latest connection attempt, host edits invalidate old work and
+  move saved layouts, and the session server refuses new PTYs during shutdown, copies symlinks
+  safely and rejects recursive directory copies.
+- Storage keeps path revisions so in-flight saves cannot overwrite recreated or renamed files,
+  stale refreshes cannot resurrect old listings, and server-backed projects support case-only
+  renames. Special files and directory symlinks no longer block or confuse project listings.
+- Git keeps history and workspace results in their own projects, handles unborn HEADs, literal
+  pathspecs, symlinks and unusual paths, and shows binary or mode-only explanations instead of
+  blank diff viewers.
+- Layouts restore focus, active and empty tabs without overwriting malformed files or hiding write
+  failures; Explorer reveals work during search and scroll selected folders into view; second
+  instances preserve launch files, shell installation keeps symlinked rc files, and updates honor
+  system proxies.
+
 ## 0.6.0
 
 - Remote projects no longer block the window while saving or opening a terminal. Saves use
