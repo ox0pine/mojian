@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,14 @@ import (
 
 // The app reaches SSH connections through internal/remote; this file is
 // where the pool and the open project meet that package.
+
+type remoteConn = remote.Conn
+
+func dialRemoteContext(ctx context.Context, host string) (*remoteConn, error) {
+	return remote.DialContext(ctx, host)
+}
+
+func closeRemoteConn(rc *remoteConn) { remote.Close(rc) }
 
 // connectRemote prepares a connection to host without replacing the
 // current server, so a failed or cancelled switch leaves the open project

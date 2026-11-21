@@ -105,7 +105,7 @@ func (s *Service) ForgetProject(host, path string) {
 func (s *Service) Conn(host string) *remote.Conn { return s.conns[host] }
 
 // SetConn stores c for its host and reports whether it replaced the same
-// connection.
+// connection. The pool owns replaced connections and closes them.
 func (s *Service) SetConn(c *remote.Conn) (same bool) {
 	if c == nil {
 		return false
@@ -113,8 +113,12 @@ func (s *Service) SetConn(c *remote.Conn) (same bool) {
 	if s.conns == nil {
 		s.conns = map[string]*remote.Conn{}
 	}
-	same = s.conns[c.Host] == c
+	old := s.conns[c.Host]
+	same = old == c
 	s.conns[c.Host] = c
+	if old != nil && !same {
+		remote.Close(old)
+	}
 	return same
 }
 

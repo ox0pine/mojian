@@ -196,12 +196,18 @@ func (a *app) updateSummary() string {
 // onUpdateUI runs fn where the app's view is built. A test has no window
 // and runs it directly.
 func (a *app) onUpdateUI(fn func()) {
+	if a.uiPost != nil {
+		a.uiPost(fn)
+		return
+	}
 	switch {
 	case a.win != nil:
 		a.win.Update(fn)
 	case a.settingsWin != nil:
 		a.settingsWin.Update(fn)
-	default:
+	case !a.native:
+		// No-window unit tests run the same completion synchronously.
+		// The desktop app instead drops work that outlived every window.
 		fn()
 	}
 }

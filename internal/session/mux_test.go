@@ -54,7 +54,7 @@ func newTestMuxes(t *testing.T) (*mux, *mux) {
 			case frameData:
 				if s := m.stream(f.stream); s != nil {
 					if !s.push(f.payload) {
-						s.finish(errors.New("test: stream is too slow"))
+						_ = s.closeWithError(errors.New("test: stream is too slow"))
 					}
 				}
 			case frameClose:
@@ -127,6 +127,63 @@ func TestMuxTwoStreamsAreIndependent(t *testing.T) {
 	}
 }
 
+func TestMuxCloseWithErrorPrecedesRotationRemoval(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	m := newMux(a, bufio.NewReader(a))
+	defer m.shutdown(io.EOF)
+	s := m.openStream(1)
+	streamErr := errors.New("test: stream overflow")
+	if err := s.closeWithError(streamErr); err != nil {
+		t.Fatal(err)
+	}
+	f, ok := m.nextData()
+	if !ok || f.typ != frameClose || f.stream != s.id {
+		t.Fatalf("close marker was lost before finish: %+v %v", f, ok)
+	}
+	if !errors.Is(s.readErr(), streamErr) {
+		t.Fatalf("local read error = %v, want %v", s.readErr(), streamErr)
+	}
+}
+
+func TestMuxCloseAfterFinishNotifiesPeer(t *testing.T) {
+	ma, mb := newTestMuxes(t)
+	a := ma.openStream(1)
+	b := mb.openStream(1)
+	a.finish(errors.New("test: local overflow"))
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readStream(t, b); !errors.Is(err, io.EOF) {
+		t.Fatalf("peer read after late close: %v", err)
+	}
+}
+
+func TestMuxClosedRejectsWritesAndStreams(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	m := newMux(a, bufio.NewReader(a))
+	m.shutdown(io.EOF)
+	if err := m.writeControl(frameRequest, []byte("request")); err == nil {
+		t.Fatal("a closed mux queued a control request")
+	}
+	s := m.openStream(1)
+	select {
+	case <-s.done:
+	default:
+		t.Fatal("a stream opened on a closed mux is still running")
+	}
+	if _, err := s.Write([]byte("input")); err == nil {
+		t.Fatal("a stream on a closed mux accepted input")
+	}
+	if err := s.Close(); err == nil {
+		t.Fatal("a stream on a closed mux reported a successful close")
+	}
+	if len(m.ctrl) != 0 {
+		t.Fatal("a closed mux retained frames for a writer that exited")
+	}
+}
+
 func TestMuxSlowStreamIsClosedNotTheConnection(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close()
@@ -162,5 +219,21 @@ func TestMuxSlowStreamIsClosedNotTheConnection(t *testing.T) {
 	}
 	if _, err := fast.Write([]byte("y")); err != nil {
 		t.Fatalf("the other stream stopped: %v", err)
+	}
+
+	// Drain the blocked writer and verify that the overflow reached the
+	// peer, and that another stream still uses the same connection.
+	if err := b.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	r := bufio.NewReader(b)
+	sawClose, sawFast := false, false
+	for !sawClose || !sawFast {
+		f, err := readFrame(r)
+		if err != nil {
+			t.Fatalf("reading frames after overflow: %v", err)
+		}
+		sawClose = sawClose || f.typ == frameClose && f.stream == slow.id
+		sawFast = sawFast || f.typ == frameData && f.stream == fast.id && string(f.payload) == "y"
 	}
 }

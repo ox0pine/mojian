@@ -102,9 +102,10 @@ func (a *app) openProject(dir string) {
 	abs = resolveProjectRoot(abs)
 	a.initWorkspaces()
 	if ws := a.workspaces[workspaceKeyLocal(abs)]; ws != nil {
-		a.switchWorkspace(ws)
-		a.rememberProject(abs)
-		a.saveSettings()
+		a.switchWorkspaceAndThen(ws, func() {
+			a.rememberProject(abs)
+			a.saveSettings()
+		})
 		return
 	}
 	if a.remotePath == "" && a.store != nil && !a.store.IsMemory() && a.store.Dir == abs {
@@ -114,10 +115,16 @@ func (a *app) openProject(dir string) {
 	}
 	// Save while the current server is still connected, and keep its
 	// project in the workspace cache: switching back is then a restore.
-	if err := a.saveNow(); err != nil {
-		a.fail(fmt.Errorf("could not save the open project: %w", err))
-		return
-	}
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.fail(fmt.Errorf("could not save the open project: %w", err))
+			return
+		}
+		a.openProjectSaved(abs)
+	})
+}
+
+func (a *app) openProjectSaved(abs string) {
 	if a.layoutPath != "" {
 		a.saveLayout()
 	}
@@ -304,18 +311,28 @@ func (a *app) projectRowBase(c *ui.Context, k *colors, m ui.MenuParts, s project
 func (a *app) closeLocalProject(dir string) {
 	a.projectOpen = false
 	dir = filepath.Clean(dir)
+	active := a.remotePath == "" && a.store != nil && !a.store.IsMemory() &&
+		filepath.Clean(a.store.Dir) == dir
+	if !active {
+		a.closeLocalProjectAfterSave(dir)
+		return
+	}
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.fail(fmt.Errorf("could not save the open project: %w", err))
+			return
+		}
+		a.dropPaneOverlays(nil)
+		a.closeLocalProjectAfterSave(dir)
+	})
+}
+
+func (a *app) closeLocalProjectAfterSave(dir string) {
 	key := workspaceKeyLocal(dir)
 	a.initWorkspaces()
 	active := a.remotePath == "" && a.store != nil && !a.store.IsMemory() &&
 		filepath.Clean(a.store.Dir) == dir
 	ws := a.workspaces[key]
-	if active {
-		if err := a.saveNow(); err != nil {
-			a.fail(fmt.Errorf("could not save the open project: %w", err))
-			return
-		}
-		a.dropPaneOverlays(nil)
-	}
 	if ws != nil {
 		closeWorkspaceTerminals(ws)
 		delete(a.workspaces, key)

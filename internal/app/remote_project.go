@@ -39,10 +39,12 @@ func (a *app) installRemoteConn(rc *remote.Conn) {
 	a.initWorkspaces()
 	same := a.setRemoteConn(rc)
 	patch := func(w *workspace) {
-		if w == nil || w.store == nil || !w.store.IsServer() || w.serverAlias != rc.Host {
+		if w == nil || w.serverAlias != rc.Host {
 			return
 		}
-		w.store.SetClient(rc.Client)
+		if w.store != nil && w.store.IsServer() {
+			w.store.SetClient(rc.Client)
+		}
 		if !same {
 			detachTerminalsOn(w, rc.Host, rc.Client)
 		}
@@ -124,7 +126,7 @@ func (a *app) reconnectAsync(host, msg string, ready func(*remote.Conn)) bool {
 		a.invalidate()
 		return true
 	}
-	seq, win, ctx := a.beginRemoteTask(msg)
+	seq, win, ctx := a.beginRemoteTask(host, msg)
 	if seq == 0 {
 		return false
 	}
@@ -170,13 +172,15 @@ func (a *app) reconnectWorkspaceAsync(ws *workspace, host string) {
 	if ws == nil || a.remoteBusy {
 		return
 	}
-	if err := a.saveNow(); err != nil {
-		a.dropPickerRemote()
-		a.fail(fmt.Errorf("could not save the open project: %w", err))
-		return
-	}
-	a.reconnectAsync(host, "Reconnecting to "+a.hostLabel(host)+"…", func(*remote.Conn) {
-		a.switchWorkspace(ws)
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.dropPickerRemote()
+			a.fail(fmt.Errorf("could not save the open project: %w", err))
+			return
+		}
+		a.reconnectAsync(host, "Reconnecting to "+a.hostLabel(host)+"…", func(*remote.Conn) {
+			a.switchWorkspace(ws)
+		})
 	})
 }
 
@@ -186,17 +190,26 @@ func (a *app) reconnectWorkspaceAsync(ws *workspace, host string) {
 // project or terminal on it remains.
 func (a *app) closeRemoteProject(host, path string) {
 	a.projectOpen = false
-	key := workspaceKeyRemote(host, path)
-	a.initWorkspaces()
 	active := a.serverAlias == host && a.remotePath == path
-	ws := a.workspaces[key]
-	if active {
-		if err := a.saveNow(); err != nil {
+	if !active {
+		a.closeRemoteProjectAfterSave(host, path)
+		return
+	}
+	a.saveNowAsync(func(err error) {
+		if err != nil {
 			a.fail(fmt.Errorf("could not save the open project: %w", err))
 			return
 		}
 		a.dropPaneOverlays(nil)
-	}
+		a.closeRemoteProjectAfterSave(host, path)
+	})
+}
+
+func (a *app) closeRemoteProjectAfterSave(host, path string) {
+	key := workspaceKeyRemote(host, path)
+	a.initWorkspaces()
+	active := a.serverAlias == host && a.remotePath == path
+	ws := a.workspaces[key]
 	if ws != nil {
 		closeWorkspaceTerminals(ws)
 		delete(a.workspaces, key)
@@ -289,95 +302,98 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 		a.rememberRemoteProject(remoteProject{Host: host, Path: remotePath})
 		if a.workspaceReachable(ws) {
 			a.keepRemote(host)
-			a.switchWorkspace(ws)
-			a.dropPickerRemote()
-			a.saveSettings()
+			a.switchWorkspaceAndThen(ws, func() {
+				a.dropPickerRemote()
+				a.saveSettings()
+			})
 		} else {
 			a.dropPickerRemote()
 			a.reconnectWorkspaceAsync(ws, host)
 		}
 		return
 	}
-	if err := a.saveNow(); err != nil {
-		a.dropPickerRemote()
-		a.fail(fmt.Errorf("could not save the open project: %w", err))
-		return
-	}
-	if a.layoutPath != "" {
-		a.saveLayout()
-	}
-	a.layoutDirty = false
-	existing := a.remoteForHost(host)
-	seq, win, ctx := a.beginRemoteTask("Opening " + filepath.Base(remotePath) + " on " + a.hostLabel(host) + "…")
-	if seq == 0 {
-		a.dropPickerRemote()
-		return
-	}
-	cache := a.serverAssetCache(host, remotePath)
-	go func() {
-		rc := existing
-		var err error
-		if rc == nil {
-			rc, err = remote.DialContext(ctx, host)
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.dropPickerRemote()
+			a.fail(fmt.Errorf("could not save the open project: %w", err))
+			return
 		}
-		var s *store
-		if err == nil {
-			onWindow(win, func() {
-				a.setRemoteBusyMsg(seq, "Opening "+filepath.Base(remotePath)+" on "+a.hostLabel(host)+"…")
-			})
-			s, err = openServerStore(rc.Client, remotePath, cache, false)
-		}
-		onWindow(win, func() {
-			if !a.endRemoteTask(seq) {
-				if rc != nil && rc != existing {
-					a.detachRemoteConn(rc)
-				}
-				return
-			}
-			if err != nil {
-				if rc != nil && rc != existing {
-					a.detachRemoteConn(rc)
-				}
-				a.dropPickerRemote()
-				a.fail(err)
-				return
-			}
-			if rc != nil {
-				a.installRemoteConn(rc)
-			}
-			a.stopAgentTask()
-			a.stashActiveWorkspace()
-			ws := &workspace{
-				key:         key,
-				project:     a.project,
-				store:       s,
-				serverAlias: host,
-				remotePath:  remotePath,
-				layoutPath:  a.projectLayoutPath("remote:" + host + ":" + remotePath),
-				treeOpen:    true,
-				active:      -1,
-				openDirs:    map[string]bool{},
-			}
-			a.workspaces[key] = ws
-			a.activateWorkspace(ws)
-			if a.remotePickHost == host {
-				a.remotePickHost = ""
-			}
-			a.keepRemote(host)
-			a.rememberRemoteProject(remoteProject{Host: host, Path: remotePath})
-			if a.NoRestoreLayout || !a.restoreLayout() {
-				a.focusFirstNote()
-			}
-			if t := a.tab(); t != nil {
-				a.focusReq = t.editorPane()
-			}
-			a.revealTab = true
+		if a.layoutPath != "" {
 			a.saveLayout()
-			a.saveSettings()
-			a.updateTitle()
-			a.invalidate()
-		})
-	}()
+		}
+		a.layoutDirty = false
+		existing := a.remoteForHost(host)
+		seq, win, ctx := a.beginRemoteTask(host, "Opening "+filepath.Base(remotePath)+" on "+a.hostLabel(host)+"…")
+		if seq == 0 {
+			a.dropPickerRemote()
+			return
+		}
+		cache := a.serverAssetCache(host, remotePath)
+		go func() {
+			rc := existing
+			var err error
+			if rc == nil {
+				rc, err = remote.DialContext(ctx, host)
+			}
+			var s *store
+			if err == nil {
+				onWindow(win, func() {
+					a.setRemoteBusyMsg(seq, "Opening "+filepath.Base(remotePath)+" on "+a.hostLabel(host)+"…")
+				})
+				s, err = openServerStoreContext(ctx, rc.Client, remotePath, cache, false)
+			}
+			onWindow(win, func() {
+				if !a.endRemoteTask(seq) {
+					if rc != nil && rc != existing {
+						a.detachRemoteConn(rc)
+					}
+					return
+				}
+				if err != nil {
+					if rc != nil && rc != existing {
+						a.detachRemoteConn(rc)
+					}
+					a.dropPickerRemote()
+					a.fail(err)
+					return
+				}
+				if rc != nil {
+					a.installRemoteConn(rc)
+				}
+				a.stopAgentTask()
+				a.stashActiveWorkspace()
+				ws := &workspace{
+					key:         key,
+					project:     a.project,
+					store:       s,
+					serverAlias: host,
+					remotePath:  remotePath,
+					layoutPath:  a.projectLayoutPath("remote:" + host + ":" + remotePath),
+					treeOpen:    true,
+					active:      -1,
+					openDirs:    map[string]bool{},
+				}
+				a.workspaces[key] = ws
+				a.activateWorkspace(ws)
+				if a.remotePickHost == host {
+					a.remotePickHost = ""
+				}
+				a.keepRemote(host)
+				a.rememberRemoteProject(remoteProject{Host: host, Path: remotePath})
+				if a.NoRestoreLayout || !a.restoreLayout() {
+					a.focusFirstNote()
+				}
+				if t := a.tab(); t != nil {
+					a.focusReq = t.editorPane()
+				}
+				a.revealTab = true
+				a.saveLayout()
+				a.saveSettings()
+				a.updateTitle()
+				a.invalidate()
+			})
+		}()
+	})
 }
 
 func (a *app) rememberRemoteProject(p remoteProject) {
@@ -401,16 +417,18 @@ func (a *app) rememberRemoteProject(p remoteProject) {
 // sequence guards results and its cancel stops the work.
 type remoteTask struct {
 	seq    int
+	host   string
 	cancel context.CancelFunc
 }
 
 // beginRemoteTask covers the window with a loading state and returns the
 // sequence that guards its result and the context that stops its work.
-func (a *app) beginRemoteTask(msg string) (int, *mygo.Window, context.Context) {
+func (a *app) beginRemoteTask(host, msg string) (int, *mygo.Window, context.Context) {
 	if a.remoteBusy {
 		return 0, nil, nil
 	}
 	a.remoteTask.seq++
+	a.remoteTask.host = host
 	ctx, cancel := context.WithCancel(context.Background())
 	a.remoteTask.cancel = cancel
 	a.remoteBusy = true
@@ -463,11 +481,20 @@ func (a *app) cancelRemoteTask() {
 	a.invalidate()
 }
 
+// cancelRemoteTaskForHost invalidates only work owned by host. A host
+// edit or removal must not cancel an unrelated connection already open.
+func (a *app) cancelRemoteTaskForHost(host string) {
+	if a.remoteBusy && a.remoteTask.host == host {
+		a.cancelRemoteTask()
+	}
+}
+
 func (a *app) stopRemoteTask() {
 	if a.remoteTask.cancel != nil {
 		a.remoteTask.cancel()
 		a.remoteTask.cancel = nil
 	}
+	a.remoteTask.host = ""
 }
 
 // onWindow runs fn on the window's thread when this build has one.

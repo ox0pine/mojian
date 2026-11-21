@@ -140,6 +140,49 @@ func TestKillEndsTheWholeProcessGroup(t *testing.T) {
 	}
 }
 
+func TestSlowAttachedStreamIsRemoved(t *testing.T) {
+	ss, err := newSession("slow-attach", CreateOptions{
+		Command: []string{"sh", "-c", "while :; do printf x; done"},
+		Cols:    40, Rows: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ss.kill()
+		select {
+		case <-ss.done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("overflow session did not stop")
+		}
+	})
+	ma, mb := newTestMuxes(t)
+	serverStream := ma.openStream(1)
+	_ = mb.openStream(1)
+	go ss.attach(serverStream, 40, 10)
+
+	deadline := time.Now().Add(3 * time.Second)
+	attached := false
+	for {
+		ss.mu.Lock()
+		clients := len(ss.clients)
+		ss.mu.Unlock()
+		attached = attached || clients > 0
+		if attached && clients == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("slow attachment leaked %d client references", clients)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-ma.quit:
+		t.Fatal("slow attachment closed the whole mux")
+	default:
+	}
+}
+
 func TestListTreeHashesAssetsByContent(t *testing.T) {
 	c, dir := startOpsServer(t)
 	root := filepath.Join(dir, "project")

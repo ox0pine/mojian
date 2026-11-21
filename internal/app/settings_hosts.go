@@ -379,23 +379,23 @@ func (a *app) checkHostServer(host string) {
 	}
 	st.checked, st.checking = true, true
 	st.checkSeq++
-	seq := st.checkSeq
+	seq, windowSeq := st.checkSeq, a.windowSeq
 	if a.win == nil && a.settingsWin == nil {
 		running, _ := hostServerRunningFn(context.Background(), host)
-		a.finishHostCheck(host, seq, running)
+		a.finishHostCheck(host, seq, windowSeq, running)
 		return
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
 		running, _ := hostServerRunningFn(ctx, host)
-		a.onUpdateUI(func() { a.finishHostCheck(host, seq, running) })
+		a.onUpdateUI(func() { a.finishHostCheck(host, seq, windowSeq, running) })
 	}()
 }
 
-func (a *app) finishHostCheck(host string, seq int, running bool) {
+func (a *app) finishHostCheck(host string, seq, windowSeq int, running bool) {
 	st := a.hostStates[host]
-	if st == nil || st.checkSeq != seq {
+	if st == nil || st.checkSeq != seq || windowSeq != a.windowSeq {
 		return
 	}
 	st.running = running
@@ -471,20 +471,29 @@ func (a *app) saveHostEdit(host string) {
 		}
 		a.hosts()[i].Name, a.hosts()[i].Address = name, addr
 		if addr != host {
-			if a.serverAlias == host {
-				a.serverAlias = addr
-			}
+			a.cancelRemoteTaskForHost(host)
 			delete(a.hostStates, host)
 			delete(a.hostStates, addr)
 			if a.hostStopAddr == host {
-				a.hostStopAddr = addr
+				a.hostStopAddr = ""
 			}
 			if a.hostSetupAddr == host {
-				a.hostSetupAddr = addr
+				a.hostSetupSeq++
+				a.hostSetupAddr, a.hostSetupBusy = "", false
+				a.hostSetupMsg, a.hostSetupErr = "", ""
 			}
 			delete(a.remoteHomes, host)
 			delete(a.remoteHomes, addr)
 			delete(a.remoteKeep, host)
+			// Move every terminal with the workspace, so reconnect and Kill
+			// use the new address instead of the closed connection.
+			a.eachTerminalOn(host, func(p *pane) {
+				detachTerminalView(p)
+				p.Term.Spec.Server = addr
+				p.Term.Client = nil
+				p.Term.startErr = ""
+				p.Term.connecting = false
+			})
 			if rc := a.remoteConn(host); rc != nil {
 				a.detachRemoteConn(rc)
 			}
@@ -499,6 +508,9 @@ func (a *app) saveHostEdit(host string) {
 			}
 			for _, ws := range rekey {
 				a.workspaces[ws.key] = ws
+			}
+			if a.serverAlias == host {
+				a.serverAlias = addr
 			}
 			for j := range a.remoteProjects() {
 				if a.remoteProjects()[j].Host == host {
@@ -520,53 +532,75 @@ func (a *app) removeHost(address string) {
 		if h.Address != address {
 			continue
 		}
-		current := a.serverAlias == address
-		if current {
-			if err := a.saveNow(); err != nil {
-				a.fail(err)
-				return
-			}
-		}
-		a.hostService().RemoveHost(address)
-		a.hostService().RemoveProjects(address)
-		a.hostRemoveAddr = ""
-		a.hostStopAddr = ""
-		delete(a.hostStates, address)
-		delete(a.remoteKeep, address)
-		delete(a.remoteHomes, address)
-		if a.hostSetupAddr == address {
-			a.hostSetupAddr, a.hostSetupBusy = "", false
-			a.hostSetupMsg, a.hostSetupErr = "", ""
-		}
-		for key, ws := range a.workspaces {
-			if ws.serverAlias != address {
-				continue
-			}
-			closeWorkspaceTerminals(ws)
-			delete(a.workspaces, key)
-		}
-		if current {
-			a.stopAgentTask()
-			host := a.serverAlias
-			prevProject := a.project
-			a.dropPickerRemote()
-			a.serverAlias, a.remotePath = "", ""
-			a.abandonActiveWorkspace()
-			a.project = prevProject
-			a.releaseRemote(host)
-			a.saveSettings()
-			a.later(func() {
-				if prevProject != "" {
-					a.openProject(prevProject)
+		a.cancelRemoteTaskForHost(address)
+		if a.serverAlias == address {
+			a.saveNowAsync(func(err error) {
+				if err != nil {
+					a.fail(err)
+					return
 				}
+				a.removeHostNow(address)
 			})
-		} else {
-			a.releaseRemote(address)
-			a.saveSettings()
+			return
 		}
-		a.invalidate()
+		a.removeHostNow(address)
 		return
 	}
+}
+
+// removeHostNow revalidates the host after an asynchronous save, then
+// drops its workspaces and invalidates every operation that names it.
+func (a *app) removeHostNow(address string) {
+	found := false
+	for _, h := range a.hosts() {
+		found = found || h.Address == address
+	}
+	if !found {
+		return
+	}
+	// A second open may have started while the removal was waiting for
+	// its save. Cancel it again immediately before mutating host state.
+	a.cancelRemoteTaskForHost(address)
+	current := a.serverAlias == address
+	a.hostService().RemoveHost(address)
+	a.hostService().RemoveProjects(address)
+	a.hostRemoveAddr = ""
+	a.hostStopAddr = ""
+	delete(a.hostStates, address)
+	delete(a.remoteKeep, address)
+	delete(a.remoteHomes, address)
+	if a.hostSetupAddr == address {
+		a.hostSetupSeq++
+		a.hostSetupAddr, a.hostSetupBusy = "", false
+		a.hostSetupMsg, a.hostSetupErr = "", ""
+	}
+	for key, ws := range a.workspaces {
+		if ws.serverAlias != address {
+			continue
+		}
+		closeWorkspaceTerminals(ws)
+		delete(a.workspaces, key)
+	}
+	if current {
+		a.stopAgentTask()
+		host := a.serverAlias
+		prevProject := a.project
+		a.dropPickerRemote()
+		a.serverAlias, a.remotePath = "", ""
+		a.abandonActiveWorkspace()
+		a.project = prevProject
+		a.releaseRemote(host)
+		a.saveSettings()
+		a.later(func() {
+			if prevProject != "" {
+				a.openProject(prevProject)
+			}
+		})
+	} else {
+		a.releaseRemote(address)
+		a.saveSettings()
+	}
+	a.invalidate()
 }
 
 func (a *app) selectServer(host string) {

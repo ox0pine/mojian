@@ -18,23 +18,23 @@ import (
 	"mojian/internal/filekind"
 )
 
-// ProtocolVersion changes when the wire protocol does. Version 4 frames
-// every message and multiplexes control requests and terminal streams
-// over one connection, so it rides any byte stream, including the stdio
-// of an SSH command.
-const ProtocolVersion = 4
+// ProtocolVersion changes when the wire protocol does. Version 4 framed
+// every message and multiplexed control requests and terminal streams
+// over one connection. Version 5 adds chunked control responses.
+const ProtocolVersion = 5
 
 // The frame types. A connection starts with a frameHello each way; after
 // that the client sends requests, opens streams and writes data, and the
 // server answers and pushes both.
 const (
-	frameHello    byte = 1
-	frameRequest  byte = 2
-	frameResponse byte = 3
-	frameOpen     byte = 4
-	frameData     byte = 5
-	frameClose    byte = 6
-	frameError    byte = 7
+	frameHello        byte = 1
+	frameRequest      byte = 2
+	frameResponse     byte = 3
+	frameOpen         byte = 4
+	frameData         byte = 5
+	frameClose        byte = 6
+	frameError        byte = 7
+	frameResponsePart byte = 8
 )
 
 // frameHeaderSize is the u32 payload length, u8 type and u32 stream of
@@ -42,8 +42,16 @@ const (
 const frameHeaderSize = 9
 
 // maxFrame bounds one frame's payload, so a peer cannot make the server
-// or the app allocate without bound.
-const maxFrame = 64 << 20
+// or the app allocate without bound. maxResponse bounds the reassembled
+// control response; terminal streams are not subject to either total.
+const (
+	maxFrame    = 64 << 20
+	maxResponse = 256 << 20
+
+	// A response fragment carries an int64 request ID and uint32 offset
+	// and total sizes before its slice of the response's JSON bytes.
+	responsePartHeaderSize = 16
+)
 
 type frame struct {
 	typ     byte
@@ -96,6 +104,37 @@ func readFrame(r *bufio.Reader) (frame, error) {
 		}
 	}
 	return f, nil
+}
+
+// writeResponse sends a response in bounded frames. Small responses keep
+// the version 4 representation; larger ones carry their JSON in ordered
+// fragments with the request ID in every frame.
+func writeResponse(m *mux, res Response) error {
+	b, err := json.Marshal(res)
+	if err != nil {
+		b, _ = json.Marshal(Response{ID: res.ID, Error: "session: could not encode response"})
+	}
+	if len(b) > maxResponse {
+		b, _ = json.Marshal(Response{
+			ID: res.ID, Error: fmt.Sprintf("session: response is larger than %d MiB", maxResponse>>20),
+		})
+	}
+	if len(b) <= maxFrame {
+		return m.writeControl(frameResponse, b)
+	}
+	for offset := 0; offset < len(b); {
+		n := min(len(b)-offset, maxFrame-responsePartHeaderSize)
+		payload := make([]byte, responsePartHeaderSize+n)
+		binary.BigEndian.PutUint64(payload[0:8], uint64(res.ID))
+		binary.BigEndian.PutUint32(payload[8:12], uint32(offset))
+		binary.BigEndian.PutUint32(payload[12:16], uint32(len(b)))
+		copy(payload[responsePartHeaderSize:], b[offset:offset+n])
+		if err := m.writeControl(frameResponsePart, payload); err != nil {
+			return err
+		}
+		offset += n
+	}
+	return nil
 }
 
 // ProtocolError says a running server speaks another protocol version.

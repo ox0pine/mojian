@@ -12,9 +12,11 @@ func (a *app) initCommands() {
 	r.Bind("trash", func() { a.trashSelection() })
 	r.Bind("new-tab", func() { a.newTab() })
 	r.Bind("save", func() {
-		if err := a.saveNow(); err != nil {
-			a.fail(err)
-		}
+		a.saveNowAsync(func(err error) {
+			if err != nil {
+				a.fail(err)
+			}
+		})
 	})
 	r.Bind("focus-left", func() { a.focusPaneDirection(paneLeft) })
 	r.Bind("focus-right", func() { a.focusPaneDirection(paneRight) })

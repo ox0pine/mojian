@@ -27,7 +27,7 @@ func TestRemoteBusyCoversTheWindow(t *testing.T) {
 func TestRemoteBusyCancelStopsTask(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)
-	seq, _, ctx := a.beginRemoteTask("Connecting to Buildbox…")
+	seq, _, ctx := a.beginRemoteTask("buildbox", "Connecting to Buildbox…")
 	tt := ui.NewTester(a.view, 1100, 700)
 	tt.Frame()
 	if err := tt.Click("Cancel"); err != nil {
@@ -52,7 +52,7 @@ func TestRemoteBusyCancelStopsTask(t *testing.T) {
 
 func TestClosingTheWindowCancelsTheRemoteTask(t *testing.T) {
 	a := newProjectApp(t)
-	seq, _, ctx := a.beginRemoteTask("Reconnecting to Buildbox…")
+	seq, _, ctx := a.beginRemoteTask("buildbox", "Reconnecting to Buildbox…")
 	a.windowClosed()
 	if a.remoteBusy {
 		t.Fatal("the closed window left its loading card on")

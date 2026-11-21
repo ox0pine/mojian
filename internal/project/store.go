@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -236,33 +237,107 @@ func relPath(dir, p string) string {
 // the bytes it was loaded from or last saved as.
 var ErrFileChanged = errors.New("file changed outside mojian")
 
-// Save writes n if it changed, refusing to overwrite external edits.
-func (s *Store) Save(n *Note) error {
+// SaveSnapshot is the immutable text and on-disk baseline of one dirty
+// note. Snapshotting and committing belong to the UI thread; WriteSnapshot
+// does the slow file operations without touching the note or its buffer.
+type SaveSnapshot struct {
+	note  *Note
+	rel   string
+	saved string
+	body  string
+}
+
+// SnapshotSave serializes n as it stands now. The boolean is false when
+// its bytes already match the last saved baseline.
+func (s *Store) SnapshotSave(n *Note) (SaveSnapshot, bool, error) {
 	body, err := n.fileText()
 	if err != nil {
-		return fmt.Errorf("serializing %s: %w", n.Rel, err)
+		return SaveSnapshot{}, false, fmt.Errorf("serializing %s: %w", n.Rel, err)
 	}
 	if body == n.Saved {
-		return nil
+		return SaveSnapshot{}, false, nil
 	}
-	if !s.IsMemory() {
-		current, err := s.FS.Read(n.Rel)
+	return SaveSnapshot{note: n, rel: n.Rel, saved: n.Saved, body: body}, true, nil
+}
+
+// DirtySnapshots serializes every dirty note on the calling thread. It
+// returns all usable snapshots even when one buffer cannot be serialized.
+func (s *Store) DirtySnapshots() ([]SaveSnapshot, error) {
+	var snapshots []SaveSnapshot
+	var first error
+	for _, n := range s.Notes {
+		if !n.Dirty() {
+			continue
+		}
+		snapshot, changed, err := s.SnapshotSave(n)
 		if err != nil {
-			return fmt.Errorf("checking %s before saving: %w", n.Rel, err)
+			if first == nil {
+				first = err
+			}
+			continue
 		}
-		if string(current) != n.Saved {
-			return fmt.Errorf("%s: %w; local edits were kept; copy them elsewhere before reloading", n.Rel, ErrFileChanged)
+		if changed {
+			snapshots = append(snapshots, snapshot)
 		}
 	}
-	if err := s.FS.Write(n.Rel, []byte(body)); err != nil {
-		return err
+	return snapshots, first
+}
+
+// WriteSnapshot checks and writes one snapshot without changing the note.
+// A server backend uses its context operations so an abandoned save stops
+// waiting for its RPC; the server may still finish a request already sent.
+func (s *Store) WriteSnapshot(ctx context.Context, snapshot SaveSnapshot) error {
+	if !s.IsMemory() {
+		var current []byte
+		var err error
+		if backend, ok := s.FS.(interface {
+			ReadContext(context.Context, string) ([]byte, error)
+		}); ok {
+			current, err = backend.ReadContext(ctx, snapshot.rel)
+		} else {
+			current, err = s.FS.Read(snapshot.rel)
+		}
+		if err != nil {
+			return fmt.Errorf("checking %s before saving: %w", snapshot.rel, err)
+		}
+		if string(current) != snapshot.saved {
+			return fmt.Errorf("%s: %w; local edits were kept; copy them elsewhere before reloading", snapshot.rel, ErrFileChanged)
+		}
 	}
-	n.Saved = body
-	n.Title = NoteTitle(body, n.Path)
+	if backend, ok := s.FS.(interface {
+		WriteContext(context.Context, string, []byte) error
+	}); ok {
+		return backend.WriteContext(ctx, snapshot.rel, []byte(snapshot.body))
+	}
+	return s.FS.Write(snapshot.rel, []byte(snapshot.body))
+}
+
+// CommitSnapshot records a successful write. Newer edits stay dirty: the
+// saved baseline advances to the bytes now on disk, but MarkSaved is only
+// valid while the buffer still serializes to those same bytes.
+func (s *Store) CommitSnapshot(snapshot SaveSnapshot) {
+	n := snapshot.note
+	if n == nil || n.Rel != snapshot.rel {
+		return
+	}
+	n.Saved = snapshot.body
+	n.Title = NoteTitle(snapshot.body, n.Path)
 	n.Mod = time.Now()
-	if n.Buf != nil {
+	if current, err := n.fileText(); err == nil && current == snapshot.body && n.Buf != nil {
 		n.Buf.MarkSaved()
 	}
+}
+
+// Save writes n if it changed, refusing to overwrite external edits.
+func (s *Store) Save(n *Note) error {
+	snapshot, changed, err := s.SnapshotSave(n)
+	if err != nil || !changed {
+		return err
+	}
+	if err := s.WriteSnapshot(context.Background(), snapshot); err != nil {
+		return err
+	}
+	s.CommitSnapshot(snapshot)
 	return nil
 }
 

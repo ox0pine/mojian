@@ -196,8 +196,7 @@ func (s *Server) dispatch(m *mux, f frame) {
 			return
 		}
 		go func(req Request) {
-			b, _ := json.Marshal(s.request(req))
-			_ = m.writeControl(frameResponse, b)
+			_ = writeResponse(m, s.request(req))
 		}(req)
 	case frameOpen:
 		var o openRequest
@@ -225,7 +224,7 @@ func (s *Server) dispatch(m *mux, f frame) {
 			return
 		}
 		if !ms.push(f.payload) {
-			ms.finish(errors.New("session: stream is too slow"))
+			_ = ms.closeWithError(errors.New("session: stream is too slow"))
 		}
 	case frameClose:
 		if ms := m.stream(f.stream); ms != nil {
@@ -584,7 +583,7 @@ func (s *session) attach(ms *muxStream, cols, rows int) {
 	}
 	s.mu.Unlock()
 	if full {
-		ms.finish(errors.New("session: stream is too slow"))
+		_ = ms.closeWithError(errors.New("session: stream is too slow"))
 		return
 	}
 	if exited {

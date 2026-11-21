@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+- Remote projects no longer block the window while saving or opening a terminal. Saves use
+  cancellable snapshot queues, Cancel covers directory and project listings, and host edits,
+  removals, stops and window changes cannot publish stale work or leak replaced SSH connections.
+- Remote provisioning atomically publishes the server and terminal library as one release, is safe
+  for concurrent devices, disables SSH TTY allocation, separates diagnostics from probe data,
+  preserves non-protocol connection errors, confirms server shutdown and reaps child processes.
+- Session protocol 5 chunks control responses over 64 MiB without dropping terminals, bounds
+  reassembly, and closes slow streams at both ends. Remote hosts require Linux x86_64 or arm64
+  with GNU glibc; musl systems such as Alpine are unsupported.
+
 ## 0.5.3
 
 - Compact layouts keep file identity: pane titles stay readable at narrow splits, long branches

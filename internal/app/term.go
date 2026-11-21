@@ -107,12 +107,9 @@ func (a *app) splitTerminalSide(from *pane, side splitSide) {
 	if t == nil || from == nil || from.Term == nil || !t.contains(from) {
 		return
 	}
-	tt, err := a.startTerminalSpec(from.Term.Spec)
-	if err != nil {
-		a.fail(err)
-		return
-	}
-	a.addSplitTerminalSide(from, tt, side)
+	a.startTerminalInPane(from.Term.Spec, func(tt *termTab) *pane {
+		return a.addSplitTerminalSide(from, tt, side)
+	})
 }
 
 func (a *app) addSplitTerminalSide(from *pane, tt *termTab, side splitSide) *pane {
@@ -143,15 +140,10 @@ func (a *app) newTerminalPane() {
 		a.fail(errors.New("terminals need a project on disk"))
 		return
 	}
-	tt, err := a.startTerminal()
-	if err != nil {
-		a.fail(err)
-		return
-	}
 	if a.terminalTab() == nil {
 		return
 	}
-	a.addTerminalPane(tt)
+	a.startTerminalInPane(termSpec{}, a.addTerminalPane)
 }
 
 // terminalTab returns the active tab, opening an empty one when no file
@@ -190,6 +182,32 @@ func (a *app) addTerminalPane(tt *termTab) *pane {
 	a.changed()
 	a.invalidate()
 	return p
+}
+
+// startTerminalInPane puts a connecting remote pane in the layout before
+// doing network or session work. Local terminals and shellStarter retain
+// their synchronous creation path.
+func (a *app) startTerminalInPane(spec termSpec, add func(*termTab) *pane) *pane {
+	if a.shellStarter == nil && spec.Host == "" {
+		server := spec.Server
+		if server == "" {
+			server = a.defaultTerminalServer()
+		}
+		if server != localServerID {
+			spec.Server = server
+			p := add(&termTab{Spec: spec})
+			if p != nil {
+				a.startRemoteTerminal(p)
+			}
+			return p
+		}
+	}
+	tt, err := a.startTerminalSpec(spec)
+	if err != nil {
+		a.fail(err)
+		return nil
+	}
+	return add(tt)
 }
 
 // startTerminal starts the login shell without adding it to a tab.

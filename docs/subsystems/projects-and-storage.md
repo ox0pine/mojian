@@ -34,14 +34,16 @@ the save path, path guards and the asset cache.
 1. A tree row click reaches `(*app).openRel`, which asks `store.ByRelPath` for the note and calls
    `(*app).openNote`. The pane keeps a `*project.Note`; the pane renders `Note.Buffer()`, one
    `*editor.Buffer` shared by every pane showing that file.
-2. `⌘S` (**Save All**) runs `(*app).saveNow` → `store.SaveAll` → `store.Save` → the project's `fs.Backend`. A
-   `Direct` backend writes with `fs.WriteFileAtomic`; a `Server` backend calls
-   `session.Client.WriteFile` for a local server and the same call over the SSH forward for a remote
-   one. Before writing, `Store.Save` reads the current file and compares its exact bytes with
-   `Note.Saved`, the baseline from the last load or successful save. A mismatch returns
-   `project.ErrFileChanged`; a read failure also aborts the save. The buffer is serialized with
-   `Buffer.WriteTo`, preserving its LF or CRLF line endings. Only a successful write updates the
-   baseline and calls `buf.MarkSaved()`.
+2. `⌘S` (**Save All**) runs `(*app).saveNowAsync`. Local projects keep the synchronous
+   `store.SaveAll` → `store.Save` path. For a remote project the UI thread serializes each dirty
+   buffer into an immutable `SaveSnapshot`; a goroutine performs `ReadFile` and `WriteFile` through
+   the context-aware session API, and the UI thread commits the result. Before writing, the store
+   compares the current file's exact bytes with the snapshot's `Note.Saved` baseline. A mismatch
+   returns `project.ErrFileChanged`; a read failure also aborts that note's save. Serialization
+   uses `Buffer.WriteTo`, preserving LF or CRLF. A successful write advances `Saved`, but calls
+   `buf.MarkSaved()` only when the current buffer still equals the snapshot; newer edits stay dirty
+   and are written by another pass. Saves are serialized per store, and switching projects, closing
+   a host or closing the window waits for the queue or an explicit discard decision.
 3. `Store.Refresh` reads one listing and reconciles it into notes, assets and the tree: notes keep
    their shared buffers; a direct listing reloads changed clean notes in place with `Buffer.Reset`,
    while dirty notes retain both their edits and saved baseline. Vanished clean files drop out;

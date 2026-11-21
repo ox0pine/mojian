@@ -99,7 +99,7 @@ Search finds preferences by name or keyword, and `Cmd+F` focuses the search fiel
 2. Choose **Set Up Server** on its row. Mojian uploads `mojian-server` and `libghostty-vt` to `~/.local/share/mojian` and checks that the server answers.
 3. Choose the host from the server chip and open a folder.
 
-Setup requires no root access, listening port, or system service.
+Setup requires no root access, listening port, or system service. Remote hosts must be Linux x86_64 or arm64 with GNU glibc; musl-based systems such as Alpine are not supported by the embedded server and terminal library.
 
 The Explorer lists files on the host. Files are read when opened, and saves and file operations write straight back. Git also runs on the host. Once opened, a project stays loaded, so switching back restores its tabs and terminals without reading it again.
 

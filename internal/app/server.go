@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,13 +21,20 @@ const localServerID = "local"
 // open project. File contents are read when a file is opened, not when
 // the tree is.
 func openServerStore(client *session.Client, root, cache string, local bool) (*store, error) {
+	return openServerStoreContext(context.Background(), client, root, cache, local)
+}
+
+func openServerStoreContext(ctx context.Context, client *session.Client, root, cache string, local bool) (*store, error) {
 	if client == nil || root == "" {
 		return nil, fmt.Errorf("server project needs a connection and a folder")
 	}
-	s := project.New(fs.NewServer(client, root, cache, local))
-	if err := s.Refresh(); err != nil {
+	backend := fs.NewServer(client, root, cache, local)
+	s := project.New(backend)
+	entries, bodies, err := backend.ListFreshContext(ctx)
+	if err != nil {
 		return nil, err
 	}
+	s.Apply(entries, bodies)
 	return s, nil
 }
 

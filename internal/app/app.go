@@ -43,8 +43,12 @@ type app struct {
 	// screen.
 	startup Startup
 
-	win  *mygo.Window
-	tray *mygo.Tray
+	win       *mygo.Window
+	tray      *mygo.Tray
+	windowSeq int
+	// native distinguishes the running desktop app from no-window tests:
+	// production drops background callbacks when every window is gone.
+	native bool
 
 	dataDir      string
 	settingsPath string
@@ -158,6 +162,7 @@ type app struct {
 	hostStopAddr    string
 	hostSetupAddr   string
 	hostSetupBusy   bool
+	hostSetupSeq    int
 	hostSetupMsg    string
 	hostSetupErr    string
 	hostStates      map[string]*hostState
@@ -178,6 +183,10 @@ type app struct {
 	loaded        bool
 	quitting      bool
 	saveSkipped   bool
+	quitReady     bool
+	closeReady    bool
+	saveTask      saveTask
+	saveWaiters   []saveWaiter
 	pending       []func()
 
 	edID    string
@@ -191,6 +200,7 @@ func Run(startup Startup) {
 		workspace: &workspace{},
 		Prefs:     prefs.Default(),
 		startup:   startup,
+		native:    true,
 	}
 	if !a.takeSingleInstance() {
 		// Another Mojian is running: it received this launch's command
@@ -216,13 +226,30 @@ func Run(startup Startup) {
 			mygo.App.Quit()
 		}
 	})
+	mygo.App.OnQuitCanceled(func() {
+		a.quitting = false
+		a.quitReady = false
+	})
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
 		a.quitting = true
-		if !a.saveSkipped {
-			if err := a.saveNow(); err != nil {
-				// Keep the window and its unsaved text: a lost remote
-				// connection or a full disk must not discard edits.
-				e.PreventDefault()
+		if e.SessionEnding {
+			// Logout and shutdown cannot be delayed. Do not leave a
+			// goroutine or a save-error dialog behind when the process ends.
+			a.saveWaiters = nil
+			a.cancelRemoteSave()
+			if !a.saveSkipped {
+				_ = a.saveNow()
+			}
+			a.finishQuit()
+			return
+		}
+		if a.quitReady || a.saveSkipped {
+			a.finishQuit()
+			return
+		}
+		e.PreventDefault()
+		a.saveNowAsync(func(err error) {
+			if err != nil {
 				a.quitting = false
 				a.askQuit(err, func() {
 					a.saveSkipped = true
@@ -230,18 +257,23 @@ func Run(startup Startup) {
 				})
 				return
 			}
-		}
-		a.closeWorkspaces()
-		if a.sessionClient != nil {
-			_ = a.sessionClient.Close()
-			a.sessionClient = nil
-		}
-		if a.settingsWin != nil {
-			a.settingsWin.Close()
-		}
+			a.quitReady = true
+			mygo.App.Quit()
+		})
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func (a *app) finishQuit() {
+	a.closeWorkspaces()
+	if a.sessionClient != nil {
+		_ = a.sessionClient.Close()
+		a.sessionClient = nil
+	}
+	if a.settingsWin != nil {
+		a.settingsWin.Close()
 	}
 }
 
@@ -311,6 +343,8 @@ func (a *app) open() {
 	}
 	a.quitting = false
 	a.saveSkipped = false
+	a.quitReady = false
+	a.closeReady = false
 	if a.loaded && a.serverAlias != "" && a.remotePath != "" {
 		// Reopening a window on a remote project reconnects behind the
 		// loading card instead of holding the window back.

@@ -35,79 +35,81 @@ func (a *app) openRemotePicker(host string) {
 		return
 	}
 	a.remoteOpening = false
-	if err := a.saveNow(); err != nil {
-		a.fail(fmt.Errorf("could not save the open project: %w", err))
-		return
-	}
-	a.closeModals()
-	a.initWorkspaces()
-	a.remoteList = ui.ListState{}
-	cachedHome := a.remoteHomes[host]
-	existing := a.remoteForHost(host)
-	if existing != nil && cachedHome != "" {
-		a.showRemotePicker(host, cachedHome, existing)
-		return
-	}
-	msg := "Connecting to " + a.hostLabel(host) + "…"
-	if existing != nil {
-		msg = "Reading folders on " + a.hostLabel(host) + "…"
-	}
-	seq, win, ctx := a.beginRemoteTask(msg)
-	if seq == 0 {
-		return
-	}
-	go func() {
-		rc := existing
-		var err error
-		if rc == nil {
-			rc, err = remote.DialContext(ctx, host)
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.fail(fmt.Errorf("could not save the open project: %w", err))
+			return
 		}
-		home := cachedHome
-		var dirs []session.FileEntry
-		if err == nil && home == "" {
-			home, err = remote.SSHOutputContext(ctx, host, `printf %s "$HOME"`)
+		a.closeModals()
+		a.initWorkspaces()
+		a.remoteList = ui.ListState{}
+		cachedHome := a.remoteHomes[host]
+		existing := a.remoteForHost(host)
+		if existing != nil && cachedHome != "" {
+			a.showRemotePicker(host, cachedHome, existing)
+			return
 		}
-		if err == nil {
-			onWindow(win, func() { a.setRemoteBusyMsg(seq, "Reading folders on "+a.hostLabel(host)+"…") })
-			dirs, err = rc.Client.ListDirs(home)
+		msg := "Connecting to " + a.hostLabel(host) + "…"
+		if existing != nil {
+			msg = "Reading folders on " + a.hostLabel(host) + "…"
 		}
-		onWindow(win, func() {
-			if !a.endRemoteTask(seq) {
-				if rc != nil && rc != existing {
-					a.detachRemoteConn(rc)
+		seq, win, ctx := a.beginRemoteTask(host, msg)
+		if seq == 0 {
+			return
+		}
+		go func() {
+			rc := existing
+			var err error
+			if rc == nil {
+				rc, err = remote.DialContext(ctx, host)
+			}
+			home := cachedHome
+			var dirs []session.FileEntry
+			if err == nil && home == "" {
+				home, err = remote.SSHOutputContext(ctx, host, `printf %s "$HOME"`)
+			}
+			if err == nil {
+				onWindow(win, func() { a.setRemoteBusyMsg(seq, "Reading folders on "+a.hostLabel(host)+"…") })
+				dirs, err = rc.Client.ListDirsContext(ctx, home)
+			}
+			onWindow(win, func() {
+				if !a.endRemoteTask(seq) {
+					if rc != nil && rc != existing {
+						a.detachRemoteConn(rc)
+					}
+					return
 				}
-				return
-			}
-			if err != nil {
-				if rc != nil && rc != existing {
-					a.detachRemoteConn(rc)
+				if err != nil {
+					if rc != nil && rc != existing {
+						a.detachRemoteConn(rc)
+					}
+					a.fail(err)
+					return
 				}
-				a.fail(err)
-				return
-			}
-			if home != "" {
-				if a.remoteHomes == nil {
-					a.remoteHomes = map[string]string{}
+				if home != "" {
+					if a.remoteHomes == nil {
+						a.remoteHomes = map[string]string{}
+					}
+					a.remoteHomes[host] = home
 				}
-				a.remoteHomes[host] = home
-			}
-			if rc != nil {
-				a.installRemoteConn(rc)
-				a.remotePickHost = host
-			} else {
-				a.remotePickHost = ""
-			}
-			a.remoteHost = host
-			a.remoteQuery = home
-			a.remoteDirs = dirs
-			a.remoteDirsSeq++
-			a.remoteDirsBusy = false
-			a.remoteErr = ""
-			a.remotePicker = true
-			a.serverOpen = false
-			a.invalidate()
-		})
-	}()
+				if rc != nil {
+					a.installRemoteConn(rc)
+					a.remotePickHost = host
+				} else {
+					a.remotePickHost = ""
+				}
+				a.remoteHost = host
+				a.remoteQuery = home
+				a.remoteDirs = dirs
+				a.remoteDirsSeq++
+				a.remoteDirsBusy = false
+				a.remoteErr = ""
+				a.remotePicker = true
+				a.serverOpen = false
+				a.invalidate()
+			})
+		}()
+	})
 }
 
 // showRemotePicker opens the folder picker at home on a connected host,
@@ -438,6 +440,8 @@ func (a *app) setUpHost(host string) {
 		return
 	}
 	existing := a.remoteForHost(host)
+	a.hostSetupSeq++
+	seq, windowSeq := a.hostSetupSeq, a.windowSeq
 	a.hostSetupAddr = host
 	a.hostSetupBusy = true
 	a.hostSetupMsg = "Connecting to " + a.hostLabel(host) + "…"
@@ -445,23 +449,22 @@ func (a *app) setUpHost(host string) {
 	a.invalidate()
 	if a.win == nil && a.settingsWin == nil {
 		setup, err := provisionRemoteFn(host, existing)
-		a.finishHostSetup(host, setup, err)
+		a.finishHostSetup(host, seq, windowSeq, setup, err)
 		return
 	}
 	go func() {
 		setup, err := provisionRemoteFn(host, existing)
-		a.onUpdateUI(func() { a.finishHostSetup(host, setup, err) })
+		a.onUpdateUI(func() { a.finishHostSetup(host, seq, windowSeq, setup, err) })
 	}()
 }
 
 // finishHostSetup lands a setup result on the thread that owns the
 // Settings window.
-func (a *app) finishHostSetup(host string, setup *remote.Setup, err error) {
-	if a.hostSetupAddr != host {
+func (a *app) finishHostSetup(host string, seq, windowSeq int, setup *remote.Setup, err error) {
+	if seq != a.hostSetupSeq || windowSeq != a.windowSeq || a.hostSetupAddr != host {
 		if setup != nil && setup.Conn != nil && a.remoteConn(setup.Conn.Host) != setup.Conn {
 			a.detachRemoteConn(setup.Conn)
 		}
-		a.hostSetupBusy = false
 		return
 	}
 	a.hostSetupBusy = false
@@ -510,26 +513,28 @@ func (a *app) stopHostServer(host string) {
 	if host == "" || a.hostSetupBusy {
 		return
 	}
+	a.hostSetupSeq++
+	seq, windowSeq := a.hostSetupSeq, a.windowSeq
+	a.cancelRemoteTaskForHost(host)
 	a.hostSetupAddr = host
 	a.hostSetupBusy = true
 	a.hostSetupMsg = "Stopping the server on " + a.hostLabel(host) + "…"
 	a.hostSetupErr = ""
 	a.invalidate()
 	if a.win == nil && a.settingsWin == nil {
-		a.finishHostStop(host, stopRemoteFn(host))
+		a.finishHostStop(host, seq, windowSeq, stopRemoteFn(host))
 		return
 	}
 	go func() {
 		err := stopRemoteFn(host)
-		a.onUpdateUI(func() { a.finishHostStop(host, err) })
+		a.onUpdateUI(func() { a.finishHostStop(host, seq, windowSeq, err) })
 	}()
 }
 
 // finishHostStop lands a stop result on the thread that owns Settings and
 // drops the connection and terminal views the stopped server owned.
-func (a *app) finishHostStop(host string, err error) {
-	if a.hostSetupAddr != host {
-		a.hostSetupBusy = false
+func (a *app) finishHostStop(host string, seq, windowSeq int, err error) {
+	if seq != a.hostSetupSeq || windowSeq != a.windowSeq || a.hostSetupAddr != host {
 		return
 	}
 	a.hostSetupBusy = false

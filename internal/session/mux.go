@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -31,11 +32,12 @@ type mux struct {
 	cursor  int
 	nextID  uint32
 
-	ctrl chan frame
-	wake chan struct{}
-	quit chan struct{}
-	once sync.Once
-	err  error
+	ctrl   chan frame
+	wake   chan struct{}
+	quit   chan struct{}
+	once   sync.Once
+	closed bool
+	err    error
 }
 
 func newMux(rw io.ReadWriteCloser, r *bufio.Reader) *mux {
@@ -83,6 +85,7 @@ func (m *mux) readLoop(onFrame func(frame)) {
 func (m *mux) shutdown(err error) {
 	m.once.Do(func() {
 		m.mu.Lock()
+		m.closed = true
 		m.err = err
 		streams := make([]*muxStream, 0, len(m.streams))
 		for _, s := range m.streams {
@@ -120,17 +123,46 @@ func (m *mux) writeControl(typ byte, payload []byte) error {
 
 // writeFrame queues any frame for the writer goroutine.
 func (m *mux) writeFrame(f frame) error {
+	return m.writeFrameContext(context.Background(), f)
+}
+
+func (m *mux) writeFrameContext(ctx context.Context, f frame) error {
+	if err, closed := m.closedError(); closed {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	select {
 	case m.ctrl <- f:
+		// If shutdown raced the send, tell the caller not to wait for a
+		// writer that has already exited.
+		if err, closed := m.closedError(); closed {
+			return err
+		}
 		return nil
 	default:
 	}
 	select {
 	case m.ctrl <- f:
+		if err, closed := m.closedError(); closed {
+			return err
+		}
 		return nil
 	case <-m.quit:
 		return m.error()
+	case <-ctx.Done():
+		return ctx.Err()
 	}
+}
+
+func (m *mux) closedError() (error, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.closed {
+		return nil, false
+	}
+	return m.errLocked(), true
 }
 
 func (m *mux) writeLoop() {
@@ -241,6 +273,13 @@ func (m *mux) openStream(id uint32) *muxStream {
 		done: make(chan struct{}),
 	}
 	m.mu.Lock()
+	if m.closed {
+		s.err = m.errLocked()
+		s.finished = true
+		s.once.Do(func() { close(s.done) })
+		m.mu.Unlock()
+		return s
+	}
 	m.streams[id] = s
 	m.order = append(m.order, s)
 	m.mu.Unlock()
@@ -283,9 +322,10 @@ type muxStream struct {
 	mu  sync.Mutex
 	err error
 	// finished is read by the writer under the mux's lock.
-	finished bool
-	done     chan struct{}
-	once     sync.Once
+	finished  bool
+	done      chan struct{}
+	once      sync.Once
+	closeOnce sync.Once
 }
 
 // Read returns the peer's bytes, then the stream's error or io.EOF.
@@ -332,7 +372,7 @@ func (s *muxStream) Write(p []byte) (int, error) {
 	default:
 	}
 	if !s.enqueue(append([]byte(nil), p...)) {
-		s.finish(errors.New("session: stream is too slow"))
+		_ = s.closeWithError(errors.New("session: stream is too slow"))
 		return 0, io.ErrShortWrite
 	}
 	return len(p), nil
@@ -380,22 +420,39 @@ func (s *muxStream) readErr() error {
 }
 
 // Close tells the peer the stream ended, after the output already
-// queued, then finishes it locally.
-func (s *muxStream) Close() error {
-	select {
-	case <-s.done:
-	default:
-		select {
-		case s.out <- streamFrame{close: true}:
-			s.m.wakeup()
-		default:
-			// The peer stopped reading, so the backlog never drains: end
-			// the stream now rather than behind it.
-			_ = s.m.writeFrame(frame{typ: frameClose, stream: s.id})
+// queued, then finishes it locally. The close is sent even when a peer
+// error already finished the local side.
+func (s *muxStream) Close() error { return s.closeWithError(nil) }
+
+func (s *muxStream) closeWithError(streamErr error) error {
+	var err error
+	s.closeOnce.Do(func() {
+		if closeErr, closed := s.m.closedError(); closed {
+			err = closeErr
+			s.finish(streamErr)
+			return
 		}
-	}
-	s.finish(nil)
-	return nil
+		// nextData uses the same lock. Once a stream is marked finished
+		// it may leave the rotation at any moment, so a late close must
+		// use the control queue rather than an unreachable out queue.
+		s.m.mu.Lock()
+		queued := false
+		if !s.finished {
+			select {
+			case s.out <- streamFrame{close: true}:
+				queued = true
+			default:
+			}
+		}
+		s.m.mu.Unlock()
+		if queued {
+			s.m.wakeup()
+		} else {
+			err = s.m.writeFrame(frame{typ: frameClose, stream: s.id})
+		}
+		s.finish(streamErr)
+	})
+	return err
 }
 
 // finish ends the stream without telling the peer; the caller that owns

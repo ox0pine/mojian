@@ -4,6 +4,8 @@ package session
 
 import (
 	"bufio"
+	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,10 +22,18 @@ type Client struct {
 	mux   *mux
 	hello Hello
 
-	mu      sync.Mutex
-	nextID  int64
-	pending map[int64]chan Response
-	closed  chan struct{}
+	mu         sync.Mutex
+	nextID     int64
+	pending    map[int64]chan Response
+	assemblies map[int64]*responseAssembly
+	closed     chan struct{}
+}
+
+type responseAssembly struct {
+	owner    chan Response
+	data     []byte
+	total    int
+	received int
 }
 
 // Connect connects to the server, starting one in the background when
@@ -60,6 +70,12 @@ func NewClient(rw io.ReadWriteCloser) (*Client, error) {
 		}
 		_ = json.Unmarshal(f.payload, &e)
 		_ = rw.Close()
+		if e.Code == "protocol" {
+			server := 0
+			var wanted int
+			_, _ = fmt.Sscanf(e.Message, "server protocol %d, client wants %d", &server, &wanted)
+			return nil, &ProtocolError{Server: server, Client: ProtocolVersion}
+		}
 		if e.Message != "" {
 			return nil, errors.New(e.Message)
 		}
@@ -81,7 +97,8 @@ func NewClient(rw io.ReadWriteCloser) (*Client, error) {
 	m := newMux(rw, r)
 	c := &Client{
 		mux: m, hello: h,
-		pending: map[int64]chan Response{}, closed: make(chan struct{}),
+		pending: map[int64]chan Response{}, assemblies: map[int64]*responseAssembly{},
+		closed: make(chan struct{}),
 	}
 	m.start(c.onFrame)
 	go func() {
@@ -91,6 +108,7 @@ func NewClient(rw io.ReadWriteCloser) (*Client, error) {
 			ch <- Response{ID: id, Error: "session server connection lost"}
 			delete(c.pending, id)
 		}
+		clear(c.assemblies)
 		c.mu.Unlock()
 		close(c.closed)
 	}()
@@ -201,10 +219,13 @@ func (c *Client) onFrame(f frame) {
 		c.mu.Lock()
 		ch := c.pending[res.ID]
 		delete(c.pending, res.ID)
+		delete(c.assemblies, res.ID)
 		c.mu.Unlock()
 		if ch != nil {
 			ch <- res
 		}
+	case frameResponsePart:
+		c.onResponsePart(f.payload)
 	case frameOpen:
 		s := c.mux.stream(f.stream)
 		if s == nil {
@@ -221,7 +242,7 @@ func (c *Client) onFrame(f frame) {
 	case frameData:
 		if s := c.mux.stream(f.stream); s != nil {
 			if !s.push(f.payload) {
-				s.finish(errors.New("session: stream is too slow"))
+				_ = s.closeWithError(errors.New("session: stream is too slow"))
 			}
 		}
 	case frameClose:
@@ -231,7 +252,86 @@ func (c *Client) onFrame(f frame) {
 	}
 }
 
+func (c *Client) onResponsePart(payload []byte) {
+	if len(payload) < responsePartHeaderSize {
+		return
+	}
+	id := int64(binary.BigEndian.Uint64(payload[0:8]))
+	offset := uint64(binary.BigEndian.Uint32(payload[8:12]))
+	total := uint64(binary.BigEndian.Uint32(payload[12:16]))
+	n := uint64(len(payload) - responsePartHeaderSize)
+
+	c.mu.Lock()
+	owner := c.pending[id]
+	if owner == nil {
+		delete(c.assemblies, id)
+		c.mu.Unlock()
+		return
+	}
+	if total > maxResponse {
+		delete(c.pending, id)
+		delete(c.assemblies, id)
+		c.mu.Unlock()
+		owner <- Response{ID: id, Error: "session: response is too large"}
+		return
+	}
+	valid := total > 0 && offset < total && n > 0 && n <= total-offset
+	a := c.assemblies[id]
+	if a != nil && a.owner != owner {
+		delete(c.assemblies, id)
+		a = nil
+	}
+	if !valid || (a == nil && offset != 0) || (a != nil && (a.total != int(total) || a.received != int(offset))) {
+		delete(c.pending, id)
+		delete(c.assemblies, id)
+		c.mu.Unlock()
+		owner <- Response{ID: id, Error: "session: malformed response fragment"}
+		return
+	}
+	if a == nil {
+		c.mu.Unlock()
+		data := make([]byte, int(total))
+		c.mu.Lock()
+		if c.pending[id] != owner {
+			c.mu.Unlock()
+			return
+		}
+		a = &responseAssembly{owner: owner, data: data, total: int(total)}
+		c.assemblies[id] = a
+	}
+	c.mu.Unlock()
+
+	copy(a.data[int(offset):int(offset+n)], payload[responsePartHeaderSize:])
+	c.mu.Lock()
+	if c.assemblies[id] != a || c.pending[id] != owner {
+		c.mu.Unlock()
+		return
+	}
+	a.received += int(n)
+	complete := a.received == a.total
+	if complete {
+		delete(c.pending, id)
+		delete(c.assemblies, id)
+	}
+	c.mu.Unlock()
+	if !complete {
+		return
+	}
+	var res Response
+	if json.Unmarshal(a.data, &res) != nil || res.ID != id {
+		res = Response{ID: id, Error: "session: malformed response"}
+	}
+	owner <- res
+}
+
 func (c *Client) call(req Request, out any) error {
+	return c.callContext(context.Background(), req, out)
+}
+
+func (c *Client) callContext(ctx context.Context, req Request, out any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	ch := make(chan Response, 1)
 	c.mu.Lock()
 	select {
@@ -242,17 +342,25 @@ func (c *Client) call(req Request, out any) error {
 	}
 	c.nextID++
 	req.ID = c.nextID
+	b, _ := json.Marshal(req)
 	c.pending[req.ID] = ch
 	c.mu.Unlock()
-	b, _ := json.Marshal(req)
-	if err := c.mux.writeControl(frameRequest, b); err != nil {
-		c.mu.Lock()
-		delete(c.pending, req.ID)
-		c.mu.Unlock()
+	defer c.discardCall(req.ID, ch)
+	if err := c.mux.writeFrameContext(ctx, frame{typ: frameRequest, payload: b}); err != nil {
 		return err
+	}
+	timer := time.NewTimer(60 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 	select {
 	case res := <-ch:
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if res.Error != "" {
 			return errors.New(res.Error)
 		}
@@ -260,23 +368,41 @@ func (c *Client) call(req Request, out any) error {
 			return json.Unmarshal(res.Data, out)
 		}
 		return nil
-	case <-time.After(60 * time.Second):
-		c.mu.Lock()
-		delete(c.pending, req.ID)
-		c.mu.Unlock()
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
 		return fmt.Errorf("session: %s timed out", req.Op)
 	}
+}
+
+// discardCall removes only the request that owns ch. A late response or
+// cleanup must never remove a newer request that happens to reuse its ID.
+func (c *Client) discardCall(id int64, ch chan Response) {
+	c.mu.Lock()
+	if c.pending[id] == ch {
+		delete(c.pending, id)
+	}
+	if a := c.assemblies[id]; a != nil && a.owner == ch {
+		delete(c.assemblies, id)
+	}
+	c.mu.Unlock()
 }
 
 // Hello reports the handshake the server answered, without a round trip.
 func (c *Client) Hello() (Hello, error) { return c.hello, nil }
 
 func (c *Client) List() (out []SessionInfo, err error) {
-	err = c.call(Request{Op: "list"}, &out)
+	return c.ListContext(context.Background())
+}
+func (c *Client) ListContext(ctx context.Context) (out []SessionInfo, err error) {
+	err = c.callContext(ctx, Request{Op: "list"}, &out)
 	return
 }
 func (c *Client) Create(o CreateOptions) (out SessionInfo, err error) {
-	err = c.call(Request{Op: "create", Create: &o}, &out)
+	return c.CreateContext(context.Background(), o)
+}
+func (c *Client) CreateContext(ctx context.Context, o CreateOptions) (out SessionInfo, err error) {
+	err = c.callContext(ctx, Request{Op: "create", Create: &o}, &out)
 	return
 }
 func (c *Client) Kill(sid string) error { return c.call(Request{Op: "kill", SID: sid}, nil) }
@@ -376,21 +502,33 @@ func (s *Stream) Resize(cols, rows int) error {
 func (s *Stream) Close() error { return s.ms.Close() }
 
 func (c *Client) ListTree(root string) (out []FileEntry, err error) {
-	err = c.call(Request{Op: "listTree", Path: root}, &out)
+	return c.ListTreeContext(context.Background(), root)
+}
+func (c *Client) ListTreeContext(ctx context.Context, root string) (out []FileEntry, err error) {
+	err = c.callContext(ctx, Request{Op: "listTree", Path: root}, &out)
 	return
 }
 
 // ListTreeFresh is ListTree that bypasses the server's listing cache.
 func (c *Client) ListTreeFresh(root string) (out []FileEntry, err error) {
-	err = c.call(Request{Op: "listTree", Path: root, Fresh: true}, &out)
+	return c.ListTreeFreshContext(context.Background(), root)
+}
+func (c *Client) ListTreeFreshContext(ctx context.Context, root string) (out []FileEntry, err error) {
+	err = c.callContext(ctx, Request{Op: "listTree", Path: root, Fresh: true}, &out)
 	return
 }
 func (c *Client) ReadFile(path string) (data []byte, err error) {
-	err = c.call(Request{Op: "readFile", Path: path}, &data)
+	return c.ReadFileContext(context.Background(), path)
+}
+func (c *Client) ReadFileContext(ctx context.Context, path string) (data []byte, err error) {
+	err = c.callContext(ctx, Request{Op: "readFile", Path: path}, &data)
 	return
 }
 func (c *Client) WriteFile(path string, data []byte) error {
-	return c.call(Request{Op: "writeFile", Path: path, Data: data}, nil)
+	return c.WriteFileContext(context.Background(), path, data)
+}
+func (c *Client) WriteFileContext(ctx context.Context, path string, data []byte) error {
+	return c.callContext(ctx, Request{Op: "writeFile", Path: path, Data: data}, nil)
 }
 func (c *Client) Mkdir(path string) error { return c.call(Request{Op: "mkdir", Path: path}, nil) }
 func (c *Client) Rename(from, to string) error {
@@ -412,6 +550,9 @@ func (c *Client) Exec(dir string, args, env []string, timeout time.Duration) (re
 	return
 }
 func (c *Client) ListDirs(path string) (out []FileEntry, err error) {
-	err = c.call(Request{Op: "listDirs", Path: path}, &out)
+	return c.ListDirsContext(context.Background(), path)
+}
+func (c *Client) ListDirsContext(ctx context.Context, path string) (out []FileEntry, err error) {
+	err = c.callContext(ctx, Request{Op: "listDirs", Path: path}, &out)
 	return
 }

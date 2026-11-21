@@ -108,20 +108,30 @@ func (a *app) createWindow(stateKey string) *mygo.Window {
 		Content:         ui.View(a.view),
 	})
 	a.win = win
+	a.windowSeq++
+	a.closeReady = false
 	win.OnFocus(func() {
 		a.refreshProjectOnFocus()
 	})
 	win.OnClose(func(e *mygo.CloseEvent) {
-		if a.quitting || a.saveSkipped {
+		if a.quitting || a.saveSkipped || a.closeReady {
 			return
 		}
-		if err := a.saveNow(); err != nil {
-			e.PreventDefault()
-			a.askQuit(err, func() {
-				a.saveSkipped = true
-				win.Update(func() { win.Close() })
-			})
-		}
+		e.PreventDefault()
+		a.saveNowAsync(func(err error) {
+			if a.win != win {
+				return
+			}
+			if err != nil {
+				a.askQuit(err, func() {
+					a.saveSkipped = true
+					win.Update(func() { win.Close() })
+				})
+				return
+			}
+			a.closeReady = true
+			win.Update(func() { win.Close() })
+		})
 	})
 	win.OnClosed(func() {
 		a.windowClosed()
@@ -142,6 +152,18 @@ func (a *app) windowClosed() {
 	a.closeWorkspaces()
 	a.workspaces = nil
 	a.win = nil
+	a.windowSeq++
+	a.hostSetupSeq++
+	a.hostSetupAddr = ""
+	a.hostSetupBusy = false
+	a.hostSetupMsg, a.hostSetupErr = "", ""
+	for _, st := range a.hostStates {
+		st.checkSeq++
+		st.checking = false
+	}
+	a.closeReady = false
+	a.saveWaiters = nil
+	a.cancelRemoteSave()
 	a.reloadStore = nil
 	a.reloadSeq++
 	// A connection task belongs to the window that opened it: its result

@@ -757,7 +757,8 @@ func TestFinishHostSetupKeepsConnection(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 	rc := &remote.Conn{Host: "fedora", Client: client}
 	a.hostSetupAddr = "fedora"
-	a.finishHostSetup("fedora", &remote.Setup{Home: "/home/me", Conn: rc}, nil)
+	a.hostSetupSeq = 1
+	a.finishHostSetup("fedora", 1, 0, &remote.Setup{Home: "/home/me", Conn: rc}, nil)
 	if a.remoteConn("fedora") != rc {
 		t.Fatal("the setup connection was not pooled")
 	}

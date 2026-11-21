@@ -68,7 +68,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   `.FocusBind(&field, value)` for persistent fields, `handle.Focused(c)` for committed focus.
 - Slow work never runs in a view. Background results land through `Window.Update` and are dropped
   when a generation or sequence counter moved on — `git.Page.Seq`/`DiffSeq` and `assetView.pdfGen`
-  are the examples.
+  are the examples. Remote saves and new-terminal SSH/`Create` calls also run off the UI thread.
+  A normal window close prevents the close until its remote save finishes or the user explicitly
+  discards the edits; OS session ending keeps MyGo's synchronous best-effort save constraint.
+  `windowSeq`, `hostSetupSeq` and `remoteTask.seq` reject results from a closed window, replaced
+  operation or cancelled host, and production callbacks never mutate state directly on a worker
+  after every window has closed.
 - Bound values update after construction: `OnClick`/`OnShortcut` run after construction,
   `OnChange`/`OnSubmit` observe the rebuilt view.
 - The harness replaces native behavior through `a.harness`; any action that needs a real window or

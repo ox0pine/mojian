@@ -33,7 +33,10 @@ func Spawn() error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return cmd.Process.Release()
+	// Reap the detached child when its server eventually stops. Wait must
+	// have exactly one caller; the parent-side files still close above.
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 func spawnExecutable() (string, error) {

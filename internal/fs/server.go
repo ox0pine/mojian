@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -85,7 +86,13 @@ func (r *Server) LocalPath(rel string) (string, bool) {
 }
 
 func (r *Server) List() ([]session.FileEntry, map[string]string, error) {
-	entries, err := r.ctl().ListTree(r.root)
+	return r.ListContext(context.Background())
+}
+
+// ListContext lists through the caller's context so cancellation clears a
+// pending request even when the server continues its walk.
+func (r *Server) ListContext(ctx context.Context) ([]session.FileEntry, map[string]string, error) {
+	entries, err := r.ctl().ListTreeContext(ctx, r.root)
 	if err != nil {
 		return nil, nil, fmt.Errorf("listing the server project: %w", err)
 	}
@@ -95,7 +102,12 @@ func (r *Server) List() ([]session.FileEntry, map[string]string, error) {
 // ListFresh asks the server to re-walk the project instead of reusing
 // its short-lived listing cache.
 func (r *Server) ListFresh() ([]session.FileEntry, map[string]string, error) {
-	entries, err := r.ctl().ListTreeFresh(r.root)
+	return r.ListFreshContext(context.Background())
+}
+
+// ListFreshContext is ListFresh with caller cancellation.
+func (r *Server) ListFreshContext(ctx context.Context) ([]session.FileEntry, map[string]string, error) {
+	entries, err := r.ctl().ListTreeFreshContext(ctx, r.root)
 	if err != nil {
 		return nil, nil, fmt.Errorf("listing the server project: %w", err)
 	}
@@ -103,17 +115,27 @@ func (r *Server) ListFresh() ([]session.FileEntry, map[string]string, error) {
 }
 
 func (r *Server) Read(rel string) ([]byte, error) {
+	return r.ReadContext(context.Background(), rel)
+}
+
+// ReadContext is Read with cancellation of the caller's pending request.
+func (r *Server) ReadContext(ctx context.Context, rel string) ([]byte, error) {
 	var data []byte
 	err := at(r, rel, func(p string) error {
 		var err error
-		data, err = r.ctl().ReadFile(p)
+		data, err = r.ctl().ReadFileContext(ctx, p)
 		return err
 	})
 	return data, err
 }
 
 func (r *Server) Write(rel string, data []byte) error {
-	return at(r, rel, func(p string) error { return r.ctl().WriteFile(p, data) })
+	return r.WriteContext(context.Background(), rel, data)
+}
+
+// WriteContext is Write with cancellation of the caller's pending request.
+func (r *Server) WriteContext(ctx context.Context, rel string, data []byte) error {
+	return at(r, rel, func(p string) error { return r.ctl().WriteFileContext(ctx, p, data) })
 }
 
 func (r *Server) Stat(rel string) (session.FileEntry, error) {

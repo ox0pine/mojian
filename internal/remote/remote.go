@@ -4,10 +4,13 @@
 package remote
 
 import (
+	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -41,8 +44,9 @@ type Install struct {
 	sock       string
 }
 
-// upload puts the server and the viewer library in place, skipping a file
-// whose hash matches. It reports whether it uploaded anything.
+// upload installs the server and viewer library as one content-addressed
+// release. The current symlink is the only commit point, so a failed or
+// concurrent upload can never expose half of a release.
 func (i *Install) upload(ctx context.Context, host string) (bool, error) {
 	bin, err := remotebin.Binary(i.arch)
 	if err != nil {
@@ -52,31 +56,119 @@ func (i *Install) upload(ctx context.Context, host string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	files := []struct {
-		path, mode, label string
-		data              []byte
-	}{
-		{i.binPath, "755", "the session server", bin},
-		{i.libPath, "644", "libghostty-vt", lib},
-	}
-	// One ssh call hashes both files; a missing file makes the command
-	// fail, which simply uploads both.
+	// One ssh call hashes both files; a missing legacy or current file
+	// makes the command fail, which simply uploads a complete release.
 	hashes := map[string]string{}
 	if got, err := remoteHashes(ctx, host, i.binPath, i.libPath); err == nil {
 		hashes = got
 	}
-	uploaded := false
-	for _, f := range files {
-		want := sha256.Sum256(f.data)
-		if strings.EqualFold(hashes[f.path], hex.EncodeToString(want[:])) {
-			continue
-		}
-		if err := uploadRemote(ctx, host, f.path, f.data, f.mode); err != nil {
-			return uploaded, fmt.Errorf("uploading %s: %w", f.label, err)
-		}
-		uploaded = true
+	binHash := sha256.Sum256(bin)
+	libHash := sha256.Sum256(lib)
+	if strings.EqualFold(hashes[i.binPath], hex.EncodeToString(binHash[:])) &&
+		strings.EqualFold(hashes[i.libPath], hex.EncodeToString(libHash[:])) {
+		return false, nil
 	}
-	return uploaded, nil
+	h := sha256.New()
+	_, _ = h.Write(binHash[:])
+	_, _ = h.Write(libHash[:])
+	release := hex.EncodeToString(h.Sum(nil))
+	if err := i.uploadRelease(ctx, host, release, bin, lib); err != nil {
+		return false, fmt.Errorf("uploading the session server and libghostty-vt: %w", err)
+	}
+	return true, nil
+}
+
+// uploadRelease streams both files into a unique staging directory. A
+// release directory and then the current symlink are each replaced with
+// one rename, while the remote trap removes every uncommitted artifact.
+func (i *Install) uploadRelease(ctx context.Context, host, release string, bin, lib []byte) error {
+	ssh, err := sshPath()
+	if err != nil {
+		return err
+	}
+	base := shellQuote(i.dir)
+	script := `set -eu
+base=` + base + `
+release=` + shellQuote(release) + `
+releases="$base/releases"
+mkdir -p "$releases"
+stage=$(mktemp -d "$base/.tmp-upload.XXXXXX")
+link=
+created=
+cleanup() {
+	rm -rf -- "$stage"
+	if [ -n "$link" ]; then rm -f -- "$link"; fi
+	if [ -n "$created" ] && [ "$(readlink "$base/current" 2>/dev/null || true)" != "releases/$release" ]; then
+		rm -rf -- "$created"
+	fi
+}
+trap cleanup EXIT HUP INT TERM
+tar -xf - -C "$stage"
+chmod 755 "$stage/mojian-server"
+chmod 644 "$stage/libghostty-vt.so"
+exec 9>"$base/.provision.lock"
+flock 9
+final="$releases/$release"
+if [ -d "$final" ]; then
+	rm -rf -- "$stage"
+else
+	mv "$stage" "$final"
+	created="$final"
+fi
+link="$base/.current.${stage##*/}"
+ln -s "releases/$release" "$link"
+mv -Tf "$link" "$base/current"
+link=
+created=
+if ! test -S ` + shellQuote(i.sock) + `; then
+	for old in "$releases"/*; do
+		[ -d "$old" ] || continue
+		[ "$old" = "$final" ] || rm -rf -- "$old" || true
+	done
+	rm -f -- "$base/mojian-server" "$base/libghostty-vt.so" || true
+fi
+`
+	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host, script)...)
+	platform.HideConsole(cmd)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	tw := tar.NewWriter(stdin)
+	writeErr := writeReleaseFile(tw, "mojian-server", 0o755, bin)
+	if writeErr == nil {
+		writeErr = writeReleaseFile(tw, "libghostty-vt.so", 0o644, lib)
+	}
+	if closeErr := tw.Close(); writeErr == nil {
+		writeErr = closeErr
+	}
+	if closeErr := stdin.Close(); writeErr == nil {
+		writeErr = closeErr
+	}
+	if writeErr != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	waitErr := cmd.Wait()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if waitErr != nil {
+		return fmt.Errorf("%v %s", waitErr, strings.TrimSpace(stderr.String()))
+	}
+	return writeErr
+}
+
+func writeReleaseFile(w *tar.Writer, name string, mode int64, data []byte) error {
+	if err := w.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: int64(len(data))}); err != nil {
+		return err
+	}
+	_, err := w.Write(data)
+	return err
 }
 
 // connect runs the server's stdio bridge over SSH and hands its pipes to
@@ -107,9 +199,9 @@ func (i *Install) connect(ctx context.Context, host string) (*Conn, error) {
 	}
 	fail := func(err error) (*Conn, error) {
 		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		_ = cmd.Wait()
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return nil, fmt.Errorf("ssh %s: %s", host, msg)
+			return nil, fmt.Errorf("ssh %s: %s: %w", host, msg, err)
 		}
 		return nil, err
 	}
@@ -131,7 +223,12 @@ func (i *Install) connect(ctx context.Context, host string) (*Conn, error) {
 			_ = r.client.Close()
 			return fail(err)
 		}
-		return &Conn{Host: host, Path: i.binPath, ssh: cmd, Client: r.client}, nil
+		done := make(chan struct{})
+		go func() {
+			_ = cmd.Wait()
+			close(done)
+		}()
+		return &Conn{Host: host, Path: i.binPath, ssh: cmd, sshDone: done, Client: r.client}, nil
 	case <-ctx.Done():
 		return fail(ctx.Err())
 	case <-time.After(30 * time.Second):
@@ -139,17 +236,87 @@ func (i *Install) connect(ctx context.Context, host string) (*Conn, error) {
 	}
 }
 
-// dial connects, turning a failure on a host that still has a socket into
-// ErrNeedsRestart: an older server there can never answer this protocol.
+// dial connects and asks for a restart only after a real protocol
+// mismatch. In particular, a socket plus a network or handshake failure
+// is not evidence that the running server is old.
 func (i *Install) dial(ctx context.Context, host string) (*Conn, error) {
 	rc, err := i.connect(ctx, host)
 	if err == nil {
 		return rc, nil
 	}
-	if i.socketExists(ctx, host) {
+	var protocolErr *session.ProtocolError
+	if errors.As(err, &protocolErr) {
+		return nil, fmt.Errorf("%s: %w", host, ErrNeedsRestart)
+	}
+	if i.socketExists(ctx, host) && i.legacyProtocol(ctx, host) {
 		return nil, fmt.Errorf("%s: %w", host, ErrNeedsRestart)
 	}
 	return nil, err
+}
+
+// legacyProtocol explicitly probes the pre-v4 one-line JSON protocol. A
+// valid legacy hello is the only non-ProtocolError that proves the server
+// needs a restart; timeouts and arbitrary connection errors do not.
+func (i *Install) legacyProtocol(ctx context.Context, host string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ssh, err := sshPath()
+	if err != nil {
+		return false
+	}
+	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host,
+		"MOJIAN_DIR="+shellQuote(i.dir)+" MOJIAN_RUNTIME_DIR="+shellQuote(i.runtimeDir)+
+			" exec "+shellQuote(i.binPath)+" stdio")...)
+	platform.HideConsole(cmd)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return false
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return false
+	}
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+	if _, err := io.WriteString(stdin, "{\"id\":1,\"op\":\"hello\"}\n"); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return false
+	}
+	type lineResult struct {
+		line []byte
+		err  error
+	}
+	answer := make(chan lineResult, 1)
+	go func() {
+		line, err := bufio.NewReaderSize(stdout, 64<<10).ReadSlice('\n')
+		answer <- lineResult{line, err}
+	}()
+	select {
+	case result := <-answer:
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if result.err != nil {
+			return false
+		}
+		var response struct {
+			ID    int64  `json:"id"`
+			Error string `json:"error"`
+			Data  struct {
+				Version int `json:"version"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(result.line, &response) != nil || response.ID != 1 || response.Error != "" {
+			return false
+		}
+		return response.Data.Version > 0 && response.Data.Version < session.ProtocolVersion
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return false
+	}
 }
 
 // Setup is what provisioning a host found: whether this run uploaded the
@@ -171,6 +338,7 @@ type Setup struct {
 // connection is the reliable choice.
 func sshCommon() []string {
 	return []string{
+		"-T",
 		"-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
 		"-o", "ServerAliveInterval=15",
 	}
@@ -200,18 +368,24 @@ func SSHOutputContext(ctx context.Context, host, command string) (string, error)
 	args := append(append(sshCommon(), "--"), host, command)
 	cmd := exec.CommandContext(ctx, ssh, args...)
 	platform.HideConsole(cmd)
-	out, err := cmd.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr
 		}
-		msg := strings.TrimSpace(string(out))
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = strings.TrimSpace(stdout.String())
+		}
 		if msg == "" {
 			msg = err.Error()
 		}
 		return "", fmt.Errorf("ssh %s: %s", host, msg)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 func shellQuote(s string) string {
@@ -246,8 +420,8 @@ func probe(ctx context.Context, host string) (*Install, error) {
 		home:       home,
 		arch:       arch,
 		dir:        dir,
-		binPath:    dir + "/mojian-server",
-		libPath:    dir + "/libghostty-vt.so",
+		binPath:    dir + "/current/mojian-server",
+		libPath:    dir + "/current/libghostty-vt.so",
 		runtimeDir: runtimeDir,
 		sock:       remoteSocketPath(runtimeDir, uid),
 	}, nil
@@ -348,8 +522,10 @@ func StopServerContext(ctx context.Context, host string) error {
 	if err := info.stop(ctx, host); err != nil {
 		return err
 	}
-	info.waitStopped(ctx, host)
-	return nil
+	if err := info.waitStopped(ctx, host); err != nil {
+		return err
+	}
+	return info.cleanupStopped(ctx, host)
 }
 
 // ServerRunning reports whether the server on host still has its socket.
@@ -378,18 +554,47 @@ func (i *Install) socketExists(ctx context.Context, host string) bool {
 
 // stop asks the running server to exit, through its own -stop command.
 func (i *Install) stop(ctx context.Context, host string) error {
-	_, err := SSHOutputContext(ctx, host, "MOJIAN_DIR="+shellQuote(i.dir)+
-		" MOJIAN_RUNTIME_DIR="+shellQuote(i.runtimeDir)+
-		" "+shellQuote(i.binPath)+" -stop")
+	command := "MOJIAN_DIR=" + shellQuote(i.dir) +
+		" MOJIAN_RUNTIME_DIR=" + shellQuote(i.runtimeDir) +
+		" bin=" + shellQuote(i.binPath) +
+		"; export MOJIAN_DIR MOJIAN_RUNTIME_DIR" +
+		"; test -x \"$bin\" || bin=" + shellQuote(i.dir+"/mojian-server") +
+		"; \"$bin\" -stop"
+	_, err := SSHOutputContext(ctx, host, command)
 	return err
 }
 
 // waitStopped waits for a remote server socket to disappear after its
 // shutdown request, so the next process can take the lock. One ssh call
 // polls on the host instead of one connection per check.
-func (i *Install) waitStopped(ctx context.Context, host string) {
-	_, _ = SSHOutputContext(ctx, host, "for i in $(seq 50); do test -S "+
-		shellQuote(i.sock)+" || exit 0; sleep 0.1; done")
+func (i *Install) waitStopped(ctx context.Context, host string) error {
+	_, err := SSHOutputContext(ctx, host, "for i in $(seq 50); do test -S "+
+		shellQuote(i.sock)+" || exit 0; sleep 0.1; done; "+
+		"printf 'server socket still exists after stop\\n' >&2; exit 1")
+	if err != nil {
+		return fmt.Errorf("waiting for the server to stop: %w", err)
+	}
+	return nil
+}
+
+// cleanupStopped removes superseded releases and the pre-release layout
+// only once no running server can still need its library.
+func (i *Install) cleanupStopped(ctx context.Context, host string) error {
+	script := `set -eu
+base=` + shellQuote(i.dir) + `
+exec 9>"$base/.provision.lock"
+flock 9
+current=$(readlink "$base/current" 2>/dev/null || true)
+for old in "$base/releases"/*; do
+	[ -d "$old" ] || continue
+	[ "releases/${old##*/}" = "$current" ] || rm -rf -- "$old"
+done
+rm -f -- "$base/mojian-server" "$base/libghostty-vt.so"
+`
+	if _, err := SSHOutputContext(ctx, host, script); err != nil {
+		return fmt.Errorf("cleaning up old server releases: %w", err)
+	}
+	return nil
 }
 
 // remoteHashes reads the hashes of the files on host that exist, in one
@@ -423,9 +628,17 @@ func uploadRemote(ctx context.Context, host, remotePath string, data []byte, mod
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host,
-		"mkdir -p "+shellQuote(path.Dir(remotePath))+" && cat > "+shellQuote(remotePath+".tmp")+
-			" && chmod "+mode+" "+shellQuote(remotePath+".tmp")+" && mv "+shellQuote(remotePath+".tmp")+" "+shellQuote(remotePath))...)
+	script := `set -eu
+path=` + shellQuote(remotePath) + `
+mkdir -p ` + shellQuote(path.Dir(remotePath)) + `
+tmp=$(mktemp "$path.tmp.XXXXXX")
+trap 'rm -f -- "$tmp"' EXIT HUP INT TERM
+cat >"$tmp"
+chmod ` + mode + ` "$tmp"
+mv -f -- "$tmp" "$path"
+trap - EXIT HUP INT TERM
+`
+	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host, script)...)
 	cmd.Stdin = bytes.NewReader(data)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -452,7 +665,9 @@ func Close(rc *Conn) {
 	}
 	if rc.ssh != nil && rc.ssh.Process != nil {
 		_ = rc.ssh.Process.Kill()
-		_, _ = rc.ssh.Process.Wait()
+		if rc.sshDone != nil {
+			<-rc.sshDone
+		}
 	}
 }
 
@@ -461,9 +676,10 @@ func Close(rc *Conn) {
 type Conn struct {
 	Host string
 	// Path is the server binary on the host.
-	Path   string
-	ssh    *exec.Cmd
-	Client *session.Client
+	Path    string
+	ssh     *exec.Cmd
+	sshDone chan struct{}
+	Client  *session.Client
 }
 
 // Healthy reports whether the connection still has a live control client.

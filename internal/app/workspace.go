@@ -176,26 +176,38 @@ func (a *app) closeTransientUI() {
 // switchWorkspace saves the project on screen and shows another one
 // already loaded.
 func (a *app) switchWorkspace(ws *workspace) {
+	a.switchWorkspaceAndThen(ws, nil)
+}
+
+func (a *app) switchWorkspaceAndThen(ws *workspace, done func()) {
 	if ws == nil {
 		return
 	}
 	if ws == a.workspace {
 		a.invalidate()
+		if done != nil {
+			done()
+		}
 		return
 	}
-	if err := a.saveNow(); err != nil {
-		a.fail(err)
-		return
-	}
-	a.stopAgentTask()
-	a.saveLayout()
-	a.layoutDirty = false
-	a.dropPickerRemote()
-	a.stashActiveWorkspace()
-	a.activateWorkspace(ws)
-	a.saveSettings()
-	a.updateTitle()
-	a.invalidate()
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.fail(err)
+			return
+		}
+		a.stopAgentTask()
+		a.saveLayout()
+		a.layoutDirty = false
+		a.dropPickerRemote()
+		a.stashActiveWorkspace()
+		a.activateWorkspace(ws)
+		a.saveSettings()
+		a.updateTitle()
+		a.invalidate()
+		if done != nil {
+			done()
+		}
+	})
 }
 
 // registerActiveWorkspace records the project loaded at launch or after

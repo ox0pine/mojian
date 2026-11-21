@@ -173,6 +173,31 @@ func TestSaveDoesNotRecreateExternallyDeletedFile(t *testing.T) {
 	}
 }
 
+func TestCommitSnapshotKeepsNewerEditDirty(t *testing.T) {
+	s, n := newSaveStore(t, "original\n")
+	n.Buffer().Set("first edit\n")
+	snapshot, changed, err := s.SnapshotSave(n)
+	if err != nil || !changed {
+		t.Fatalf("snapshot: changed=%v err=%v", changed, err)
+	}
+	if err := s.WriteSnapshot(t.Context(), snapshot); err != nil {
+		t.Fatal(err)
+	}
+	n.Buffer().Set("second edit\n")
+	s.CommitSnapshot(snapshot)
+	if n.Saved != "first edit\n" || n.Text() != "second edit\n" || !n.Dirty() {
+		t.Fatalf("new edit was marked saved: text=%q saved=%q dirty=%v", n.Text(), n.Saved, n.Dirty())
+	}
+	assertSaveFile(t, n.Path, "first edit\n")
+	if err := s.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	assertSaveFile(t, n.Path, "second edit\n")
+	if n.Dirty() {
+		t.Fatal("the follow-up save left the note dirty")
+	}
+}
+
 func TestMemorySaveKeepsWorking(t *testing.T) {
 	s := New(fs.NewMemory())
 	n, err := s.NewMemoryFile("note.txt", "original\r\n")
