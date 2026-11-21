@@ -294,14 +294,8 @@ func TestUntrackedSymlinkDiffDoesNotReadTarget(t *testing.T) {
 		t.Fatalf("symlink status: %+v", data)
 	}
 	diff, err := git.ReadDiff(git.LocalRunner{}, data.Root, *link)
-	slashTarget := filepath.ToSlash(target)
-	if runtime.GOOS == "windows" {
-		// MSYS Git writes Windows symlink text with forward slashes, but
-		// without filepath's volume separator.
-		slashTarget = strings.ReplaceAll(slashTarget, ":/", "/")
-	}
 	if err != nil || !strings.Contains(diff, "new file mode 120000") ||
-		!strings.Contains(diff, "+"+slashTarget) || strings.Contains(diff, "outside file contents") {
+		!strings.Contains(diff, "+"+target) || strings.Contains(diff, "outside file contents") {
 		t.Fatalf("symlink diff: %q %v", diff, err)
 	}
 }
