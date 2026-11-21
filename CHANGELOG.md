@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.2
+
+- Project-wide Search in Project (`⇧⌘F` / `Ctrl+Shift+F`) searches local and remote projects off
+  the UI thread with Match Case (`Aa`) and Regular Expression (`.*`) toggles, respects `.gitignore`
+  and unsaved editor buffers, and jumps directly to the matched line and selection.
+- The Git page adds a Unified/Split diff toggle, word-level inline diff highlights, and working-tree
+  Stage, Unstage, Discard (with confirmation) and Commit actions for both local and remote projects.
+- Editors in Git repositories load each open file's `HEAD` baseline asynchronously for gutter diff
+  markers, and local desktop projects run a debounced file watcher that reloads clean open notes,
+  updates the Explorer tree and refreshes an open Git page when files change on disk.
+- Terminals gain View › Attach Terminal Session… to inspect, attach or kill running local/remote
+  sessions, live OSC program titles in pane headers, quiet attention markers on bells or exits, and
+  View › Jump to Attention (`⌘J` / `Ctrl+J`) for pending agent permissions and unread terminals.
+- Background ACP agent tasks can now run on remote SSH projects over the session server, offer an
+  installed-agent selector, surface a live status chip in the title bar, and open the Git diff page
+  directly on completion.
+- Settings › Hosts offers on-demand import from `~/.ssh/config`, remote Markdown previews load
+  relative images from the server, zooming with a Markdown preview open no longer panics on fading
+  overlays, and `internal/` packages and `internal/app/` files have been reorganized for clarity.
+
 ## 0.6.1
 
 - The Explorer and Quick Open list every regular file, including archives, model/data files and
