@@ -17,6 +17,7 @@ func (s *Store) NewFileIn(rel, name, body string) (*Note, error) {
 	}
 	name = fileName(name, "untitled.txt")
 	rel = s.UniqueRel(rel, name, false)
+	s.pathsChanged()
 	if err := s.FS.Write(rel, []byte(body)); err != nil {
 		return nil, err
 	}

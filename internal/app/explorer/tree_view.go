@@ -26,7 +26,7 @@ func (u *UI) Sidebar(c *ui.Context, k *colors) {
 			u.emptyTree(c, k)
 			return
 		}
-		scroll := ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6)
+		scroll := ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6).TrackScroll(&u.TreeScroll)
 		scroll.PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, "", true) })
 		scroll.Children(func() {
 			if strings.TrimSpace(u.TreeQuery()) != "" {
@@ -151,6 +151,9 @@ func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row
 		u.toggleDir(n.Rel)
 	}
 	u.treeRowKeys(row, n.Rel)
+	if n.Rel == u.TreeReveal() {
+		row.ScrollIntoView()
+	}
 	row.Children(func() {
 		arrow := "chevron-right"
 		if u.dirOpen(n.Rel) {

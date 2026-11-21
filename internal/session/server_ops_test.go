@@ -276,3 +276,150 @@ func TestListTreeReportsUnreadableRoot(t *testing.T) {
 		t.Fatalf("an unreadable root listed as %d entries", len(entries))
 	}
 }
+
+func TestCreateAfterShutdownDoesNotStartPTY(t *testing.T) {
+	s := &Server{sessions: map[string]*session{}, quit: make(chan struct{})}
+	t.Cleanup(func() {
+		s.mu.Lock()
+		all := make([]*session, 0, len(s.sessions))
+		for _, ss := range s.sessions {
+			all = append(all, ss)
+		}
+		s.mu.Unlock()
+		for _, ss := range all {
+			ss.kill()
+		}
+	})
+	marker := filepath.Join(t.TempDir(), "started")
+	s.shutdown()
+	_, err := s.do(Request{Op: "create", Create: &CreateOptions{
+		Command: []string{"sh", "-c", "printf started > " + marker + "; sleep 60"},
+		Cols:    40, Rows: 10,
+	}})
+	if err != errServerShutdown {
+		t.Fatalf("create after shutdown returned %v", err)
+	}
+	s.mu.Lock()
+	registered := len(s.sessions)
+	s.mu.Unlock()
+	if registered != 0 {
+		t.Fatalf("create after shutdown registered %d sessions", registered)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("create after shutdown started its command: %v", err)
+	}
+}
+
+func TestListTreeFollowsRootSymlink(t *testing.T) {
+	c, _ := startOpsServer(t)
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "a.md"), []byte("# A\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink("real", link); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := c.ListTreeFresh(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Rel != "a.md" {
+		t.Fatalf("symlinked root listing: %+v", entries)
+	}
+}
+
+func TestCopyTreeRejectsCopyingDirectoryOntoItself(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "dir")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "a.txt")
+	if err := os.WriteFile(path, []byte("contents"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyTree(root, root); err == nil {
+		t.Fatal("copying a directory onto itself returned no error")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "contents" {
+		t.Fatalf("self copy changed the source to %q", data)
+	}
+}
+
+func TestCopyTreeRejectsDescendantDestinations(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "dir")
+	if err := os.Mkdir(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "a.txt"), []byte("contents"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	descendant := filepath.Join(source, "nested", "copy")
+	if err := copyTree(source, descendant); err == nil {
+		t.Fatal("copying into a descendant returned no error")
+	}
+	if _, err := os.Stat(filepath.Join(source, "nested")); !os.IsNotExist(err) {
+		t.Fatalf("rejected copy created part of its destination: %v", err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(source, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyTree(source, filepath.Join(alias, "copy")); err == nil {
+		t.Fatal("copying through a symlink into a descendant returned no error")
+	}
+	if _, err := os.Stat(filepath.Join(source, "copy")); !os.IsNotExist(err) {
+		t.Fatalf("rejected symlinked copy created its destination: %v", err)
+	}
+}
+
+func TestCopyTreePreservesSymlinks(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "target.txt"), []byte("contents"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "target-dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	links := []struct {
+		name   string
+		target string
+	}{
+		{name: "file-link", target: "target.txt"},
+		{name: "dir-link", target: "target-dir"},
+		{name: "broken-link", target: "missing"},
+	}
+	for _, link := range links {
+		from := filepath.Join(root, link.name)
+		to := filepath.Join(root, "copied-"+link.name)
+		if err := os.Symlink(link.target, from); err != nil {
+			t.Fatal(err)
+		}
+		if err := copyTree(from, to); err != nil {
+			t.Fatalf("copying %s: %v", link.name, err)
+		}
+		info, err := os.Lstat(to)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%s became a %v", link.name, info.Mode())
+		}
+		target, err := os.Readlink(to)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if target != link.target {
+			t.Fatalf("%s target = %q, want %q", link.name, target, link.target)
+		}
+	}
+}

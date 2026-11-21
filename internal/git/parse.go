@@ -29,7 +29,8 @@ func repoRoot(r Runner, project string) (root, prefix string, ok bool) {
 	if err != nil {
 		return "", "", false
 	}
-	root = strings.TrimSpace(out)
+	root = strings.TrimSuffix(out, "\n")
+	root = strings.TrimSuffix(root, "\r")
 	if root == "" {
 		return "", "", false
 	}
@@ -64,7 +65,7 @@ func ReadStatus(r Runner, project string) StatusData {
 	if d.Prefix != "" {
 		pathspec = d.Prefix
 	}
-	status, err := r.Run(d.Root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", pathspec)
+	status, err := r.Run(d.Root, "--literal-pathspecs", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", pathspec)
 	if err != nil {
 		d.Err = err.Error()
 		return d
@@ -153,17 +154,23 @@ func ReadDiff(r Runner, root string, c Change) (string, error) {
 	if c.OldPath != "" && c.OldPath != path {
 		paths = append([]string{c.OldPath}, paths...)
 	}
-	out, err := r.Run(root, append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "HEAD", "--"}, paths...)...)
+	out, err := r.Run(root, append([]string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "HEAD", "--"}, paths...)...)
 	if err != nil && (strings.Contains(err.Error(), "unknown revision") ||
 		strings.Contains(err.Error(), "bad revision") ||
 		strings.Contains(err.Error(), "ambiguous argument")) {
-		out, err = r.Run(root, append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
+		// With no HEAD, compare the working tree with the empty tree so
+		// both the staged addition and later unstaged edits are present.
+		var tree string
+		tree, err = r.Run(root, "hash-object", "-t", "tree", "/dev/null")
+		if err == nil {
+			out, err = r.Run(root, append([]string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", strings.TrimSpace(tree), "--"}, paths...)...)
+		}
 	}
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(out) == "" {
-		out, err = r.Run(root, append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
+		out, err = r.Run(root, append([]string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
 		if err != nil {
 			return "", err
 		}
@@ -173,6 +180,21 @@ func ReadDiff(r Runner, root string, c Change) (string, error) {
 
 // untrackedDiff makes a new-file diff for a file Git does not track.
 func untrackedDiff(r Runner, root, path, display string) (string, error) {
+	// Git's raw no-index diff identifies a symlink without opening its
+	// target. A plain ReadFile would follow it and could disclose a file
+	// outside the project, on both local and remote runners.
+	raw, rawErr := r.Run(root, "--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-index", "--raw", "--no-color", "--no-ext-diff", "--", "/dev/null", path)
+	if rawErr != nil && raw == "" {
+		return "", rawErr
+	}
+	if fields := strings.Fields(raw); len(fields) > 1 && fields[1] == "120000" {
+		out, err := r.Run(root, "--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", path)
+		if err != nil && out == "" {
+			return "", err
+		}
+		// A no-index difference has exit status 1, not a read failure.
+		return out, nil
+	}
 	data, err := r.ReadFile(root, path, 512*1024)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "is a directory") {
@@ -255,6 +277,7 @@ type FileDiff struct {
 	Add    int
 	Del    int
 	Lines  []gitDiffLine
+	Note   string // Git's explanation when there are no textual hunks
 }
 
 // SplitDiff splits a patch into one part per file. A working tree diff
@@ -287,8 +310,10 @@ func SplitDiff(diff string) []FileDiff {
 func buildFileDiff(section []string) FileDiff {
 	file := FileDiff{Status: "M"}
 	oldPath, newPath := "", ""
+	hasHunk := false
 	for _, line := range section {
 		if strings.HasPrefix(line, "@@") {
+			hasHunk = true
 			break
 		}
 		switch {
@@ -320,6 +345,9 @@ func buildFileDiff(section []string) FileDiff {
 	}
 	file.Lines = ParseDiff(strings.Join(section, "\n"))
 	file.Add, file.Del = DiffStat(strings.Join(section, "\n"))
+	if !hasHunk {
+		file.Note = strings.Join(section, "\n")
+	}
 	return file
 }
 
@@ -418,10 +446,24 @@ func unquotePath(s string) string {
 // section that has no +++ header to name the file.
 func diffGitPath(line string) string {
 	rest := strings.TrimPrefix(line, "diff --git ")
-	for _, cut := range []string{` "b/`, " b/"} {
-		if i := strings.LastIndex(rest, cut); i >= 0 {
-			return strings.TrimPrefix(unquotePath(rest[i+1:]), "b/")
+	if i := strings.LastIndex(rest, ` "b/`); i >= 0 {
+		return strings.TrimPrefix(unquotePath(rest[i+1:]), "b/")
+	}
+	// Without +++ headers Git leaves spaces in a diff --git path
+	// unquoted. Binary and mode-only sections have the same old and new
+	// path, so only a separator whose two sides match is unambiguous.
+	for from := 0; from < len(rest); {
+		i := strings.Index(rest[from:], " b/")
+		if i < 0 {
+			break
 		}
+		i += from
+		oldPath := strings.TrimPrefix(rest[:i], "a/")
+		newPath := strings.TrimPrefix(rest[i+1:], "b/")
+		if oldPath == newPath {
+			return newPath
+		}
+		from = i + 1
 	}
 	return ""
 }

@@ -191,3 +191,127 @@ func TestHistoryOfAnEmptyRepository(t *testing.T) {
 		t.Fatalf("history: %+v", data)
 	}
 }
+
+func TestUnbornHeadDiffIncludesStagedAndUnstagedEdits(t *testing.T) {
+	dir := t.TempDir()
+	branchGit(t, dir, "init", "-q")
+	path := filepath.Join(dir, "a.md")
+	if err := os.WriteFile(path, []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	branchGit(t, dir, "add", "--", "a.md")
+	if err := os.WriteFile(path, []byte("one\ntwo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data := git.ReadStatus(git.LocalRunner{}, dir)
+	if data.Err != "" || len(data.Changes) != 1 || data.Changes[0].Path != "a.md" {
+		t.Fatalf("status: %+v", data)
+	}
+	diff, err := git.ReadDiff(git.LocalRunner{}, data.Root, data.Changes[0])
+	if err != nil || !strings.Contains(diff, "+one") || !strings.Contains(diff, "+two") {
+		t.Fatalf("unborn HEAD diff: %q %v", diff, err)
+	}
+}
+
+func TestLiteralFilePathspecs(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{
+		"a[1].txt": "bracket old\n",
+		"a1.txt":   "plain old\n",
+	})
+	testutil.InitRepo(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "a[1].txt"), []byte("bracket new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a1.txt"), []byte("plain new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data := git.ReadStatus(git.LocalRunner{}, dir)
+	changes := map[string]git.Change{}
+	for _, change := range data.Changes {
+		changes[change.Display] = change
+	}
+	bracket, ok := changes["a[1].txt"]
+	if !ok {
+		t.Fatalf("bracket path missing: %+v", data)
+	}
+	diff, err := git.ReadDiff(git.LocalRunner{}, data.Root, bracket)
+	if err != nil || !strings.Contains(diff, "+bracket new") || strings.Contains(diff, "+plain new") {
+		t.Fatalf("bracket path diff: %q %v", diff, err)
+	}
+	plain, ok := changes["a1.txt"]
+	if !ok {
+		t.Fatalf("plain path missing: %+v", data)
+	}
+	diff, err = git.ReadDiff(git.LocalRunner{}, data.Root, plain)
+	if err != nil || !strings.Contains(diff, "+plain new") || strings.Contains(diff, "+bracket new") {
+		t.Fatalf("plain path diff: %q %v", diff, err)
+	}
+}
+
+func TestLiteralNestedProjectPathspecs(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "sub[1]")
+	testutil.WriteVault(t, project, map[string]string{"a.md": "old\n"})
+	testutil.InitRepo(t, root)
+	if err := os.WriteFile(filepath.Join(project, "a.md"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status := git.ReadStatus(git.LocalRunner{}, project)
+	if status.Err != "" || len(status.Changes) != 1 || status.Changes[0].Display != "a.md" {
+		t.Fatalf("nested status: %+v", status)
+	}
+	history := git.ReadHistory(git.LocalRunner{}, project)
+	if history.Err != "" || len(history.Commits) != 1 {
+		t.Fatalf("nested history: %+v", history)
+	}
+	patch, err := git.ReadCommitDiff(git.LocalRunner{}, history.Root, history.Prefix, history.Commits[0].Hash)
+	if err != nil || !strings.Contains(patch, "sub[1]/a.md") || !strings.Contains(patch, "+old") {
+		t.Fatalf("nested commit patch: %q %v", patch, err)
+	}
+}
+
+func TestUntrackedSymlinkDiffDoesNotReadTarget(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"tracked.md": "tracked\n"})
+	testutil.InitRepo(t, dir)
+	target := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(target, []byte("outside file contents\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	data := git.ReadStatus(git.LocalRunner{}, dir)
+	var link *git.Change
+	for i := range data.Changes {
+		if data.Changes[i].Display == "link" {
+			link = &data.Changes[i]
+		}
+	}
+	if link == nil || link.Status != "U" {
+		t.Fatalf("symlink status: %+v", data)
+	}
+	diff, err := git.ReadDiff(git.LocalRunner{}, data.Root, *link)
+	if err != nil || !strings.Contains(diff, "new file mode 120000") ||
+		!strings.Contains(diff, "+"+target) || strings.Contains(diff, "outside file contents") {
+		t.Fatalf("symlink diff: %q %v", diff, err)
+	}
+}
+
+func TestRepoRootPreservesTrailingSpace(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "repo ")
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "old\n"})
+	testutil.InitRepo(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status := git.ReadStatus(git.LocalRunner{}, dir)
+	if status.Err != "" || !strings.HasSuffix(status.Root, "repo ") || len(status.Changes) != 1 {
+		t.Fatalf("status from spaced root: %+v", status)
+	}
+	branches := git.ReadBranches(git.LocalRunner{}, dir)
+	if branches.Err != "" || branches.Root != status.Root || !strings.HasSuffix(branches.Root, "repo ") {
+		t.Fatalf("branches from spaced root: %+v", branches)
+	}
+}

@@ -230,3 +230,153 @@ func TestStartAnySkipsAProgramThatIsNotAnACPAgent(t *testing.T) {
 		t.Fatalf("error = %q, want it to name the failed agent", err)
 	}
 }
+
+func TestConcurrentPermissionRequestsResolveIndependently(t *testing.T) {
+	events := make(chan Event, 4)
+	s := &Session{done: make(chan struct{}), events: func(ev Event) { events <- ev }}
+	type result struct {
+		want sdk.PermissionOptionId
+		resp sdk.RequestPermissionResponse
+		err  error
+	}
+	results := make(chan result, 2)
+	request := func(title string) {
+		go func() {
+			resp, err := (&client{s: s}).RequestPermission(context.Background(), sdk.RequestPermissionRequest{
+				ToolCall: sdk.ToolCallUpdate{Title: &title},
+				Options:  []sdk.PermissionOption{{OptionId: sdk.PermissionOptionId("allow-" + title), Name: "Allow"}},
+			})
+			results <- result{want: sdk.PermissionOptionId("allow-" + title), resp: resp, err: err}
+		}()
+	}
+	request("A")
+	request("B")
+	pending := map[string]*Permission{}
+	for range 2 {
+		select {
+		case ev := <-events:
+			if ev.Kind != KindPermission || ev.Permission == nil {
+				t.Fatalf("event = %+v, want permission", ev)
+			}
+			pending[ev.Permission.Title] = ev.Permission
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent permission request did not reach the client")
+		}
+	}
+	// Answer in reverse arrival-independent order: neither handler may be
+	// overwritten or receive the other request's option.
+	pending["B"].Answer("allow-B")
+	pending["A"].Answer("allow-A")
+	for range 2 {
+		select {
+		case got := <-results:
+			if got.err != nil {
+				t.Fatal(got.err)
+			}
+			if got.resp.Outcome.Selected == nil || got.resp.Outcome.Selected.OptionId != got.want {
+				t.Errorf("permission outcome = %+v, want selected %q", got.resp.Outcome, got.want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("a concurrent permission handler remained blocked")
+		}
+	}
+	for range 2 {
+		select {
+		case ev := <-events:
+			if ev.Kind != KindPermissionResolved || pending[ev.Permission.Title] != ev.Permission {
+				t.Errorf("resolution event = %+v", ev)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("missing permission resolution event")
+		}
+	}
+}
+
+func TestPermissionCancellationEmitsResolution(t *testing.T) {
+	events := make(chan Event, 2)
+	s := &Session{done: make(chan struct{}), events: func(ev Event) { events <- ev }}
+	ctx, cancel := context.WithCancel(context.Background())
+	type result struct {
+		resp sdk.RequestPermissionResponse
+		err  error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		resp, err := (&client{s: s}).RequestPermission(ctx, sdk.RequestPermissionRequest{
+			Options: []sdk.PermissionOption{{OptionId: "allow", Name: "Allow"}},
+		})
+		resultCh <- result{resp: resp, err: err}
+	}()
+	var pending *Permission
+	select {
+	case ev := <-events:
+		if ev.Kind != KindPermission {
+			t.Fatalf("event kind = %v, want permission", ev.Kind)
+		}
+		pending = ev.Permission
+	case <-time.After(5 * time.Second):
+		t.Fatal("permission request did not arrive")
+	}
+	cancel()
+	select {
+	case got := <-resultCh:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if got.resp.Outcome.Cancelled == nil {
+			t.Fatalf("cancelled request outcome = %+v", got.resp.Outcome)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled request remained blocked")
+	}
+	select {
+	case ev := <-events:
+		if ev.Kind != KindPermissionResolved || ev.Permission != pending {
+			t.Fatalf("resolution event = %+v, want the cancelled request", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation did not emit a UI resolution")
+	}
+}
+
+func TestCancellingAllPermissionsReleasesEveryHandler(t *testing.T) {
+	events := make(chan Event, 4)
+	s := &Session{done: make(chan struct{}), events: func(ev Event) { events <- ev }}
+	results := make(chan sdk.RequestPermissionResponse, 2)
+	for range 2 {
+		go func() {
+			resp, err := (&client{s: s}).RequestPermission(context.Background(), sdk.RequestPermissionRequest{
+				Options: []sdk.PermissionOption{{OptionId: "allow", Name: "Allow"}},
+			})
+			if err != nil {
+				t.Errorf("RequestPermission: %v", err)
+			}
+			results <- resp
+		}()
+	}
+	var pending []*Permission
+	for range 2 {
+		select {
+		case ev := <-events:
+			if ev.Kind == KindPermission {
+				pending = append(pending, ev.Permission)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("permission request did not arrive")
+		}
+	}
+	// This is the same empty answer Stop sends to the visible and queued requests.
+	for _, p := range pending {
+		p.Answer("")
+	}
+	for range 2 {
+		select {
+		case resp := <-results:
+			if resp.Outcome.Cancelled == nil {
+				t.Errorf("stop outcome = %+v, want cancelled", resp.Outcome)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("Stop left a permission handler blocked")
+		}
+	}
+}

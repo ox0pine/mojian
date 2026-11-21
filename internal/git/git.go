@@ -257,6 +257,8 @@ func (p *Page) ShowChanges() {
 		return
 	}
 	p.Mode = ModeChanges
+	p.HistorySeq++
+	p.HistoryLoad = false
 	p.clearDiff()
 	p.Refresh()
 	p.h.Invalidate()
@@ -303,7 +305,7 @@ func (p *Page) loadHistory() {
 }
 
 func (p *Page) applyHistory(seq int, data HistoryData) {
-	if seq != p.HistorySeq {
+	if seq != p.HistorySeq || p.Mode != ModeHistory {
 		return
 	}
 	p.HistoryLoad = false

@@ -84,7 +84,7 @@ func (u *UI) Trash(rel string) {
 		u.fail(errors.New("Trash needs the desktop app"))
 		return
 	}
-	if err := u.store().FS.Trash(rel); err != nil {
+	if err := u.store().Trash(rel); err != nil {
 		u.fail(err)
 		return
 	}
@@ -94,7 +94,6 @@ func (u *UI) Trash(rel string) {
 	u.closeAssets(func(f *assetFile) bool {
 		return f.Rel == rel || strings.HasPrefix(f.Rel, rel+string(filepath.Separator))
 	})
-	u.store().Forget(rel)
 	if u.store().IsServer() {
 		if err := u.store().Refresh(); err != nil {
 			u.fail(err)

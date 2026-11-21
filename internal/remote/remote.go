@@ -81,6 +81,8 @@ func (i *Install) upload(ctx context.Context, host string) (bool, error) {
 // uploadRelease streams both files into a unique staging directory. A
 // release directory and then the current symlink are each replaced with
 // one rename, while the remote trap removes every uncommitted artifact.
+// Superseded releases stay until cleanupStopped: an old stdio bridge may
+// still need one before its server has created the socket.
 func (i *Install) uploadRelease(ctx context.Context, host, release string, bin, lib []byte) error {
 	ssh, err := sshPath()
 	if err != nil {
@@ -120,13 +122,6 @@ ln -s "releases/$release" "$link"
 mv -Tf "$link" "$base/current"
 link=
 created=
-if ! test -S ` + shellQuote(i.sock) + `; then
-	for old in "$releases"/*; do
-		[ -d "$old" ] || continue
-		[ "$old" = "$final" ] || rm -rf -- "$old" || true
-	done
-	rm -f -- "$base/mojian-server" "$base/libghostty-vt.so" || true
-fi
 `
 	cmd := exec.CommandContext(ctx, ssh, append(sshCommon(), "--", host, script)...)
 	platform.HideConsole(cmd)

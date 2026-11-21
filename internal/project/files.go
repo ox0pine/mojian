@@ -110,7 +110,11 @@ func (s *Store) Rename(oldRel, name string) (string, []*Note, error) {
 	if filepath.Dir(oldRel) == "." {
 		newRel = newName
 	}
-	if !s.FS.SameFile(oldRel, newRel) && s.ExistsRel(newRel) {
+	caseOnlyServer := s.IsServer() && strings.EqualFold(oldRel, newRel)
+	// A server distinguishes a case-insensitive alias from two distinct
+	// case-sensitive files during its two-step rename. Checking ExistsRel
+	// first would reject the alias before that handling can run.
+	if !caseOnlyServer && !s.FS.SameFile(oldRel, newRel) && s.ExistsRel(newRel) {
 		return "", nil, fmt.Errorf("%s already exists", newName)
 	}
 	isDir := s.Dirs[oldRel]
@@ -119,6 +123,7 @@ func (s *Store) Rename(oldRel, name string) (string, []*Note, error) {
 			isDir = e.Dir
 		}
 	}
+	s.pathsChanged()
 	if err := s.FS.Rename(oldRel, newRel); err != nil {
 		return "", nil, err
 	}
@@ -128,6 +133,17 @@ func (s *Store) Rename(oldRel, name string) (string, []*Note, error) {
 		return newRel, changed, err
 	}
 	return newRel, changed, nil
+}
+
+// Trash moves rel out of the project and forgets its notes. Invalidating
+// path snapshots first keeps an in-flight save from recreating the file.
+func (s *Store) Trash(rel string) error {
+	s.pathsChanged()
+	if err := s.FS.Trash(rel); err != nil {
+		return err
+	}
+	s.Forget(rel)
+	return nil
 }
 
 // NotesUnder returns the notes at rel or, for a folder, below it.

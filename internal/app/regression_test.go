@@ -11,6 +11,7 @@ import (
 
 	"mojian/internal/prefs"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -202,6 +203,59 @@ func TestWindowClosedPreservesReopenFlag(t *testing.T) {
 	}
 	if a.quickOpen {
 		t.Fatal("windowClosed did not close quickOpen modal")
+	}
+}
+
+func TestQuitRetriesAfterSynchronousSave(t *testing.T) {
+	var posts []func()
+	a := &app{
+		workspace: &workspace{},
+		native:    true,
+		uiPost:    func(fn func()) { posts = append(posts, fn) },
+	}
+	quitCalls := 0
+	quit := func() { quitCalls++ }
+
+	first := &mygo.QuitEvent{}
+	a.beforeQuit(first, quit, func(fn func()) { posts = append(posts, fn) })
+	if !first.DefaultPrevented() {
+		t.Fatal("the first quit did not wait for saving")
+	}
+	if quitCalls != 0 {
+		t.Fatal("the retry was requested before the first quit cancellation returned")
+	}
+	a.quitCanceled()
+	if a.quitting {
+		t.Fatal("the canceled quit left quitting=true")
+	}
+	if len(posts) != 1 {
+		t.Fatalf("deferred quit completions = %d, want 1", len(posts))
+	}
+
+	posts[0]()
+	if !a.quitReady || quitCalls != 1 {
+		t.Fatalf("saved quit did not request one retry: ready=%v calls=%d", a.quitReady, quitCalls)
+	}
+	second := &mygo.QuitEvent{}
+	a.beforeQuit(second, quit, func(fn func()) { posts = append(posts, fn) })
+	if second.DefaultPrevented() {
+		t.Fatal("the saved quit retry was canceled again")
+	}
+}
+
+func TestQuitWithoutWindowRetriesAfterSave(t *testing.T) {
+	var posts []func()
+	a := &app{workspace: &workspace{}, native: true}
+	quitCalls := 0
+	first := &mygo.QuitEvent{}
+	a.beforeQuit(first, func() { quitCalls++ }, func(fn func()) { posts = append(posts, fn) })
+	a.quitCanceled()
+	if len(posts) != 1 {
+		t.Fatalf("application quit posts = %d, want 1", len(posts))
+	}
+	posts[0]()
+	if quitCalls != 1 {
+		t.Fatalf("quit calls = %d, want 1 after every window closed", quitCalls)
 	}
 }
 

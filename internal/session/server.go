@@ -36,6 +36,8 @@ const (
 	writeFileLimit = 32 << 20
 )
 
+var errServerShutdown = errors.New("session: server is shutting down")
+
 // Server owns the sessions and their pseudo-terminals.
 type Server struct {
 	mu       sync.Mutex
@@ -116,7 +118,13 @@ func Serve() error {
 	}
 }
 
-func (s *Server) shutdown() { s.once.Do(func() { close(s.quit) }) }
+func (s *Server) shutdown() {
+	s.once.Do(func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		close(s.quit)
+	})
+}
 
 // pruneLoop forgets exited sessions; the server itself runs until it is
 // stopped explicitly.
@@ -344,6 +352,14 @@ func (s *Server) do(req Request) (any, error) {
 		}
 		return dirs, nil
 	case "create":
+		s.mu.Lock()
+		select {
+		case <-s.quit:
+			s.mu.Unlock()
+			return nil, errServerShutdown
+		default:
+		}
+		s.mu.Unlock()
 		o := CreateOptions{}
 		if req.Create != nil {
 			o = *req.Create
@@ -354,6 +370,15 @@ func (s *Server) do(req Request) (any, error) {
 			return nil, err
 		}
 		s.mu.Lock()
+		select {
+		case <-s.quit:
+			s.mu.Unlock()
+			// Shutdown may have taken its final session snapshot while the
+			// PTY was being created. Do not register a session it cannot kill.
+			ss.kill()
+			return nil, errServerShutdown
+		default:
+		}
 		s.sessions[id] = ss
 		s.order = append(s.order, id)
 		s.mu.Unlock()
@@ -760,9 +785,13 @@ func (s *Server) listTree(root string, fresh bool) ([]FileEntry, error) {
 }
 
 func walkTree(root string) ([]FileEntry, error) {
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
 	var out []FileEntry
 	ign := filekind.NewGitIgnore(root)
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if path == root {
 				// An unreadable root must not look like an empty project:
@@ -831,12 +860,63 @@ func statEntry(path string) (FileEntry, error) {
 	return e, nil
 }
 
-// copyTree copies a file or folder on the server, keeping its modes, so
-// a duplicate or paste does not carry the bytes through the app.
+// copyTree copies a file, symlink or folder on the server, keeping its
+// mode or link target, so a paste does not carry the bytes through the app.
 func copyTree(from, to string) error {
 	info, err := os.Lstat(from)
 	if err != nil {
 		return err
+	}
+	source, err := resolveCopyPath(from)
+	if err != nil {
+		return err
+	}
+	target, err := resolveCopyPath(to)
+	if err != nil {
+		return err
+	}
+	rel, relErr := filepath.Rel(source, target)
+	inside := relErr == nil && rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+	if relErr == nil && (rel == "." || info.IsDir() && inside) {
+		return fmt.Errorf("cannot copy %q to %q: source and destination overlap", from, to)
+	}
+	return copyTreeNode(from, to, info)
+}
+
+// resolveCopyPath resolves symlinks in the existing part of path and keeps
+// its nonexistent suffix. This catches a destination below the source even
+// when an existing parent of that destination is reached through a symlink.
+func resolveCopyPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		return resolved, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	parent := filepath.Dir(abs)
+	if parent == abs {
+		return abs, nil
+	}
+	resolvedParent, err := resolveCopyPath(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(resolvedParent, filepath.Base(abs)), nil
+}
+
+func copyTreeNode(from, to string, info os.FileInfo) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(from)
+		if err != nil {
+			return err
+		}
+		return os.Symlink(target, to)
 	}
 	if info.IsDir() {
 		if err := os.MkdirAll(to, info.Mode().Perm()); err != nil {
@@ -847,7 +927,12 @@ func copyTree(from, to string) error {
 			return err
 		}
 		for _, e := range entries {
-			if err := copyTree(filepath.Join(from, e.Name()), filepath.Join(to, e.Name())); err != nil {
+			child := filepath.Join(from, e.Name())
+			childInfo, err := os.Lstat(child)
+			if err != nil {
+				return err
+			}
+			if err := copyTreeNode(child, filepath.Join(to, e.Name()), childInfo); err != nil {
 				return err
 			}
 		}

@@ -51,7 +51,7 @@ func NewHeadless(s *project.Store, settingsPath, layoutPath string) *Headless {
 	return h
 }
 
-// post queues work from a pane's background goroutine; WindowView runs it
+// post queues work from a background goroutine; both fixture views run it
 // before the frame, so the harness sees the same order the window does.
 func (h *Headless) post(fn func()) {
 	h.mu.Lock()
@@ -76,7 +76,10 @@ func (h *Headless) WindowView(c *ui.Context) {
 }
 
 // SettingsView renders the Settings window.
-func (h *Headless) SettingsView(c *ui.Context) { h.a.settingsWindowView(c) }
+func (h *Headless) SettingsView(c *ui.Context) {
+	h.drain()
+	h.a.settingsWindowView(c)
+}
 
 // Close detaches workspaces and releases the fixture's state.
 func (h *Headless) Close() { h.a.closeWorkspaces() }

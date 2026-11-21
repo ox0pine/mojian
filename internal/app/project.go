@@ -83,6 +83,12 @@ func (a *app) recentProjects() []string {
 
 // openProject makes dir the open project, saving the one before it.
 func (a *app) openProject(dir string) {
+	a.openProjectAndThen(dir, nil)
+}
+
+// openProjectAndThen runs done only after dir is active. A remote save or
+// a cached workspace can make that switch asynchronous.
+func (a *app) openProjectAndThen(dir string, done func()) {
 	if dir == "" || a.remoteBusy {
 		return
 	}
@@ -105,12 +111,18 @@ func (a *app) openProject(dir string) {
 		a.switchWorkspaceAndThen(ws, func() {
 			a.rememberProject(abs)
 			a.saveSettings()
+			if done != nil {
+				done()
+			}
 		})
 		return
 	}
 	if a.remotePath == "" && a.store != nil && !a.store.IsMemory() && a.store.Dir == abs {
 		a.projectOpen = false
 		a.invalidate()
+		if done != nil {
+			done()
+		}
 		return
 	}
 	// Save while the current server is still connected, and keep its
@@ -120,20 +132,25 @@ func (a *app) openProject(dir string) {
 			a.fail(fmt.Errorf("could not save the open project: %w", err))
 			return
 		}
-		a.openProjectSaved(abs)
+		if a.openProjectSaved(abs) && done != nil {
+			done()
+		}
 	})
 }
 
-func (a *app) openProjectSaved(abs string) {
+func (a *app) openProjectSaved(abs string) bool {
 	if a.layoutPath != "" {
-		a.saveLayout()
+		if err := a.saveLayout(); err != nil {
+			a.fail(err)
+			return false
+		}
 	}
 	a.layoutDirty = false
 	a.dropPickerRemote()
 	s, err := a.openLocalStore(abs)
 	if err != nil {
 		a.fail(err)
-		return
+		return false
 	}
 	a.stopAgentTask()
 	a.stashActiveWorkspace()
@@ -149,17 +166,21 @@ func (a *app) openProjectSaved(abs string) {
 	a.workspaces[ws.key] = ws
 	a.activateWorkspace(ws)
 	a.rememberProject(abs)
-	if !a.restoreLayout() {
+	restore := a.restoreLayoutStatus()
+	if restore.needsFallback() {
 		a.focusFirstNote()
 	}
 	if t := a.tab(); t != nil {
 		a.focusReq = t.editorPane()
 	}
 	a.revealTab = true
-	a.saveLayout()
+	if restore != layoutRestoreInvalid {
+		a.saveLayout()
+	}
 	a.saveSettings()
 	a.updateTitle()
 	a.invalidate()
+	return true
 }
 
 // projectChip is the title bar's left end: the open project, and the

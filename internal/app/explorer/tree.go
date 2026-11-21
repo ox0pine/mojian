@@ -145,11 +145,12 @@ func (u *UI) RevealInTree(n *note) {
 	u.RevealRel(n.Rel)
 }
 
-// RevealRel opens the folders of rel and selects its row.
+// RevealRel leaves search, opens the folders of rel and selects its row.
 func (u *UI) RevealRel(rel string) {
 	if rel == "" {
 		return
 	}
+	u.SetTreeQuery("")
 	if u.OpenDirs() == nil {
 		u.SetOpenDirs(map[string]bool{})
 	}

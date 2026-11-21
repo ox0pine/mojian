@@ -87,7 +87,7 @@ func (a *app) failTerminalsOn(host string, err error) {
 		return
 	}
 	a.eachTerminalOn(host, func(p *pane) {
-		p.Term.connecting = false
+		p.Term.invalidateConnect()
 		p.Term.startErr = err.Error()
 	})
 }
@@ -106,7 +106,6 @@ func detachTerminalsOn(ws *workspace, host string, client *session.Client) {
 			detachTerminalView(p)
 			p.Term.Client = client
 			p.Term.startErr = ""
-			p.Term.connecting = false
 		}
 	}
 }
@@ -319,7 +318,11 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 			return
 		}
 		if a.layoutPath != "" {
-			a.saveLayout()
+			if err := a.saveLayout(); err != nil {
+				a.dropPickerRemote()
+				a.fail(fmt.Errorf("could not save the open project: %w", err))
+				return
+			}
 		}
 		a.layoutDirty = false
 		existing := a.remoteForHost(host)
@@ -380,14 +383,20 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 				}
 				a.keepRemote(host)
 				a.rememberRemoteProject(remoteProject{Host: host, Path: remotePath})
-				if a.NoRestoreLayout || !a.restoreLayout() {
+				restore := layoutRestoreMissing
+				if !a.NoRestoreLayout {
+					restore = a.restoreLayoutStatus()
+				}
+				if restore.needsFallback() {
 					a.focusFirstNote()
 				}
 				if t := a.tab(); t != nil {
 					a.focusReq = t.editorPane()
 				}
 				a.revealTab = true
-				a.saveLayout()
+				if restore != layoutRestoreInvalid {
+					_ = a.saveLayout()
+				}
 				a.saveSettings()
 				a.updateTitle()
 				a.invalidate()
@@ -497,10 +506,19 @@ func (a *app) stopRemoteTask() {
 	a.remoteTask.host = ""
 }
 
+// onWindowPostFn is a test seam: with no native window, production runs
+// callbacks on the worker, while tests queue them onto their own goroutine
+// to model the UI thread and keep field access race-free.
+var onWindowPostFn func(func())
+
 // onWindow runs fn on the window's thread when this build has one.
 func onWindow(win *mygo.Window, fn func()) {
 	if win != nil {
 		win.Update(fn)
+		return
+	}
+	if onWindowPostFn != nil {
+		onWindowPostFn(fn)
 		return
 	}
 	fn()

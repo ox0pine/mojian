@@ -129,6 +129,12 @@ func (a *app) activateWorkspace(ws *workspace) {
 	a.branch.open = false
 	a.branch.creating = false
 	a.branch.err = ""
+	// Focus requests are consumed by the editor. Request it again every
+	// time a cached project becomes visible, not only when it is first read.
+	a.focusReq = nil
+	if t := a.tab(); t != nil {
+		a.focusReq = t.editorPane()
+	}
 	a.refreshBranch()
 	a.updateTitle()
 	a.invalidate()
@@ -196,7 +202,10 @@ func (a *app) switchWorkspaceAndThen(ws *workspace, done func()) {
 			return
 		}
 		a.stopAgentTask()
-		a.saveLayout()
+		if err := a.saveLayout(); err != nil {
+			a.fail(err)
+			return
+		}
 		a.layoutDirty = false
 		a.dropPickerRemote()
 		a.stashActiveWorkspace()

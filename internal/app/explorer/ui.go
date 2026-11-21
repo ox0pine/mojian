@@ -86,7 +86,12 @@ type Host interface {
 }
 
 // UI is the Explorer view; the app sets Host before using it.
-type UI struct{ Host }
+type UI struct {
+	Host
+	// TreeScroll mirrors the sidebar's scroll offset for tests and for
+	// keeping reveal assertions independent of clipped label rectangles.
+	TreeScroll ui.ScrollState
+}
 
 func (u *UI) store() *project.Store                              { return u.Store() }
 func (u *UI) currentNote() *project.Note                         { return u.CurrentNote() }

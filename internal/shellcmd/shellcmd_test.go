@@ -128,6 +128,75 @@ func TestInstallKeepsExistingStartupFile(t *testing.T) {
 	}
 }
 
+func TestInstallPreservesExistingSymlinkTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rc := filepath.Join(home, ".zshrc")
+	target := filepath.Join(home, "dotfiles", "zshrc")
+	if err := os.Mkdir(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("export EDITOR=vim\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, rc); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(filepath.Join(home, "Mojian"), Zsh); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("install replaced the startup symlink with a regular file")
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), beginMarker) || !strings.Contains(string(data), "export EDITOR=vim") {
+		t.Fatalf("the symlink target was not updated in place: %q", data)
+	}
+}
+
+func TestInstallCreatesDanglingSymlinkTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rc := filepath.Join(home, ".zshrc")
+	target := filepath.Join(home, "dotfiles", "zshrc")
+	if err := os.Mkdir(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	relativeTarget := filepath.Join("dotfiles", "zshrc")
+	if err := os.Symlink(relativeTarget, rc); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(filepath.Join(home, "Mojian"), Zsh); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("install replaced the dangling startup symlink")
+	}
+	if got, err := os.Readlink(rc); err != nil || got != relativeTarget {
+		t.Fatalf("startup link = %q, %v; want %q", got, err, relativeTarget)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), beginMarker) {
+		t.Fatalf("the dangling symlink target did not receive the block: %q", data)
+	}
+}
+
 func TestRemoveKeepsLinesAfterTheBlock(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

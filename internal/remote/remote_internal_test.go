@@ -277,3 +277,53 @@ esac
 		t.Fatal("Close returned before ssh was reaped")
 	}
 }
+
+func TestUploadReleaseKeepsOldReleaseWithoutSocket(t *testing.T) {
+	dir := installFakeSSH(t, "exec /bin/sh -c \"$command\"\n")
+	// The release script targets Linux. These small shims let the same
+	// behavior run on macOS, which has neither flock nor mv -T.
+	if err := os.WriteFile(filepath.Join(dir, "flock"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mv := `#!/bin/sh
+if [ "$1" = "-Tf" ]; then
+	shift
+	rm -f "$2"
+	exec /bin/mv -f "$1" "$2"
+fi
+exec /bin/mv "$@"
+`
+	if err := os.WriteFile(filepath.Join(dir, "mv"), []byte(mv), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	old := filepath.Join(base, "releases", "old")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(old, "mojian-server")
+	if err := os.WriteFile(marker, []byte("old server"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("releases/old", filepath.Join(base, "current")); err != nil {
+		t.Fatal(err)
+	}
+	i := &Install{dir: base, sock: filepath.Join(base, "runtime", "sessions.sock")}
+	if err := i.uploadRelease(context.Background(), "test-host", "new", []byte("new server"), []byte("new library")); err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.Readlink(filepath.Join(base, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != "releases/new" {
+		t.Fatalf("current points to %q", current)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("old release was removed while its bridge could still start: %v", err)
+	}
+	if string(data) != "old server" {
+		t.Fatalf("old release contents = %q", data)
+	}
+}

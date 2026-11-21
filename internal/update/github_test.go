@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"runtime"
 	"testing"
 	"time"
@@ -58,6 +59,65 @@ func TestGitHubUpdatesDoesNotRetryNotFound(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("requests = %d, want 1", hits)
+	}
+}
+
+func TestGitHubUpdatesUsesProxyTransportForManifestAndOpen(t *testing.T) {
+	proxyHits := 0
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyHits++
+		if r.URL.Host == "" {
+			t.Error("the request did not use the HTTP proxy")
+		}
+		switch r.URL.Path {
+		case "/releases/latest/download/update-" + runtime.GOOS + "-" + runtime.GOARCH + ".json":
+			_, _ = io.WriteString(w, "manifest")
+		case "/archive.tar.gz":
+			_, _ = io.WriteString(w, "archive")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer proxy.Close()
+	proxyURL, err := url.Parse(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transports := 0
+	g := githubUpdates{
+		base: "http://updates.invalid",
+		newTransport: func() *http.Transport {
+			transports++
+			return &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+		},
+	}
+
+	manifest, err := g.Manifest(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(manifest)
+	manifest.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "manifest" {
+		t.Fatalf("manifest = %q", data)
+	}
+	archive, err := g.Open(context.Background(), "http://cdn.invalid/archive.tar.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = io.ReadAll(archive)
+	archive.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "archive" {
+		t.Fatalf("archive = %q", data)
+	}
+	if transports != 2 || proxyHits != 2 {
+		t.Fatalf("proxy transport uses = %d, proxy requests = %d; want 2 and 2", transports, proxyHits)
 	}
 }
 

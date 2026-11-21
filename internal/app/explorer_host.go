@@ -128,6 +128,7 @@ func (a *app) reloadProject(force bool) {
 	}
 	a.reloadStore = s
 	a.reloadSeq++
+	a.reloadMutation = s.MutationSeq()
 	seq := a.reloadSeq
 	win := a.win
 	a.invalidate()
@@ -157,13 +158,13 @@ func (a *app) reloadProject(force bool) {
 }
 
 // finishReload applies a listing on the UI thread; a result for a store
-// that is no longer loaded is dropped.
+// that is no longer loaded or whose paths changed while it was read is dropped.
 func (a *app) finishReload(s *store, seq int, entries []session.FileEntry, bodies map[string]string, err error) {
 	if a.reloadStore != s || a.reloadSeq != seq {
 		return
 	}
 	a.reloadStore = nil
-	if a.store != s {
+	if a.store != s || a.reloadMutation != s.MutationSeq() {
 		return
 	}
 	if err != nil {

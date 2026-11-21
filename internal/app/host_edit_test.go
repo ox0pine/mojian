@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -42,5 +43,47 @@ func TestHostEditMovesTerminalsToNewAddress(t *testing.T) {
 	a.installRemoteConn(&remote.Conn{Host: "new-box", Client: newClient})
 	if p.Term.Client != newClient {
 		t.Fatal("the terminal did not receive the new connection")
+	}
+}
+
+func TestHostEditMovesLayoutToNewAddress(t *testing.T) {
+	fixture := newProjectApp(t)
+	tb := fixture.tab()
+	dataDir := t.TempDir()
+	key := workspaceKeyRemote("old-box", "/srv/app")
+	ws := &workspace{
+		key: key, store: fixture.store, serverAlias: "old-box", remotePath: "/srv/app",
+		tabs: []*tab{tb}, active: 0,
+	}
+	a := &app{
+		workspace: ws, workspaces: map[string]*workspace{key: ws}, dataDir: dataDir,
+		settingsPath: filepath.Join(dataDir, "settings.json"), hostEditAddr: "old-box",
+	}
+	ws.layoutPath = a.projectLayoutPath("remote:old-box:/srv/app")
+	a.hostService().AddHost("Old", "old-box")
+	a.saveLayout()
+	oldLayout := ws.layoutPath
+	a.hostEditAddress, a.hostEditName = "new-box", "New"
+
+	a.saveHostEdit("old-box")
+
+	newLayout := a.projectLayoutPath("remote:new-box:/srv/app")
+	if ws.layoutPath != newLayout {
+		t.Fatalf("layout path = %q, want new host path %q", ws.layoutPath, newLayout)
+	}
+	if _, err := os.Stat(oldLayout); !os.IsNotExist(err) {
+		t.Fatalf("old layout still exists: %v", err)
+	}
+	b := &app{workspace: &workspace{
+		store: ws.store, serverAlias: "new-box", remotePath: "/srv/app", layoutPath: newLayout,
+	}}
+	if !b.restoreLayout() {
+		t.Fatal("the renamed host could not restore its layout")
+	}
+	if len(b.tabs) != 1 || len(b.tabs[0].panes()) != 1 {
+		t.Fatalf("restored layout has unexpected tabs: %+v", b.tabs)
+	}
+	if got, want := b.tabs[0].panes()[0].Note.Rel, tb.Focus.Note.Rel; got != want {
+		t.Fatalf("restored note = %q, want %q", got, want)
 	}
 }

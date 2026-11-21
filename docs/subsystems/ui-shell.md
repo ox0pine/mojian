@@ -45,8 +45,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
    attached, and the detached copy appends stdout and stderr to `app.log` under `session.Dir()`.
    `app.Run` then takes the single-instance lock before anything else: a second `mojian path`
    finds the socket MyGo publishes for the app, sends its arguments and working directory, and
-   exits 0. The running window parses them against the launch's own directory, brings its window
-   forward, opens the project, and shows the named file, so a launch never opens a second app.
+   exits 0. If that window is still opening, a pathless launch leaves the first launch's queued
+   path untouched and only a newer path-bearing launch replaces it. Once open, the running window
+   parses arguments against the launch's own directory, brings its window forward and opens the
+   project. When leaving a remote project waits for an asynchronous save, the named file opens in a
+   continuation only after the new project is active, never against the old remote store, so a
+   launch never opens a second app.
 2. MyGo delivers input, `Window.Update` or `Invalidate`, and calls `(*app).view` again. The view
    builds a new element tree every frame from the fields on `*app`; nothing is cached between
    frames.
@@ -69,20 +73,37 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 - Slow work never runs in a view. Background results land through `Window.Update` and are dropped
   when a generation or sequence counter moved on — `git.Page.Seq`/`DiffSeq` and `assetView.pdfGen`
   are the examples. Remote saves and new-terminal SSH/`Create` calls also run off the UI thread.
-  A normal window close prevents the close until its remote save finishes or the user explicitly
-  discards the edits; OS session ending keeps MyGo's synchronous best-effort save constraint.
+  A normal window close or app quit prevents the close until its remote save finishes or the user
+  explicitly discards the edits; a synchronous local save defers the quit retry on MyGo's
+  application-level main queue until after `OnQuitCanceled`, so the cancellation cannot clear the
+  completed save's `quitReady`, and the retry still runs after every window has closed. OS session
+  ending keeps MyGo's synchronous best-effort save constraint.
   `windowSeq`, `hostSetupSeq` and `remoteTask.seq` reject results from a closed window, replaced
   operation or cancelled host, and production callbacks never mutate state directly on a worker
   after every window has closed.
 - Bound values update after construction: `OnClick`/`OnShortcut` run after construction,
   `OnChange`/`OnSubmit` observe the rebuilt view.
+- Explorer reveal requests leave search mode before selecting and opening the target path. Both
+  file and folder rows handle `TreeReveal` with `ScrollIntoView`, so tab switches and tree mutations
+  cannot leave the selected row filtered out or outside the viewport.
 - The harness replaces native behavior through `a.harness`; any action that needs a real window or
-  the session server must be guarded by it, or the headless worker blocks.
+  the session server must be guarded by it, or the headless worker blocks. Both `Headless.WindowView`
+  and `Headless.SettingsView` drain the same pending callback queue before building a frame, so a
+  Settings-only fixture displays background update results instead of leaving the action in progress.
+- Show Tab 1–9 keeps its fixed keys when a custom command requests the same accelerator. Browser and
+  harness views register the tab actions before configurable commands, so the key switches tabs and
+  does not run the conflicting command. While Settings records a shortcut, every menu accelerator,
+  including Show Tab, is temporarily empty so macOS delivers ⌘1–⌘9 to the recording control; ending
+  recording restores the menu keys.
 - Motion uses `internal/motion`: critically damped springs for pages, tabs, the tree and panes, a
   short color curve for hover; MyGo drops movement when the system asks for less motion.
 - Settings › Advanced › Shell command writes the `mojian` alias through `internal/shellcmd` into
-  the startup file of the chosen shell, in one marked block. The row's Install, Update or Remove
-  button reads `shellcmd.Inspect`, and the headless harness has no executable to install.
+  the startup file of the chosen shell, in one marked block. Both existing and dangling startup
+  symlinks stay links: Install and Remove write the referenced target, creating it when necessary.
+  The row's Install, Update or Remove button reads `shellcmd.Inspect`, and the headless harness has
+  no executable to install.
+- Update checks and release-asset downloads use MyGo's shared `netproxy.Transport()`, so proxy
+  settings held only by the OS apply to the custom GitHub release source as well as MyGo's updater.
 - The palette and the appearance are one decision made per frame: `(*app).dark` reads
   `prefs.Appearance` (System follows the frame's theme), `(*app).colorsOf` is
   `theme.Window(a.Theme, dark)`, and `(*app).applyTheme` hands the frame `theme.UI` of that

@@ -75,7 +75,25 @@ func (r *Server) RelOf(abs string) (string, bool) {
 	return relOfRoot(r.root, abs)
 }
 
-func (r *Server) SameFile(string, string) bool { return false }
+func (r *Server) SameFile(oldRel, newRel string) bool {
+	if !r.local {
+		return false
+	}
+	oldAbs, err := r.Abs(oldRel)
+	if err != nil {
+		return false
+	}
+	newAbs, err := r.Abs(newRel)
+	if err != nil {
+		return false
+	}
+	oldInfo, err := os.Lstat(oldAbs)
+	if err != nil {
+		return false
+	}
+	newInfo, err := os.Lstat(newAbs)
+	return err == nil && os.SameFile(oldInfo, newInfo)
+}
 
 func (r *Server) LocalPath(rel string) (string, bool) {
 	if !r.local {
@@ -156,7 +174,38 @@ func (r *Server) Mkdir(rel string) error {
 }
 
 func (r *Server) Rename(oldRel, newRel string) error {
+	if oldRel != newRel && strings.EqualFold(filepath.Clean(oldRel), filepath.Clean(newRel)) {
+		return pair(r, oldRel, newRel, r.renameCase)
+	}
 	return pair(r, oldRel, newRel, r.ctl().Rename)
+}
+
+// renameCase moves the source aside before naming it. On a case-insensitive
+// filesystem the destination then vanishes with the source; on a
+// case-sensitive filesystem a distinct destination remains and is protected.
+func (r *Server) renameCase(oldAbs, newAbs string) error {
+	ctl := r.ctl()
+	tmp := oldAbs + ".mojian-rename"
+	for i := 2; ; i++ {
+		if _, err := ctl.Stat(tmp); err != nil {
+			break
+		}
+		tmp = fmt.Sprintf("%s.mojian-rename-%d", oldAbs, i)
+	}
+	if err := ctl.Rename(oldAbs, tmp); err != nil {
+		return err
+	}
+	if _, err := ctl.Stat(newAbs); err == nil {
+		if restoreErr := ctl.Rename(tmp, oldAbs); restoreErr != nil {
+			return fmt.Errorf("%s already exists; restoring the original name: %w", filepath.Base(newAbs), restoreErr)
+		}
+		return fmt.Errorf("%s already exists", filepath.Base(newAbs))
+	}
+	if err := ctl.Rename(tmp, newAbs); err != nil {
+		_ = ctl.Rename(tmp, oldAbs)
+		return err
+	}
+	return nil
 }
 
 func (r *Server) Copy(oldRel, newRel string) error {

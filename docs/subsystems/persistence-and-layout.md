@@ -13,7 +13,7 @@ that produce both files, and the environment overrides that move them.
 - [`internal/app/settings_file.go`](../../internal/app/settings_file.go) — `settingsFile`,
   `loadSettings`, `saveSettingsSoon`, `saveSettings`, and the preference getters.
 - [`internal/app/layout.go`](../../internal/app/layout.go) — `layoutFile`, `layoutTab`,
-  `layoutNode`, `layoutPane`, `layoutTerminal`, `layoutOf`, `snapshotLayout`, `restoreLayout`,
+  `layoutNode`, `layoutPane`, `layoutTerminal`, `layoutOf`, `snapshotLayout`, `restoreLayoutStatus`,
   `restoreColumns`, `saveLayout`.
 - [`internal/app/app.go`](../../internal/app/app.go) — `dataDir`, `settingsPath`,
   `projectLayoutPath`, `migrateLayout`, `changed`, `scheduleLayoutSave`, `persistLayout`.
@@ -39,10 +39,13 @@ that produce both files, and the environment overrides that move them.
   explanation and disabled state from the updater, so update searches always land on a real row.
 4. A layout change calls `changed`, which marks the layout dirty and arms the timer;
    `persistLayout` saves once 550 ms pass without another change. `saveLayout` snapshots the tabs
-   through `snapshotLayout` and writes atomically.
+   through `snapshotLayout`, writes atomically and returns any write error. A failed write leaves
+   the layout dirty; synchronous saves propagate the error so project switches and normal quits do
+   not silently discard the change.
 5. Switching projects calls `stashActiveWorkspace` (the active workspace is the cache entry itself,
    so nothing is copied) and `activateWorkspace` restores the next project's tabs, terminals,
-   layout and Git page without reading it again.
+   layout and Git page without reading it again. Activation also issues a fresh editor focus
+   request, because the previous request was consumed while that project was last visible.
 
 ## Contracts and failure behavior
 
@@ -50,13 +53,16 @@ that produce both files, and the environment overrides that move them.
   `zoom`, `vertical`, `share`, `a`, `b`, `pane`, `id`, `note`, `asset`, `preview`, `terminal`,
   `sid`, `host`, `server`. Legacy `columns`/`panes` are still read through `restoreColumns` so old
   layouts survive.
-- A missing layout is not a failure: `restoreLayout` reports false and the window falls back to the
-  first note. A platform without terminals drops every terminal pane; a build without remote
-  support drops SSH and remote-server panes but keeps local terminals.
+- A missing layout is not a failure: the window falls back to the first note. A valid layout whose
+  nonempty tabs all lose their panes does the same. A platform without terminals drops every
+  terminal pane; a build without remote support drops SSH and remote-server panes but keeps local
+  terminals. Empty tabs, including their custom names, are restored rather than treated as missing
+  content. When earlier tabs are dropped, the active index follows the originally active tab; if
+  that tab is gone, restoration selects the nearest following tab, then the nearest preceding one.
 - `saveSettings` writes empty remote fields when the build has no remote support, so the sanitized
   state is durable rather than reappearing on the next launch.
 - A failed read is not an empty layout. An unreadable or malformed file leaves the current state
-  alone rather than replacing it with defaults.
+  alone: opening the project neither creates a fallback tab nor writes over the original bytes.
 - `MOJIAN_VAULT` selects the project folder; `MOJIAN_DIR` moves the data, socket and log directory
   (see [session-and-remote.md](session-and-remote.md)).
 - Both files are written with `fs.WriteFileAtomic`; a partial file is never left behind.
@@ -71,5 +77,5 @@ that produce both files, and the environment overrides that move them.
 ## Verification
 
 ```sh
-go test ./internal/app -run 'TestSettingsPageAndPersistence|TestLayoutRoundTrip|TestTerminalLayoutRoundTrip|TestProjectSwitch'
+go test ./internal/app -run 'TestSettingsPageAndPersistence|TestLayoutRoundTrip|TestRestoreLayoutRemapsActiveAfterDroppedTab|TestSaveNowReturnsLayoutErrorAndStaysDirty|TestOpenProjectPreservesMalformedLayout|TestTerminalLayoutRoundTrip|TestProjectSwitch'
 ```

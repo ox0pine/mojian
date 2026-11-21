@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/netproxy"
 )
 
 // Repo is the GitHub repository releases are published from.
@@ -26,29 +27,33 @@ const RepoURL = "https://github.com/" + Repo
 // rate limit is easy to exhaust, and keeps a check to one request. The
 // files are still checked against the updater's signed manifest.
 type githubUpdates struct {
-	base   string        // "https://github.com/ox0pine/mojian" when empty
-	client *http.Client  // a 20 second client when nil
-	delay  time.Duration // first retry delay; 1 second when zero
+	base         string                 // "https://github.com/ox0pine/mojian" when empty
+	client       *http.Client           // a proxy-aware client when nil
+	newTransport func() *http.Transport // netproxy.Transport when nil
+	delay        time.Duration          // first retry delay; 1 second when zero
 }
 
 // Manifest returns the manifest of the running platform in the latest
 // release.
 func (g githubUpdates) Manifest(ctx context.Context, prereleases bool) (io.ReadCloser, error) {
 	target := runtime.GOOS + "-" + runtime.GOARCH
-	client := g.client
-	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
-	}
-	return g.get(ctx, g.url("/releases/latest/download/update-"+url.PathEscape(target)+".json"), client)
+	return g.get(ctx, g.url("/releases/latest/download/update-"+url.PathEscape(target)+".json"), g.httpClient(20*time.Second))
 }
 
 // Open downloads a file the manifest names.
 func (g githubUpdates) Open(ctx context.Context, raw string) (io.ReadCloser, error) {
-	client := g.client
-	if client == nil {
-		client = &http.Client{}
+	return g.get(ctx, raw, g.httpClient(0))
+}
+
+func (g githubUpdates) httpClient(timeout time.Duration) *http.Client {
+	if g.client != nil {
+		return g.client
 	}
-	return g.get(ctx, raw, client)
+	newTransport := g.newTransport
+	if newTransport == nil {
+		newTransport = netproxy.Transport
+	}
+	return &http.Client{Transport: newTransport(), Timeout: timeout}
 }
 
 func (g githubUpdates) url(path string) string {

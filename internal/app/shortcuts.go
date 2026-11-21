@@ -49,11 +49,11 @@ func (a *app) commandKeys(c *commands.Command) string {
 // menuAccel gives a menu item its keys, none while a shortcut is being
 // typed: macOS takes a key bound to a menu before the focused control
 // sees it, which would split a pane instead of recording its keys.
-func (a *app) menuAccel(c *commands.Command) string {
+func (a *app) menuAccel(accel string) string {
 	if a.settings.Recording != "" {
 		return ""
 	}
-	return a.commandAccel(c)
+	return accel
 }
 
 // showTabAccel is the accelerator of the nth tab, from 1 to 9: Command

@@ -64,14 +64,20 @@ also reads, switches and creates the project's branches and reloads open notes a
    those edits belong to: the reason lands in the banner and in the menu's footer, and the menu
    stays open. Otherwise `runBranchChange` runs `git switch` (or `git checkout` for Git older than
    2.23) off the UI thread, then `(*Store).Reload` replaces the text of clean notes, `git.Page`
-   refreshes if open, and the branch is read again.
+   refreshes if open, and the branch is read again. Branch reads and changes capture their starting
+   workspace: their sequence checks and state writes never follow `a.workspace` to another project,
+   and only a still-current workspace receives banners or follow-up refreshes.
 7. `stashActiveWorkspace` and `activateWorkspace` bump `branch.seq`, so a read from the project
    that was on screen cannot land in the next one; activation reads the branch again, since a
-   terminal may have moved it while the project was away.
+   terminal may have moved it while the project was away. `branch.changing`/`changeSeq` keep a
+   checkout exclusive across those activations even though read loading is reset; its completion
+   clears only the originating workspace's operation.
 8. `Page.ShowHistory` swaps the left list for the repository's commits. `ReadHistory` runs in the
    background under `HistorySeq` and lands through `applyHistory`; the selected commit's patch is
    `ReadCommitDiff`, landing through `applyDiff` under the same `DiffSeq` as a working-tree diff
-   and split per file by `SplitDiff`. `ShowChanges` switches back and refreshes the status. One
+   and split per file by `SplitDiff`. `ShowChanges` increments `HistorySeq`, clears history loading
+   and refreshes the status, and `applyHistory` also requires History mode, so a late commit list
+   cannot clear or replace a working-tree diff. One
    track holds `Changes`, `History` and the branch chip, as the title bar's track holds its own
    chips; the branch chip opens the page's menu under itself (`ToggleBranchMenu`), which
    lists the branches, checks out the one chosen through `Host.SwitchBranch`, and creates a typed
@@ -96,7 +102,16 @@ also reads, switches and creates the project's branches and reloads open notes a
 - `Change.Path` stays relative to the repository root so Git commands keep working; `OldPath` keeps
   a rename's source so Git can pair it; `Display` is relative to the project for people.
 - A project nested inside a repository reports changes with `Display` relative to the project and
-  skips entries outside it.
+  skips entries outside it. Every filesystem-derived pathspec passed to status, diff, log or show
+  uses Git's `--literal-pathspecs`, so `[`, `*`, `?` and leading `:` remain filename characters.
+- `repoRoot` removes only rev-parse's CRLF record terminator, not whitespace in the directory name;
+  a repository root ending in a space therefore remains usable by status and branch reads.
+- On an unborn HEAD, `ReadDiff` compares the working tree with Git's empty tree (hashed with
+  `hash-object -t tree /dev/null`), not just the index. An `AM` file thus includes both its staged
+  addition and subsequent unstaged lines.
+- Before reading an untracked file, `untrackedDiff` asks Git for a raw no-index diff. Mode `120000`
+  takes Git's symlink patch, whose added line is the link target path; neither local nor remote
+  runners open the target file. Regular files keep the existing size and binary limits.
 - `gitenv.Env` removes the variables that redirect Git at another repository, so a hook or a parent
   process cannot change what the page reads.
 - Failures render inside the page (`Page.Err`, `Page.DiffErr`) instead of the app's error banner; a
@@ -110,7 +125,10 @@ also reads, switches and creates the project's branches and reloads open notes a
   their counts and section text, a blank context line regains its space prefix, and a `\ No newline`
   line stays as it is. Every other line is cut at `diffLineRunes` (2000) with `…` after its prefix,
   because a binary file Git reads as text arrives as one line of megabytes and the viewer would
-  shape it for minutes. Cutting changes no hunk's line counts, so numbering stays right.
+  shape it for minutes. Cutting changes no hunk's line counts, so numbering stays right. A file
+  with no parsed hunks gets no `editor.DiffState`: Changes shows Git's original binary or mode-only
+  section in the non-text state, and History renders that section under the file heading instead
+  of an empty viewer.
 - The working tree's file scrolls inside the viewer (`FitContent` false, no outer `ui.Scroll`). A
   commit's patch keeps the outer scroll and `p.DiffScroll`, one `FitContent` viewer per file under
   its heading; the 2500-line budget cuts whole hunks (`cutFileDiff`) and still ends with the
@@ -148,7 +166,9 @@ also reads, switches and creates the project's branches and reloads open notes a
   commit leaves no single patch; the page says so rather than showing an empty diff.
 - `SplitDiff` gives each file of a patch its own heading. `new file mode`, `deleted file mode` and
   `rename from` set `A`, `D` and `R`; a binary or mode-only section names its file from the
-  `diff --git` line because it has no `+++` header.
+  `diff --git` line because it has no `+++` header. For an unquoted line, the separator is accepted
+  only when the old and new paths match, so a path containing ` b/` is not truncated. The complete
+  no-hunk section is retained in `FileDiff.Note` for the non-text view.
 - Branch names typed into the menu pass `git check-ref-format --branch` before `git switch -c`;
   empty names and names starting with `-` are refused before Git sees them.
 - The switch is refused while any note is dirty and it writes no note itself: a refusal leaves HEAD

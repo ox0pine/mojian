@@ -42,8 +42,11 @@ the save path, path guards and the asset cache.
    returns `project.ErrFileChanged`; a read failure also aborts that note's save. Serialization
    uses `Buffer.WriteTo`, preserving LF or CRLF. A successful write advances `Saved`, but calls
    `buf.MarkSaved()` only when the current buffer still equals the snapshot; newer edits stay dirty
-   and are written by another pass. Saves are serialized per store, and switching projects, closing
-   a host or closing the window waits for the queue or an explicit discard decision.
+   and are written by another pass. A snapshot also carries the store's path revision. Rename,
+   recreate and trash advance that revision before their filesystem operation; a stale snapshot is
+   skipped rather than written to its old path, and any surviving dirty note is saved from a fresh
+   snapshot at its current path. Saves are serialized per store, and switching projects, closing a
+   host or closing the window waits for the queue or an explicit discard decision.
 3. `Store.Refresh` reads one listing and reconciles it into notes, assets and the tree: notes keep
    their shared buffers; a direct listing reloads changed clean notes in place with `Buffer.Reset`,
    while dirty notes retain both their edits and saved baseline. Vanished clean files drop out;
@@ -52,7 +55,9 @@ the save path, path guards and the asset cache.
    is split into `Store.List` (backend only, safe off the UI thread) and `Store.Apply` (mutates the
    store on the UI thread). The Explorer re-reads a server project in the background and shows a
    spinner while it runs; a window focus and opening the file sidebar reuse a listing younger than
-   15 seconds, while the Refresh button forces one.
+   15 seconds, while the Refresh button forces one. A background listing also captures the path
+   revision: if a rename, recreate or trash finishes first, the older listing is dropped instead of
+   recreating ghost notes or closing editors for the new paths.
 
 ## Contracts and failure behavior
 
@@ -73,13 +78,22 @@ the save path, path guards and the asset cache.
   seconds; `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy` and `Exec` clear it, and `ListFresh`
   bypasses it for the app's explicit Refresh. A repeated listing then costs a round trip instead of
   walking hundreds of thousands of files again.
+- Classification stats the target before extension shortcuts or opening it. Only regular files can list as notes or
+  assets; directories, FIFOs, sockets and other special files are omitted without being opened. A symlink follows its
+  target, so a link to a regular file still classifies and opens normally while a link to a directory is omitted.
 - Everything user-visible on disk that is not a project file (settings, layouts, cached assets) goes
   through `fs.WriteFileAtomic`; never write in place.
 - Direct `os.WriteFile` outside these paths is a guard failure: `internal/archtest` allows it only in
   `internal/fs/server.go` (asset cache), `internal/welcome/welcome.go` (starter files) and
   `internal/testutil/testutil.go` (fixtures).
 - A path that escapes the project root is rejected by `cleanRel`/`joinRoot` rather than clamped; the
-  file operation surfaces the error to `a.fail`.
+  file operation surfaces the error to `a.fail`. Remote paste applies the same self/descendant guard
+  as local copies before issuing `Copy`, so copying a folder into itself fails without creating a
+  recursive destination tree.
+- Server-backed case-only renames move the source to an unused temporary name before taking the new
+  spelling. If a distinct destination remains on a case-sensitive host, the source is restored and
+  the rename fails; on a case-insensitive host the destination alias disappears with the source and
+  the new spelling replaces it, matching `Direct`.
 - A listing that cannot read the project root (for example a denied macOS folder permission) returns
   that error instead of an empty listing, so the store and Explorer keep their previous tree. An
   unreadable folder below a readable root is skipped so the rest of the project stays usable.
@@ -89,7 +103,9 @@ the save path, path guards and the asset cache.
   ignores still lists and opens, so an ignored `.env` or log is not lost. `.git`, `.svn`, `.hg` and
   `.mojian-trash` are hidden by name. Patterns follow Git: `#` comments, `!` negation, a trailing
   `/` for folders, a `/` inside anchoring the pattern to the `.gitignore`'s folder, `**` crossing
-  folders, and a deeper `.gitignore` overriding its parents.
+  folders, and a deeper `.gitignore` overriding its parents. Directory matching normalizes path separators and redundant
+  `/` characters only; leading or trailing spaces in a real directory name are preserved, so only the exact Git match
+  is skipped.
 - The Explorer's search filters the same notes and assets that Quick Open lists: an image or PDF
   match stays visible and opens through `openRel`, and Enter opens the first note or asset match.
 - `Memory` lists nothing and refuses file operations with `errReadOnly` (its `Write` is a no-op); the browser build keeps its editor in memory.

@@ -60,6 +60,8 @@ func prepareTerminalSession(client *session.Client, sid string, opts session.Cre
 
 type remoteTerminalResult struct {
 	conn    *remoteConn
+	host    string
+	seq     uint64
 	sid     string
 	created bool
 	dialed  bool
@@ -86,12 +88,12 @@ func (a *app) startRemoteTerminal(p *pane) {
 	if temporaryKeep {
 		a.keepRemote(host)
 	}
-	t.connecting = true
+	seq := t.beginConnect()
 	t.startErr = ""
 	a.invalidate()
 	win := a.win
 	go func() {
-		result := remoteTerminalResult{conn: existing, dialed: existing == nil}
+		result := remoteTerminalResult{conn: existing, host: host, seq: seq, dialed: existing == nil}
 		if result.conn == nil {
 			result.conn, result.err = dialTerminalRemoteFn(context.Background(), host)
 		}
@@ -121,9 +123,10 @@ func (a *app) startRemoteTerminal(p *pane) {
 // connection dialed by this start is installed only if the pane is still
 // live; a pooled connection that appeared during Dial wins over it.
 func (a *app) finishRemoteTerminal(p *pane, t *termTab, result remoteTerminalResult, windowCurrent bool, release, releaseAsync func()) {
-	host := t.Spec.Server
-	current := windowCurrent && p.Term == t && !p.closing && a.tabOf(p) != nil
-	if p.Term == t && !current {
+	host := result.host
+	current := windowCurrent && p.Term == t && !p.closing && a.tabOf(p) != nil &&
+		t.connectSeq == result.seq && t.Spec.Server == host
+	if p.Term == t && t.connectSeq == result.seq && !current {
 		t.connecting = false
 	}
 	chosen := result.conn
@@ -148,7 +151,9 @@ func (a *app) finishRemoteTerminal(p *pane, t *termTab, result remoteTerminalRes
 	}
 	if !current {
 		var client *session.Client
-		if chosen != nil {
+		if result.conn != nil {
+			client = result.conn.Client
+		} else if chosen != nil {
 			client = chosen.Client
 		}
 		sid := ""
@@ -244,7 +249,7 @@ func (a *app) startRestoredTerminal(p *pane) {
 	if err != nil {
 		if a.win != nil && t.Spec.Server != "" && t.Spec.Server != localServerID &&
 			t.Spec.Server == a.serverAlias {
-			t.connecting = true
+			t.beginConnect()
 			if !a.remoteBusy {
 				a.reconnectActiveRemoteAsync()
 			}
@@ -257,12 +262,12 @@ func (a *app) startRestoredTerminal(p *pane) {
 	}
 	opts := a.terminalCreateOptions(t.Spec)
 	sid := t.SID
-	t.connecting = true
+	seq := t.beginConnect()
 	a.invalidate()
 	win := a.win
 	finish := func(sid string, created bool, err error) {
-		stale := p.Term != t || a.win != win || (win != nil && a.tabOf(p) == nil)
-		if p.Term == t {
+		stale := p.Term != t || a.win != win || (win != nil && a.tabOf(p) == nil) || t.connectSeq != seq
+		if p.Term == t && t.connectSeq == seq {
 			t.connecting = false
 		}
 		if stale {
@@ -318,6 +323,7 @@ func detachTerminalView(p *pane) {
 		_ = p.Term.stream.Close()
 		p.Term.stream = nil
 	}
+	p.Term.invalidateConnect()
 }
 
 // endTerminalPane closes a pane's terminal view, ending its session on

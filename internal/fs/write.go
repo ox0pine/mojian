@@ -44,6 +44,27 @@ func WriteFileAtomic(path string, data []byte) error {
 	return renameRetry(name, path)
 }
 
+// MoveFileAtomic moves path within a data directory without a partial copy.
+// A missing source is already the requested end state; an existing destination
+// is left alone rather than overwritten on platforms whose rename replaces it.
+func MoveFileAtomic(path, newPath string) error {
+	if _, err := os.Stat(newPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+		return err
+	}
+	if err := renameRetry(path, newPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 // renameRetry retries the replace on Windows, where another process
 // holding the destination open makes os.Rename fail with a sharing or
 // access violation.

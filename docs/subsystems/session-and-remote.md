@@ -68,8 +68,10 @@ its bundled `ssh.exe`.
 3. A remote host is provisioned once: `remote.Provision` uploads the binary and viewer library
    from `internal/remotebin` as one content-hashed release under `~/.local/share/mojian/releases`,
    then atomically switches the `current` symlink. Concurrent devices cannot publish a partial
-   binary/library pair; old releases stay while a server may still use them and are removed after
-   a confirmed stop. Provisioning runs `ssh -T <host> -- current/mojian-server stdio`. The bridge
+   binary/library pair; old releases stay while a server may still use them and are removed only
+   by the cleanup after a confirmed Stop Server. Uploading never treats an absent socket as proof
+   that an old release is unused: another device's bridge may still be between resolving `current`
+   and starting its server. Provisioning runs `ssh -T <host> -- current/mojian-server stdio`. The bridge
    dials the server socket, starting a detached `mojian-server` when none runs, and copies stdio
    to it; the client speaks v5 through that pipe. `remote.Dial` does the same, `Provision` returns
    the live `Conn` it ended with, and the app keeps it in the pool. Nothing is forwarded and no
@@ -92,6 +94,13 @@ its bundled `ssh.exe`.
 - One socket and one server per data directory: a client dials the socket first and spawns a server
   only when nothing answers, and `server.lock` (an exclusive `flock` or Windows `LockFileEx`) makes
   a server that loses the race exit instead of binding a second socket.
+- Shutdown rejects new Create requests. If shutdown begins while a PTY is being created, that
+  session either joins the final kill snapshot or is killed before Create returns an error; it can
+  never register after the snapshot and outlive the stopped server.
+- A remote project root may be a symlink to a directory; tree listings resolve that root and return
+  the target's entries. Copying rejects a source/destination overlap before creating anything,
+  including a directory destination below the source through a symlinked parent. File, directory
+  and broken symlinks are recreated with their original link text instead of being followed.
 - Windows local projects keep files and Git on `fs.Direct`; its local session server owns
   terminals only, so the local `exec` op is unavailable. Remote hosts work on Windows the same way
   as elsewhere, because the transport is `ssh.exe` over pipes: remote projects use the remote

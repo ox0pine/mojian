@@ -120,6 +120,91 @@ func TestLayoutRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRestoreLayoutRemapsActiveAfterDroppedTab(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"b.md", "c.md"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("# "+f+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("MOJIAN_VAULT", dir)
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := layoutFile{Active: 1, Tabs: []layoutTab{
+		{Root: &layoutNode{Pane: &layoutPane{ID: "a", Note: "missing.md"}}},
+		{Name: "B", Root: &layoutNode{Pane: &layoutPane{ID: "b", Note: "b.md"}}},
+		{Name: "C", Root: &layoutNode{Pane: &layoutPane{ID: "c", Note: "c.md"}}},
+	}}
+	data, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "layout.json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{workspace: &workspace{store: s, layoutPath: path, active: -1}}
+	if got := a.restoreLayoutStatus(); got != layoutRestoreOK {
+		t.Fatalf("restore status: %v", got)
+	}
+	if len(a.tabs) != 2 || a.active != 0 || a.tab().Name != "B" {
+		t.Fatalf("tabs=%d active=%d tab=%+v", len(a.tabs), a.active, a.tab())
+	}
+	if a.currentNote() == nil || a.currentNote().Rel != "b.md" {
+		t.Fatalf("active note: %+v", a.currentNote())
+	}
+}
+
+func TestLayoutRoundTripPreservesNamedEmptyTab(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MOJIAN_VAULT", dir)
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "layout.json")
+	a := &app{workspace: &workspace{store: s, layoutPath: path, active: 1}}
+	a.tabs = []*tab{newTab(s.ByRelPath("a.md")), {ID: nextID("t"), Name: "Scratch"}}
+	if err := a.saveLayout(); err != nil {
+		t.Fatal(err)
+	}
+
+	b := &app{workspace: &workspace{store: s, layoutPath: path, active: -1}}
+	if got := b.restoreLayoutStatus(); got != layoutRestoreOK {
+		t.Fatalf("restore status: %v", got)
+	}
+	if len(b.tabs) != 2 || b.active != 1 {
+		t.Fatalf("tabs=%d active=%d", len(b.tabs), b.active)
+	}
+	scratch := b.tab()
+	if scratch.Root != nil || scratch.Name != "Scratch" {
+		t.Fatalf("restored empty tab: %+v", scratch)
+	}
+}
+
+func TestSaveNowReturnsLayoutErrorAndStaysDirty(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{workspace: &workspace{
+		layoutPath: filepath.Join(blocker, "layout.json"),
+	}}
+	a.layoutDirty = true
+	if err := a.saveNow(); err == nil {
+		t.Fatal("saveNow ignored the layout write failure")
+	}
+	if !a.layoutDirty {
+		t.Fatal("saveNow cleared layoutDirty after a failed layout write")
+	}
+}
+
 func TestRestoreFillsALonePane(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# a\n"), 0o644); err != nil {

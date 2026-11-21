@@ -1,12 +1,14 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	gitpage "mojian/internal/git"
 	"mojian/internal/testutil"
 
 	"github.com/egoist/mygo/ui"
@@ -211,5 +213,110 @@ func TestBranchChipNeedsRepository(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("This folder is not a Git repository.") {
 		t.Fatalf("branch sheet: %q", tt.Texts())
+	}
+}
+
+func TestBranchReadCannotLandInCurrentWorkspace(t *testing.T) {
+	old := &workspace{branch: branchState{seq: 3, loading: true}}
+	current := &workspace{branch: branchState{
+		seq: 2, loading: true, loaded: true,
+		data: gitpage.BranchData{Root: "/current", Current: "current"},
+	}}
+	a := &app{workspace: current}
+
+	// This read started in old at seq 2. Switching away invalidated it at
+	// seq 3, while the new project independently reached seq 2 as well.
+	a.applyBranch(old, 2, gitpage.BranchData{Root: "/old", Current: "old"})
+	if current.branch.data.Root != "/current" || current.branch.data.Current != "current" {
+		t.Fatalf("old read replaced current branch: %+v", current.branch)
+	}
+	if !current.branch.loading || !old.branch.loading {
+		t.Fatalf("stale read changed loading state: old=%v current=%v", old.branch.loading, current.branch.loading)
+	}
+}
+
+func TestBranchChangeErrorDoesNotCrossWorkspaces(t *testing.T) {
+	oldDir := t.TempDir()
+	testutil.WriteVault(t, oldDir, map[string]string{"a.md": "# A\n"})
+	currentDir := t.TempDir()
+	testutil.WriteVault(t, currentDir, map[string]string{"b.md": "# B\n"})
+	oldStore, err := openStoreAt(oldDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentStore, err := openStoreAt(currentDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := &workspace{store: oldStore}
+	current := &workspace{store: currentStore, branch: branchState{seq: 1, loading: true}}
+	a := &app{workspace: old}
+	a.runBranchChange("old checkout", func(gitpage.Runner) error {
+		a.workspace = current
+		a.store = currentStore
+		return errors.New("old failure")
+	})
+	if a.err != "" {
+		t.Fatalf("old checkout reported in current workspace: %q", a.err)
+	}
+	if !current.branch.loading || current.branch.seq != 1 {
+		t.Fatalf("old checkout completed into current workspace: %+v", current.branch)
+	}
+	if old.branch.loading {
+		t.Fatal("originating checkout never cleared its loading state")
+	}
+}
+
+func TestBranchChangeSuccessDoesNotRefreshCurrentWorkspace(t *testing.T) {
+	oldDir := t.TempDir()
+	testutil.WriteVault(t, oldDir, map[string]string{"a.md": "# A\n"})
+	currentDir := t.TempDir()
+	testutil.WriteVault(t, currentDir, map[string]string{"b.md": "# B\n"})
+	oldStore, err := openStoreAt(oldDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentStore, err := openStoreAt(currentDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := &workspace{store: oldStore}
+	current := &workspace{store: currentStore, branch: branchState{seq: 1}}
+	a := &app{workspace: old}
+	a.runBranchChange("old checkout", func(gitpage.Runner) error {
+		a.workspace = current
+		a.store = currentStore
+		return nil
+	})
+	if current.branch.seq != 1 || current.branch.loaded {
+		t.Fatalf("old success refreshed current branch: %+v", current.branch)
+	}
+	if a.err != "" {
+		t.Fatalf("old success reported an error: %q", a.err)
+	}
+}
+
+func TestBranchChangeSurvivesWorkspaceActivation(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "# A\n"})
+	store, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := &workspace{store: store}
+	a := &app{workspace: ws}
+	a.runBranchChange("checkout", func(gitpage.Runner) error {
+		// Activation invalidates UI callbacks and clears read loading, but
+		// must not make the still-running checkout look finished.
+		ws.branch.seq += 2
+		ws.branch.loading = false
+		a.refreshBranch()
+		if !ws.branch.loading || !ws.branch.changing {
+			t.Fatalf("activation released the running checkout: %+v", ws.branch)
+		}
+		return nil
+	})
+	if ws.branch.loading || ws.branch.changing {
+		t.Fatalf("completed checkout stayed busy: %+v", ws.branch)
 	}
 }

@@ -46,6 +46,21 @@ func TestGitIgnorePatterns(t *testing.T) {
 	}
 }
 
+func TestGitIgnorePreservesDirectorySpace(t *testing.T) {
+	root := t.TempDir()
+	writeIgnore(t, root, "build/\n")
+	g := NewGitIgnore(root)
+	for rel, want := range map[string]bool{
+		"build":  true,
+		" build": false,
+		"build ": false,
+	} {
+		if got := g.DirIgnored(rel); got != want {
+			t.Errorf("DirIgnored(%q) = %v, want %v", rel, got, want)
+		}
+	}
+}
+
 // TestGitIgnoreNestedWins checks that a deeper .gitignore overrides its
 // parent, as Git applies them.
 func TestGitIgnoreNestedWins(t *testing.T) {

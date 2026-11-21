@@ -4,7 +4,40 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"mojian/internal/theme"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
+
+type pageRunner func(dir string, args ...string) (string, error)
+
+func (r pageRunner) Run(dir string, args ...string) (string, error) { return r(dir, args...) }
+func (pageRunner) ReadFile(string, string, int) ([]byte, error)     { return nil, nil }
+func (pageRunner) RealPath(path string) (string, error)             { return path, nil }
+
+type pageHost struct {
+	dir    string
+	runner Runner
+}
+
+func (h *pageHost) ProjectDir() (string, bool) { return h.dir, true }
+func (h *pageHost) GitRunner() Runner          { return h.runner }
+func (h *pageHost) Window() *mygo.Window       { return nil }
+func (h *pageHost) Invalidate()                {}
+func (h *pageHost) CloseGit()                  {}
+func (h *pageHost) Fail(error)                 {}
+func (h *pageHost) HasPath(string) bool        { return false }
+func (h *pageHost) OpenPath(string)            {}
+func (h *pageHost) FileMenu(*ui.Menu, string)  {}
+func (h *pageHost) EditorTheme(*ui.Context) *editor.Theme {
+	return &editor.Theme{}
+}
+func (h *pageHost) EditorFont() (ui.Font, float32, int) { return ui.Font{}, 16, 4 }
+func (h *pageHost) SwitchBranch(string, string) error   { return nil }
+func (h *pageHost) CreateBranch(string, string) error   { return nil }
 
 func TestParseDiff(t *testing.T) {
 	diff := `diff --git a/x.py b/x.py
@@ -213,5 +246,75 @@ func TestParseHistoryStopsAtTheLastRecord(t *testing.T) {
 	}
 	if len(parseHistory("")) != 0 {
 		t.Fatal("an empty log has no commits")
+	}
+}
+
+func TestShowChangesDropsLateHistory(t *testing.T) {
+	const working = "diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -1 +1 @@\n-old\n+working\n"
+	runner := pageRunner(func(dir string, args ...string) (string, error) {
+		command := strings.Join(args, " ")
+		switch {
+		case command == "rev-parse --show-toplevel":
+			return dir + "\n", nil
+		case strings.Contains(command, "rev-parse --abbrev-ref HEAD"):
+			return "main\n", nil
+		case strings.Contains(command, "status --porcelain=v1"):
+			return " M a.md\x00", nil
+		case strings.Contains(command, "diff") && strings.Contains(command, "HEAD"):
+			return working, nil
+		case strings.Contains(command, "show"):
+			return "diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -1 +1 @@\n-old\n+commit\n", nil
+		default:
+			return "", nil
+		}
+	})
+	h := &pageHost{dir: "/repo", runner: runner}
+	p := Page{Mode: ModeHistory, HistorySeq: 1, HistoryLoad: true, h: h, runner: runner}
+	historySeq := p.HistorySeq
+	p.ShowChanges()
+	if p.DiffPath != "a.md" || p.Diff != working {
+		t.Fatalf("working diff before late history: path %q diff %q", p.DiffPath, p.Diff)
+	}
+	p.applyHistory(historySeq, HistoryData{
+		Root: "/repo", Commits: []Commit{{Hash: "abc", Short: "abc"}},
+	})
+	if p.DiffPath != "a.md" || p.Diff != working || p.DiffLoad {
+		t.Fatalf("late history replaced working diff: path %q diff %q loading %v", p.DiffPath, p.Diff, p.DiffLoad)
+	}
+}
+
+func TestNonTextDiffUsesExplanationInsteadOfBlankViewer(t *testing.T) {
+	cases := []string{
+		"diff --git a/image.png b/image.png\nindex 111..222 100644\nBinary files a/image.png and b/image.png differ\n",
+		"diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n",
+	}
+	for _, diff := range cases {
+		h := &pageHost{}
+		p := Page{
+			Changes:  []Change{{Path: "file", Display: "file", Status: "M"}},
+			DiffPath: "file", Diff: diff, diffGen: 1, h: h,
+		}
+		k := theme.Window(theme.DefaultID, false)
+		tt := ui.NewTester(func(c *ui.Context) { p.View(c, k, h) }, 900, 600)
+		tt.Frame()
+		if p.diffView != nil {
+			t.Fatalf("non-text diff created an empty viewer: %+v", p.diffView)
+		}
+		if !tt.HasText("No text changes") || !tt.HasText(strings.TrimSpace(diff)) {
+			t.Fatalf("non-text explanation missing %q: %q", strings.TrimSpace(diff), tt.Texts())
+		}
+	}
+}
+
+func TestSplitDiffPathContainingNewPrefix(t *testing.T) {
+	diff := "diff --git a/foo b/bar b/foo b/bar\n" +
+		"index 111..222 100644\n" +
+		"Binary files a/foo b/bar and b/foo b/bar differ\n"
+	files := SplitDiff(diff)
+	if len(files) != 1 || files[0].Path != "foo b/bar" {
+		t.Fatalf("files: %+v", files)
+	}
+	if !strings.Contains(files[0].Note, "Binary files a/foo b/bar and b/foo b/bar differ") {
+		t.Fatalf("binary explanation: %q", files[0].Note)
 	}
 }

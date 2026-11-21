@@ -437,9 +437,9 @@ func (p *Page) diffState(c *ui.Context, k *theme.Colors) {
 	default:
 		p.buildDiffViews(c)
 		if p.diffView == nil {
-			detail := "This file has no textual diff."
-			if note := strings.TrimSpace(p.Diff); note != "" && !strings.HasPrefix(note, "diff ") {
-				detail = note
+			detail := strings.TrimSpace(p.Diff)
+			if detail == "" {
+				detail = "This file has no textual diff."
 			}
 			p.state(c, k, "file-text", k.TextFaint, "No text changes", detail)
 			return
@@ -543,6 +543,10 @@ func cutFileDiff(f FileDiff, n int) FileDiff {
 
 // newDiffView configures one viewer with the page's editor look.
 func (p *Page) newDiffView(c *ui.Context, f FileDiff, fit bool) *editor.DiffState {
+	patch := toFilePatch(f)
+	if len(patch.Hunks) == 0 {
+		return nil
+	}
 	font, lineHeight, tabSize := p.h.EditorFont()
 	d := &editor.DiffState{
 		Layout:         editor.DiffUnified,
@@ -555,7 +559,7 @@ func (p *Page) newDiffView(c *ui.Context, f FileDiff, fit bool) *editor.DiffStat
 		LineHeight:     lineHeight,
 		TabSize:        tabSize,
 	}
-	d.SetPatch(toFilePatch(f))
+	d.SetPatch(patch)
 	return d
 }
 
@@ -575,10 +579,18 @@ func (p *Page) diffPatch(c *ui.Context, k *theme.Colors) {
 		TrackScroll(&p.DiffScroll)
 	scroll.Children(func() {
 		for i, file := range p.patch {
-			if i >= len(p.patchViews) || p.patchViews[i] == nil {
+			if i >= len(p.patchViews) {
 				break
 			}
 			p.fileHeading(c, k, file)
+			if p.patchViews[i] == nil {
+				note := file.Note
+				if note == "" {
+					note = "This file has no textual diff."
+				}
+				ui.Text(c, note).FontSize(c.Theme().Rem(12.0/13)).TextColor(k.TextFaint).Padding(6, 10)
+				continue
+			}
 			p.styleDiffView(c, p.patchViews[i])
 			editor.DiffView(c, p.patchViews[i]).FillWidth()
 		}

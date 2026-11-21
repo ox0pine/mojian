@@ -103,6 +103,31 @@ func TestUpdateStateLandsOnTheThread(t *testing.T) {
 	}
 }
 
+func TestHeadlessSettingsDrainsUpdateCallbacks(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.harness = true
+	a.settings.Cat = settingsAbout
+	a.updateChecking = true
+	h := &Headless{a: a}
+	a.uiPost = h.post
+	a.onUpdateUI(func() {
+		a.applyUpdateCheck(&update.Release{Version: "0.3.0"}, nil)
+	})
+
+	tt := ui.NewTester(h.SettingsView, 900, 640)
+	tt.Frame()
+	if a.updateChecking {
+		t.Fatal("the completed check is still marked as checking")
+	}
+	if len(h.pending) != 0 {
+		t.Fatal("the Settings fixture left a background callback queued")
+	}
+	if !tt.HasText("Mojian 0.3.0 is available.") {
+		t.Fatalf("the completed check is not visible: %q", tt.Texts())
+	}
+}
+
 func TestUpdateNotificationPreferencePersists(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)

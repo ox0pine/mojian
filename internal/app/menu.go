@@ -39,7 +39,7 @@ func (a *app) menu() *mygo.Menu {
 	item := func(c *commands.Command) *mygo.MenuItem {
 		return &mygo.MenuItem{
 			Label:       c.Title,
-			Accelerator: a.menuAccel(c),
+			Accelerator: a.menuAccel(a.commandAccel(c)),
 			Click: func(*mygo.MenuItem, *mygo.Window) {
 				a.run(c)
 			},
@@ -62,7 +62,7 @@ func (a *app) menu() *mygo.Menu {
 		i := i
 		tabItems = append(tabItems, &mygo.MenuItem{
 			Label:       "Show Tab " + string(rune('0'+i)),
-			Accelerator: showTabAccel(i),
+			Accelerator: a.menuAccel(showTabAccel(i)),
 			Click: func(*mygo.MenuItem, *mygo.Window) {
 				a.showTab(i)
 			},

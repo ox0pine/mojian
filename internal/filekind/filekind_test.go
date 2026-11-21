@@ -84,6 +84,45 @@ func TestClassifyFileSkipsHugeUnknownHeads(t *testing.T) {
 	}
 }
 
+func TestClassifyFileRejectsDirectoriesAndFollowsFileSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	if kind, err := ClassifyFile(dir); err != nil || kind != Other {
+		t.Fatalf("directory: %v %v", kind, err)
+	}
+
+	realDir := filepath.Join(dir, "folder")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dirLink := filepath.Join(dir, "folder.unknown")
+	if err := os.Symlink(realDir, dirLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if kind, err := ClassifyFile(dirLink); err != nil || kind != Other {
+		t.Fatalf("directory symlink: %v %v", kind, err)
+	}
+
+	text := []byte("plain text\n")
+	realFile := filepath.Join(dir, "notes.unknown")
+	if err := os.WriteFile(realFile, text, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fileLink := filepath.Join(dir, "linked.unknown")
+	if err := os.Symlink(realFile, fileLink); err != nil {
+		t.Fatal(err)
+	}
+	if kind, err := ClassifyFile(fileLink); err != nil || kind != Text {
+		t.Fatalf("regular file symlink: %v %v", kind, err)
+	}
+	got, err := os.ReadFile(fileLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(text) {
+		t.Fatalf("regular file symlink contents = %q, want %q", got, text)
+	}
+}
+
 func TestClassifyFileKnownDataNeedsNoRead(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dataset.mat")

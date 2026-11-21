@@ -36,6 +36,9 @@ const (
 	KindTool
 	// KindPermission asks the user to choose an option of a tool call.
 	KindPermission
+	// KindPermissionResolved means a permission request was answered or
+	// cancelled by the agent. Permission identifies the resolved request.
+	KindPermissionResolved
 	// KindTurnDone ends a prompt turn.
 	KindTurnDone
 	// KindFailed reports why a prompt could not run.
@@ -72,7 +75,11 @@ func (p *Permission) Answer(id string) {
 	if p == nil {
 		return
 	}
-	p.once.Do(func() { p.answer <- id })
+	p.once.Do(func() {
+		if p.answer != nil {
+			p.answer <- id
+		}
+	})
 }
 
 // Event is one update from an agent.
@@ -400,6 +407,9 @@ func (c *client) RequestPermission(ctx context.Context, p sdk.RequestPermissionR
 		pm.Options = append(pm.Options, Option{ID: string(o.OptionId), Name: o.Name})
 	}
 	c.s.events(Event{Kind: KindPermission, Permission: pm})
+	defer func() {
+		c.s.events(Event{Kind: KindPermissionResolved, Permission: pm})
+	}()
 	select {
 	case id := <-pm.answer:
 		if id == "" {

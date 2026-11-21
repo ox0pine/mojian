@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"mojian/internal/filekind"
@@ -28,7 +29,15 @@ type Store struct {
 	Seq     int
 	Tree    *TreeNode
 	Assets  map[string]*Asset
+
+	mutationSeq atomic.Uint64
 }
+
+// MutationSeq identifies the store's path state. It is safe to check from
+// a background save while the UI thread renames, creates, or trashes files.
+func (s *Store) MutationSeq() uint64 { return s.mutationSeq.Load() }
+
+func (s *Store) pathsChanged() { s.mutationSeq.Add(1) }
 
 // New returns a project over backend.
 func New(backend fs.Backend) *Store {
@@ -237,14 +246,20 @@ func relPath(dir, p string) string {
 // the bytes it was loaded from or last saved as.
 var ErrFileChanged = errors.New("file changed outside mojian")
 
+// ErrSaveSnapshotStale reports that a path mutation made a snapshot's
+// original destination unsafe to write. The current dirty note can be
+// snapshotted again at its new path instead.
+var ErrSaveSnapshotStale = errors.New("save snapshot path changed")
+
 // SaveSnapshot is the immutable text and on-disk baseline of one dirty
 // note. Snapshotting and committing belong to the UI thread; WriteSnapshot
 // does the slow file operations without touching the note or its buffer.
 type SaveSnapshot struct {
-	note  *Note
-	rel   string
-	saved string
-	body  string
+	note        *Note
+	rel         string
+	saved       string
+	body        string
+	mutationSeq uint64
 }
 
 // SnapshotSave serializes n as it stands now. The boolean is false when
@@ -257,7 +272,7 @@ func (s *Store) SnapshotSave(n *Note) (SaveSnapshot, bool, error) {
 	if body == n.Saved {
 		return SaveSnapshot{}, false, nil
 	}
-	return SaveSnapshot{note: n, rel: n.Rel, saved: n.Saved, body: body}, true, nil
+	return SaveSnapshot{note: n, rel: n.Rel, saved: n.Saved, body: body, mutationSeq: s.MutationSeq()}, true, nil
 }
 
 // DirtySnapshots serializes every dirty note on the calling thread. It
@@ -284,9 +299,13 @@ func (s *Store) DirtySnapshots() ([]SaveSnapshot, error) {
 }
 
 // WriteSnapshot checks and writes one snapshot without changing the note.
-// A server backend uses its context operations so an abandoned save stops
-// waiting for its RPC; the server may still finish a request already sent.
+// A path mutation before the write returns ErrSaveSnapshotStale. A server
+// backend uses its context operations so an abandoned save stops waiting for
+// its RPC; the server may still finish a request already sent.
 func (s *Store) WriteSnapshot(ctx context.Context, snapshot SaveSnapshot) error {
+	if snapshot.mutationSeq != s.MutationSeq() {
+		return ErrSaveSnapshotStale
+	}
 	if !s.IsMemory() {
 		var current []byte
 		var err error
@@ -300,9 +319,15 @@ func (s *Store) WriteSnapshot(ctx context.Context, snapshot SaveSnapshot) error 
 		if err != nil {
 			return fmt.Errorf("checking %s before saving: %w", snapshot.rel, err)
 		}
+		if snapshot.mutationSeq != s.MutationSeq() {
+			return ErrSaveSnapshotStale
+		}
 		if string(current) != snapshot.saved {
 			return fmt.Errorf("%s: %w; local edits were kept; copy them elsewhere before reloading", snapshot.rel, ErrFileChanged)
 		}
+	}
+	if snapshot.mutationSeq != s.MutationSeq() {
+		return ErrSaveSnapshotStale
 	}
 	if backend, ok := s.FS.(interface {
 		WriteContext(context.Context, string, []byte) error

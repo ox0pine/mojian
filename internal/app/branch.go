@@ -15,16 +15,18 @@ import (
 // branchState is the branch a project has checked out and the menu that
 // switches it. It lives on the workspace, so every project keeps its own.
 type branchState struct {
-	data     gitpage.BranchData
-	loading  bool
-	loaded   bool
-	seq      int
-	queued   bool
-	open     bool
-	shown    bool // the menu was drawn open on the last pass
-	creating bool
-	name     string
-	err      string
+	data      gitpage.BranchData
+	loading   bool
+	loaded    bool
+	seq       int
+	changing  bool
+	changeSeq int
+	queued    bool
+	open      bool
+	shown     bool // the menu was drawn open on the last pass
+	creating  bool
+	name      string
+	err       string
 }
 
 // refreshBranch reads the project's repository and branches in the
@@ -33,22 +35,23 @@ func (a *app) refreshBranch() {
 	if a.store == nil || a.store.IsMemory() || a.branch.loading {
 		return
 	}
+	if a.branch.changing {
+		// Workspace activation clears loading for reads, but an in-flight
+		// checkout still excludes another checkout or a competing read.
+		a.branch.loading = true
+		return
+	}
 	dir, ok := a.ProjectDir()
 	if !ok {
 		return
 	}
 	runner := a.GitRunner()
-	a.branch.seq++
-	seq := a.branch.seq
-	a.branch.loading = true
+	ws := a.workspace
+	ws.branch.seq++
+	seq := ws.branch.seq
+	ws.branch.loading = true
 	apply := func(d gitpage.BranchData) {
-		if seq != a.branch.seq {
-			return
-		}
-		a.branch.loading = false
-		a.branch.loaded = true
-		a.branch.data = d
-		a.invalidate()
+		a.applyBranch(ws, seq, d)
 	}
 	if a.win == nil {
 		apply(gitpage.ReadBranches(runner, dir))
@@ -59,6 +62,21 @@ func (a *app) refreshBranch() {
 		d := gitpage.ReadBranches(runner, dir)
 		win.Update(func() { apply(d) })
 	}()
+}
+
+// applyBranch lands a read on the workspace that started it. Sequence
+// numbers are per workspace, so a current workspace's matching number
+// must never make another project's result current.
+func (a *app) applyBranch(ws *workspace, seq int, d gitpage.BranchData) {
+	if seq != ws.branch.seq {
+		return
+	}
+	ws.branch.loading = false
+	ws.branch.loaded = true
+	ws.branch.data = d
+	if a.workspace == ws {
+		a.invalidate()
+	}
 }
 
 // openBranchPicker opens the branch menu under the chip.
@@ -285,31 +303,47 @@ func (a *app) branchRoot() string {
 func (a *app) runBranchChange(what string, fn func(gitpage.Runner) error) {
 	runner := a.GitRunner()
 	store := a.store
-	a.branch.seq++
-	seq := a.branch.seq
-	a.branch.loading = true
-	a.branch.open = false
-	a.branch.creating = false
-	a.branch.name = ""
+	ws := a.workspace
+	ws.branch.seq++
+	seq := ws.branch.seq
+	ws.branch.changeSeq++
+	changeSeq := ws.branch.changeSeq
+	ws.branch.changing = true
+	ws.branch.loading = true
+	ws.branch.open = false
+	ws.branch.creating = false
+	ws.branch.name = ""
 	a.invalidate()
 	apply := func(err error) {
-		if seq != a.branch.seq {
+		if changeSeq != ws.branch.changeSeq {
 			return
 		}
-		a.branch.loading = false
+		ws.branch.changing = false
+		ws.branch.loading = false
+		current := a.workspace == ws
 		if err != nil {
-			a.fail(fmt.Errorf("%s: %w", what, err))
-			a.invalidate()
+			if current && seq == ws.branch.seq {
+				a.fail(fmt.Errorf("%s: %w", what, err))
+				a.invalidate()
+			}
 			return
 		}
-		if err := store.Reload(); err != nil {
-			a.fail(err)
+		// The checkout already happened in this workspace, so reload its
+		// own store even if activation invalidated the visible callback.
+		reloadErr := store.Reload()
+		if seq != ws.branch.seq {
+			return
 		}
-		if a.git.Open {
-			a.refreshGit()
+		if reloadErr != nil && current {
+			a.fail(reloadErr)
 		}
-		a.refreshBranch()
-		a.invalidate()
+		if current {
+			if a.git.Open {
+				a.refreshGit()
+			}
+			a.refreshBranch()
+			a.invalidate()
+		}
 	}
 	if a.win == nil {
 		apply(fn(runner))

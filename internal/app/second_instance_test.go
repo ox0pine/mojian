@@ -7,6 +7,53 @@ import (
 	"mojian/internal/testutil"
 )
 
+func TestSecondInstanceWithoutPathKeepsPendingStartup(t *testing.T) {
+	queued := Startup{Dir: filepath.Join(t.TempDir(), "First"), File: "first.md"}
+	a := &app{startup: queued}
+
+	a.secondInstance(nil, t.TempDir())
+
+	if a.startup != queued {
+		t.Fatalf("a pathless second launch replaced the queued startup: got %+v, want %+v", a.startup, queued)
+	}
+}
+
+func TestSecondInstanceOpensFileAfterRemoteProjectSave(t *testing.T) {
+	startLocalServerForTest(t)
+	remote, backend, _ := newBlockingSaveStore(t, "saved before switching\n")
+	posts := make(chan func(), 1)
+	a := &app{
+		workspace: &workspace{store: remote, treeOpen: true},
+		dataDir:   t.TempDir(),
+		uiPost:    func(fn func()) { posts <- fn },
+	}
+	target := filepath.Join(t.TempDir(), "Target")
+	testutil.WriteVault(t, target, map[string]string{"b.md": "# B\n"})
+	startup := Startup{Dir: target, File: filepath.Join(target, "b.md")}
+
+	a.applyStartup(startup)
+	if a.store != remote {
+		t.Fatal("the project switched before the remote save completed")
+	}
+	if n := a.currentNote(); n != nil {
+		t.Fatalf("the startup file opened in the old remote project: %+v", n)
+	}
+
+	waitSaveSignal(t, backend.started)
+	close(backend.unblock)
+	waitSavePost(t, posts)()
+
+	if a.store == nil || a.store.Dir != resolveProjectRoot(target) {
+		t.Fatalf("the saved project did not switch: %+v", a.store)
+	}
+	if n := a.currentNote(); n == nil || n.Rel != "b.md" {
+		t.Fatalf("the startup file did not open after switching: %+v", n)
+	}
+	if a.startup != (Startup{}) {
+		t.Fatalf("the completed startup was not consumed: %+v", a.startup)
+	}
+}
+
 func TestSecondInstanceOpensProjectAndFile(t *testing.T) {
 	startLocalServerForTest(t)
 	root := t.TempDir()

@@ -14,17 +14,26 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// agentSession is the process cleanup a task needs. Tests can use a
+// deterministic session without starting an agent process.
+type agentSession interface {
+	Cancel()
+	Close()
+}
+
 // agentTask is the window's one background ACP task: a prompt run
 // without a pane, whose only voice is a system notification.
 type agentTask struct {
 	prompt  string
 	agent   string
-	sess    *acp.Session
+	sess    agentSession
 	cancel  context.CancelFunc
 	perm    *acp.Permission
+	perms   []*acp.Permission
 	tools   map[string]string
 	reply   strings.Builder
 	started time.Time
+	notify  func(title, subtitle, body string) // tests replace the native notification
 }
 
 // openAgentTask asks for the task, or shows the permission a running
@@ -74,7 +83,7 @@ func (a *app) startAgentTask(prompt string) {
 					return
 				}
 				a.agentTask = nil
-				a.notifyAgentTask("Agent could not start", "", err.Error())
+				a.notifyAgentTask(t, "Agent could not start", "", err.Error())
 				a.invalidate()
 			})
 			return
@@ -91,12 +100,7 @@ func (a *app) startAgentTask(prompt string) {
 			t.sess = s
 		})
 		if err := s.Prompt(ctx, prompt); err != nil {
-			post(func() {
-				if a.agentTask == t {
-					a.notifyAgentTask("Agent error", t.agentSub(false), err.Error())
-					a.finishAgentTask(t)
-				}
-			})
+			post(func() { a.failAgentTask(t, err) })
 		}
 	}()
 	a.invalidate()
@@ -144,38 +148,77 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 				if title == "" {
 					title = t.tools[ev.Tool.ID]
 				}
-				a.notifyAgentTask("Agent tool failed", t.agentSub(false), title)
+				a.notifyAgentTask(t, "Agent tool failed", t.agentSub(false), title)
 			}
 		}
 	case acp.KindPermission:
 		if ev.Permission == nil {
 			return
 		}
-		t.perm = ev.Permission
-		a.agentOpen = true
-		a.notifyAgentTask("Agent needs permission", t.agentSub(false), ev.Permission.Title)
+		if t.perm == nil {
+			t.perm = ev.Permission
+			a.agentOpen = true
+		} else {
+			t.perms = append(t.perms, ev.Permission)
+		}
+		a.notifyAgentTask(t, "Agent needs permission", t.agentSub(false), ev.Permission.Title)
+	case acp.KindPermissionResolved:
+		a.resolveAgentPermission(t, ev.Permission)
 	case acp.KindTurnDone:
-		body := agentNotificationBody(t.reply.String(), t.prompt)
-		a.notifyAgentTask("Agent finished", t.agentSub(true), body)
+		title, body := agentTurnNotification(ev.Stop, t.reply.String(), t.prompt)
+		a.notifyAgentTask(t, title, t.agentSub(true), body)
 		a.finishAgentTask(t)
 	case acp.KindFailed:
-		msg := "agent failed"
-		if ev.Err != nil {
-			msg = ev.Err.Error()
-		}
-		a.notifyAgentTask("Agent error", t.agentSub(false), msg)
-		a.finishAgentTask(t)
+		a.failAgentTask(t, ev.Err)
 	case acp.KindClosed:
-		if t.sess != nil {
-			body := t.prompt
-			if ev.Err != nil {
-				body = ev.Err.Error()
-			}
-			a.notifyAgentTask("Agent stopped", t.agentSub(false), body)
-			a.finishAgentTask(t)
-		}
+		// Prompt owns the turn result. Its response or error is posted even
+		// when process reaping wins the race, so Closed must not erase it.
 	}
 	a.invalidate()
+}
+
+// failAgentTask reports the prompt error after any concurrent Closed event.
+func (a *app) failAgentTask(t *agentTask, err error) {
+	if a.agentTask != t {
+		return
+	}
+	msg := "agent failed"
+	if err != nil {
+		msg = err.Error()
+	}
+	a.notifyAgentTask(t, "Agent error", t.agentSub(false), msg)
+	a.finishAgentTask(t)
+}
+
+// resolveAgentPermission removes exactly the request the agent resolved,
+// leaving any newer request untouched.
+func (a *app) resolveAgentPermission(t *agentTask, p *acp.Permission) {
+	if p == nil {
+		return
+	}
+	if t.perm == p {
+		t.perm = nil
+		a.nextAgentPermission(t)
+		return
+	}
+	for i, pending := range t.perms {
+		if pending == p {
+			t.perms = append(t.perms[:i], t.perms[i+1:]...)
+			return
+		}
+	}
+}
+
+// nextAgentPermission shows the oldest queued request, or closes the
+// permission sheet when none remain.
+func (a *app) nextAgentPermission(t *agentTask) {
+	if len(t.perms) != 0 {
+		t.perm = t.perms[0]
+		t.perms = t.perms[1:]
+		a.agentOpen = true
+		return
+	}
+	a.agentOpen = false
 }
 
 // finishAgentTask drops the task and stops its agent.
@@ -189,14 +232,12 @@ func (a *app) finishAgentTask(t *agentTask) {
 		t.cancel()
 		t.cancel = nil
 	}
-	if t.perm != nil {
-		t.perm.Answer("")
-		t.perm = nil
-	}
+	cancelAgentPermissions(t)
 	if t.sess != nil {
 		t.sess.Close()
 		t.sess = nil
 	}
+	a.refreshProject()
 	a.invalidate()
 }
 
@@ -210,17 +251,28 @@ func (a *app) stopAgentTask() {
 		t.cancel()
 		t.cancel = nil
 	}
-	if t.perm != nil {
-		t.perm.Answer("")
-		t.perm = nil
-	}
+	cancelAgentPermissions(t)
 	a.agentTask = nil
 	a.agentOpen = false
 	if t.sess != nil {
 		t.sess.Cancel()
 		t.sess.Close()
 	}
+	a.refreshProject()
 	a.invalidate()
+}
+
+// cancelAgentPermissions releases every blocked ACP handler, including
+// requests waiting behind the one visible in the sheet.
+func cancelAgentPermissions(t *agentTask) {
+	if t.perm != nil {
+		t.perm.Answer("")
+	}
+	for _, p := range t.perms {
+		p.Answer("")
+	}
+	t.perm = nil
+	t.perms = nil
 }
 
 // answerAgentTask answers the permission the task waits for.
@@ -231,14 +283,18 @@ func (a *app) answerAgentTask(option string) {
 	}
 	t.perm.Answer(option)
 	t.perm = nil
-	a.agentOpen = false
+	a.nextAgentPermission(t)
 	a.invalidate()
 }
 
 // notifyAgentTask is the task's only result: the window has no pane to
 // print into. The subtitle names the agent, and the time it took once
 // the task ended, so a notification says who ran and for how long.
-func (a *app) notifyAgentTask(title, subtitle, body string) {
+func (a *app) notifyAgentTask(t *agentTask, title, subtitle, body string) {
+	if t != nil && t.notify != nil {
+		t.notify(title, subtitle, body)
+		return
+	}
 	if a.harness || a.quitting {
 		return
 	}
@@ -270,12 +326,50 @@ func shortDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
+// agentTurnNotification distinguishes a completed answer from refusal,
+// truncation and cancellation. A non-success stop never inherits the
+// successful "Finished" fallback.
+func agentTurnNotification(stop, reply, prompt string) (title, body string) {
+	if stop == "" || stop == "end_turn" {
+		return "Agent finished", agentNotificationBody(reply, prompt)
+	}
+	var fallback string
+	switch stop {
+	case "refusal":
+		title = "Agent refused"
+		fallback = "The agent refused the request."
+	case "max_tokens":
+		title = "Agent incomplete"
+		fallback = "The agent reached its token limit."
+	case "max_turn_requests":
+		title = "Agent incomplete"
+		fallback = "The agent reached its turn-request limit."
+	case "cancelled":
+		title = "Agent stopped"
+		fallback = "Stopped: " + prompt
+	default:
+		title = "Agent stopped"
+		fallback = "Stopped (" + stop + "): " + prompt
+	}
+	if strings.TrimSpace(reply) != "" {
+		body = agentNotificationBody(reply, prompt)
+	} else {
+		body = agentNotificationText(fallback)
+	}
+	return title, body
+}
+
 // agentNotificationBody condenses an answer for a notification.
 func agentNotificationBody(reply, prompt string) string {
 	text := strings.Join(strings.Fields(reply), " ")
 	if text == "" {
 		text = "Finished: " + strings.Join(strings.Fields(prompt), " ")
 	}
+	return agentNotificationText(text)
+}
+
+func agentNotificationText(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
 	if r := []rune(text); len(r) > 160 {
 		text = string(r[:159]) + "…"
 	}

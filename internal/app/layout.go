@@ -103,23 +103,50 @@ func (a *app) snapshotLayout() layoutFile {
 	return f
 }
 
-// restoreLayout builds the tabs of the saved layout, dropping panes whose
-// note is no longer in the vault. It reports whether any tab came back.
+type layoutRestoreStatus uint8
+
+const (
+	layoutRestoreMissing layoutRestoreStatus = iota
+	layoutRestoreInvalid
+	layoutRestoreEmpty
+	layoutRestoreOK
+)
+
+func (s layoutRestoreStatus) needsFallback() bool {
+	return s == layoutRestoreMissing || s == layoutRestoreEmpty
+}
+
+// restoreLayout is the boolean form used by older callers. New open paths
+// use restoreLayoutStatus so an invalid file is not mistaken for a missing one.
 func (a *app) restoreLayout() bool {
+	return a.restoreLayoutStatus() == layoutRestoreOK
+}
+
+// restoreLayoutStatus builds the tabs of the saved layout, dropping panes whose
+// note is no longer in the vault. Empty tabs are real tabs; a nonempty tab whose
+// panes all disappeared is skipped and the active index follows its saved tab.
+func (a *app) restoreLayoutStatus() layoutRestoreStatus {
 	if a.layoutPath == "" {
-		return false
+		return layoutRestoreMissing
 	}
 	data, err := os.ReadFile(a.layoutPath)
 	if err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return layoutRestoreMissing
+		}
+		return layoutRestoreInvalid
 	}
 	var f layoutFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return false
+		return layoutRestoreInvalid
 	}
 	byID := map[string]*pane{}
-	for _, lt := range f.Tabs {
+	active := -1
+	afterActive := -1
+	beforeActive := -1
+	for i, lt := range f.Tabs {
 		t := &tab{ID: nextID("t"), Name: lt.Name}
+		hasContent := lt.Root != nil || len(lt.Columns) > 0 || len(lt.Panes) > 0
 		switch {
 		case lt.Root != nil:
 			t.Root = a.restoreNode(lt.Root, byID)
@@ -133,7 +160,7 @@ func (a *app) restoreLayout() bool {
 			}
 			t.Root = a.restoreColumns(cols, byID)
 		}
-		if t.Root == nil {
+		if hasContent && t.Root == nil {
 			continue
 		}
 		if p := byID[lt.Focus]; p != nil && t.contains(p) {
@@ -144,13 +171,29 @@ func (a *app) restoreLayout() bool {
 		if p := byID[lt.Zoom]; p != nil && t.contains(p) {
 			t.Zoom = p
 		}
+		if i == f.Active {
+			active = len(a.tabs)
+		} else if i > f.Active && afterActive < 0 {
+			afterActive = len(a.tabs)
+		} else if i < f.Active {
+			beforeActive = len(a.tabs)
+		}
 		a.tabs = append(a.tabs, t)
 	}
 	if len(a.tabs) == 0 {
-		return false
+		return layoutRestoreEmpty
 	}
-	a.active = min(max(f.Active, 0), len(a.tabs)-1)
-	return true
+	switch {
+	case active >= 0:
+		a.active = active
+	case afterActive >= 0:
+		a.active = afterActive
+	case beforeActive >= 0:
+		a.active = beforeActive
+	default:
+		a.active = 0
+	}
+	return layoutRestoreOK
 }
 
 func (a *app) restoreNode(ln *layoutNode, byID map[string]*pane) *node {
@@ -247,16 +290,20 @@ func (a *app) restorePane(lp layoutPane, byID map[string]*pane) *pane {
 	return p
 }
 
-// saveLayout writes the tabs to the app's data directory.
-func (a *app) saveLayout() {
+// saveLayout writes the tabs to the app's data directory. Callers that
+// clear layoutDirty or leave the current project must handle the error.
+func (a *app) saveLayout() error {
 	if a.layoutPath == "" {
-		return
+		return nil
 	}
 	data, err := json.MarshalIndent(a.snapshotLayout(), "", "  ")
 	if err != nil {
-		return
+		log.Print(err)
+		return err
 	}
 	if err := fs.WriteFileAtomic(a.layoutPath, data); err != nil {
 		log.Print(err)
+		return err
 	}
+	return nil
 }

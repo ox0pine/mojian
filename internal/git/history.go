@@ -40,7 +40,7 @@ func ReadHistory(r Runner, project string) HistoryData {
 		return HistoryData{Err: "This folder is not a Git repository."}
 	}
 	d := HistoryData{Root: root, Prefix: prefix}
-	args := []string{"-c", "core.quotePath=false", "log", "-z", "--no-color",
+	args := []string{"--literal-pathspecs", "-c", "core.quotePath=false", "log", "-z", "--no-color",
 		"--max-count=" + strconv.Itoa(historyLimit),
 		"--format=%H%x00%h%x00%an%x00%cr%x00%s"}
 	if prefix != "" {
@@ -85,7 +85,7 @@ func ReadCommitDiff(r Runner, root, prefix, hash string) (string, error) {
 	if hash == "" {
 		return "", errors.New("no commit to read")
 	}
-	args := []string{"-c", "core.quotePath=false", "show", "--no-color",
+	args := []string{"--literal-pathspecs", "-c", "core.quotePath=false", "show", "--no-color",
 		"--no-ext-diff", "--format=", "--patch", hash}
 	if prefix != "" {
 		args = append(args, "--", prefix)

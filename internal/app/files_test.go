@@ -293,3 +293,29 @@ func TestRenameCaseOnlySpelling(t *testing.T) {
 		t.Fatal("the renamed note is missing")
 	}
 }
+
+func TestRenameInvalidatesOlderReload(t *testing.T) {
+	a := newProjectApp(t)
+	oldRel := filepath.Join("scripts", "tasks.py")
+	newRel := filepath.Join("scripts", "worker.py")
+	n := a.store.ByRelPath(oldRel)
+	a.openNote(n)
+	oldEntries := a.store.Entries
+	oldBodies := map[string]string{oldRel: n.Saved}
+	a.reloadStore = a.store
+	a.reloadSeq = 1
+	a.reloadMutation = a.store.MutationSeq()
+	if _, _, err := a.store.Rename(oldRel, "worker.py"); err != nil {
+		t.Fatal(err)
+	}
+	a.finishReload(a.store, 1, oldEntries, oldBodies, nil)
+	if a.reloadStore != nil {
+		t.Fatal("the stale reload stayed active")
+	}
+	if a.store.ByRelPath(newRel) != n || a.store.ByRelPath(oldRel) != nil {
+		t.Fatalf("the old listing restored the old paths: current=%q", n.Rel)
+	}
+	if a.currentNote() != n {
+		t.Fatal("the old listing closed the renamed note's editor")
+	}
+}

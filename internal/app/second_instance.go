@@ -31,9 +31,12 @@ func (a *app) secondInstance(args []string, wd string) {
 		return
 	}
 	if !a.loaded {
-		// The window is still opening with the first launch's path, and
-		// the newer launch replaces it.
-		a.startup = s
+		// The window is still opening with the first launch's path. Only
+		// a newer launch that names a path replaces it; a Dock launch
+		// must not clear the path already queued.
+		if s.Dir != "" {
+			a.startup = s
+		}
 		return
 	}
 	a.showMainWindow()
@@ -47,13 +50,15 @@ func (a *app) applyStartup(s Startup) {
 	if s.Dir == "" {
 		return
 	}
-	a.openProject(s.Dir)
-	// Show the file only when the project actually switched, so a failed
-	// open cannot resolve the path against another project.
-	if s.File == "" || a.store == nil || a.store.Dir != resolveProjectRoot(s.Dir) {
-		return
-	}
-	a.startup = s
-	a.openStartupFile()
-	a.startup = Startup{}
+	a.openProjectAndThen(s.Dir, func() {
+		// Show the file only after the project actually switched. Opening
+		// a remote project's successor waits for its save, so checking the
+		// store before this continuation would lose the named file.
+		if s.File == "" || a.store == nil || a.store.Dir != resolveProjectRoot(s.Dir) {
+			return
+		}
+		a.startup = s
+		a.openStartupFile()
+		a.startup = Startup{}
+	})
 }

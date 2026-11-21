@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log"
+
+	"mojian/internal/project"
 )
 
 // saveTask is the remote save currently writing immutable buffer snapshots.
@@ -32,7 +35,10 @@ func (a *app) saveNowAsync(done func(error)) {
 		return
 	}
 	if a.layoutDirty {
-		a.saveLayout()
+		if err := a.saveLayout(); err != nil {
+			done(err)
+			return
+		}
 		a.layoutDirty = false
 	}
 	a.saveSettings()
@@ -70,8 +76,11 @@ func (a *app) startRemoteSave(s *store) {
 		written := make([]bool, len(snapshots))
 		var writeErr error
 		for i, snapshot := range snapshots {
+			// A rename, recreate, or trash invalidates the old destination.
+			// Skip that write without failing the action; any surviving dirty
+			// note is snapshotted at its current path in the next pass.
 			if err := s.WriteSnapshot(ctx, snapshot); err != nil {
-				if writeErr == nil {
+				if !errors.Is(err, project.ErrSaveSnapshotStale) && writeErr == nil {
 					writeErr = err
 				}
 				continue

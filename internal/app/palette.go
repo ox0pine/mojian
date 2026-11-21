@@ -256,6 +256,16 @@ func (a *app) shortcuts(c *ui.Context) {
 		a.paletteOpen || a.quickOpen || a.sshPick || a.projectPicker || a.remotePicker || a.agentOpen {
 		return
 	}
+	// Fixed tab switching takes precedence when a custom command has the
+	// same keys: MyGo dispatches the first matching scoped shortcut.
+	for i := 1; i <= 9; i++ {
+		i := i
+		mods, key, ok := parseAccel(showTabAccel(i))
+		if !ok {
+			continue
+		}
+		c.OnShortcut(mods, key, func() { a.showTab(i) })
+	}
 	for _, cmd := range paletteCommands {
 		if !commandAvailable(cmd) {
 			continue
@@ -270,13 +280,5 @@ func (a *app) shortcuts(c *ui.Context) {
 		}
 		cmd := cmd
 		c.OnShortcut(mods, key, func() { a.run(cmd) })
-	}
-	for i := 1; i <= 9; i++ {
-		i := i
-		mods, key, ok := parseAccel(showTabAccel(i))
-		if !ok {
-			continue
-		}
-		c.OnShortcut(mods, key, func() { a.showTab(i) })
 	}
 }

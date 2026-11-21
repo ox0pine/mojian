@@ -21,6 +21,28 @@ func waitTerminalSignal(t *testing.T, ch <-chan struct{}, what string) {
 	}
 }
 
+func waitTerminalCondition(t *testing.T, what string, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func waitTerminalKill(t *testing.T, killed <-chan string) string {
+	t.Helper()
+	select {
+	case sid := <-killed:
+		return sid
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for the stale session to be killed")
+		return ""
+	}
+}
+
 func TestRemoteTerminalStartDoesNotBlockAndReapsClosedPane(t *testing.T) {
 	oldDial, oldCreate, oldKill := dialTerminalRemoteFn, createTerminalSessionFn, killTerminalSessionFn
 	t.Cleanup(func() {

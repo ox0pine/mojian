@@ -105,9 +105,17 @@ func Classify(path string, head []byte) Kind {
 	return Text
 }
 
-// ClassifyFile returns what a file on disk opens as, reading only the
-// head of a file whose extension nothing knows.
+// ClassifyFile returns what a regular file on disk opens as, reading only
+// the head of a file whose extension nothing knows. Other file types are
+// Other without being opened; symlinks follow their targets.
 func ClassifyFile(path string) (Kind, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return Other, err
+	}
+	if !info.Mode().IsRegular() {
+		return Other, nil
+	}
 	ext := strings.ToLower(filepath.Ext(path))
 	switch {
 	case assetExts[ext]:
@@ -116,10 +124,6 @@ func ClassifyFile(path string) (Kind, error) {
 		return Other, nil
 	case editor.LanguageFor(path) != nil || textExts[ext]:
 		return Text, nil
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return Other, err
 	}
 	if info.Size() > headLimit {
 		return Other, nil

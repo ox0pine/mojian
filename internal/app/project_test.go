@@ -14,6 +14,7 @@ import (
 )
 
 func TestProjectSwitch(t *testing.T) {
+	registerFonts()
 	startLocalServerForTest(t)
 	root := t.TempDir()
 	alpha := filepath.Join(root, "Alpha")
@@ -42,7 +43,11 @@ func TestProjectSwitch(t *testing.T) {
 	alphaNote := a.currentNote()
 	alphaTabs := a.tabs
 
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame() // Consume Alpha's initial focus request.
+
 	a.openProject(beta)
+	tt.Frame() // Consume Beta's initial focus request.
 	if a.store.Dir != beta {
 		t.Fatalf("store dir: %q", a.store.Dir)
 	}
@@ -76,6 +81,7 @@ func TestProjectSwitch(t *testing.T) {
 
 	// Switching back restores the loaded project, not a fresh read.
 	a.openProject(alpha)
+	tt.Frame()
 	if a.store != alphaStore || len(a.tabs) != len(alphaTabs) || a.tabs[0] != alphaTabs[0] {
 		t.Fatal("switching back read the project again")
 	}
@@ -96,6 +102,45 @@ func TestProjectSwitch(t *testing.T) {
 	}
 	if a.projects[0] != alpha || len(a.projects) != 2 {
 		t.Errorf("recent projects: %q", a.projects)
+	}
+	before := alphaNote.Text()
+	tt.Type("X")
+	tt.Frame()
+	if alphaNote.Text() == before {
+		t.Fatal("typing after switching back to a cached project did not reach its editor")
+	}
+}
+
+func TestOpenProjectPreservesMalformedLayout(t *testing.T) {
+	startLocalServerForTest(t)
+	dir := filepath.Join(t.TempDir(), "Broken")
+	testutil.WriteVault(t, dir, map[string]string{"note.md": "# Note\n"})
+	data := t.TempDir()
+	a := &app{
+		workspace:    &workspace{},
+		dataDir:      data,
+		settingsPath: filepath.Join(data, "settings.json"),
+	}
+	layoutPath := a.projectLayoutPath(dir)
+	if err := os.MkdirAll(filepath.Dir(layoutPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte("{bad json")
+	if err := os.WriteFile(layoutPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a.openProjectSaved(dir)
+
+	got, err := os.ReadFile(layoutPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("malformed layout was replaced: %q", got)
+	}
+	if len(a.tabs) != 0 {
+		t.Fatalf("malformed layout triggered a fallback tab: %+v", a.tabs)
 	}
 }
 

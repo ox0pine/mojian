@@ -172,22 +172,23 @@ type app struct {
 	err   string
 	title string
 
-	layoutDirty   bool
-	lastChange    time.Time
-	layoutTimer   *time.Timer
-	settingsTimer *time.Timer
-	reloadStore   *store
-	reloadSeq     int
-	lastReload    time.Time
-	lastReloadFor *store
-	loaded        bool
-	quitting      bool
-	saveSkipped   bool
-	quitReady     bool
-	closeReady    bool
-	saveTask      saveTask
-	saveWaiters   []saveWaiter
-	pending       []func()
+	layoutDirty    bool
+	lastChange     time.Time
+	layoutTimer    *time.Timer
+	settingsTimer  *time.Timer
+	reloadStore    *store
+	reloadSeq      int
+	reloadMutation uint64
+	lastReload     time.Time
+	lastReloadFor  *store
+	loaded         bool
+	quitting       bool
+	saveSkipped    bool
+	quitReady      bool
+	closeReady     bool
+	saveTask       saveTask
+	saveWaiters    []saveWaiter
+	pending        []func()
 
 	edID    string
 	edDark  bool
@@ -226,44 +227,55 @@ func Run(startup Startup) {
 			mygo.App.Quit()
 		}
 	})
-	mygo.App.OnQuitCanceled(func() {
-		a.quitting = false
-		a.quitReady = false
-	})
+	mygo.App.OnQuitCanceled(a.quitCanceled)
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
-		a.quitting = true
-		if e.SessionEnding {
-			// Logout and shutdown cannot be delayed. Do not leave a
-			// goroutine or a save-error dialog behind when the process ends.
-			a.saveWaiters = nil
-			a.cancelRemoteSave()
-			if !a.saveSkipped {
-				_ = a.saveNow()
-			}
-			a.finishQuit()
-			return
-		}
-		if a.quitReady || a.saveSkipped {
-			a.finishQuit()
-			return
-		}
-		e.PreventDefault()
-		a.saveNowAsync(func(err error) {
-			if err != nil {
-				a.quitting = false
-				a.askQuit(err, func() {
-					a.saveSkipped = true
-					mygo.App.Quit()
-				})
-				return
-			}
-			a.quitReady = true
-			mygo.App.Quit()
-		})
+		a.beforeQuit(e, mygo.App.Quit, mygo.App.WhenReady)
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (a *app) quitCanceled() {
+	a.quitting = false
+	a.quitReady = false
+}
+
+func (a *app) beforeQuit(e *mygo.QuitEvent, quit func(), post func(func())) {
+	a.quitting = true
+	if e.SessionEnding {
+		// Logout and shutdown cannot be delayed. Do not leave a
+		// goroutine or a save-error dialog behind when the process ends.
+		a.saveWaiters = nil
+		a.cancelRemoteSave()
+		if !a.saveSkipped {
+			_ = a.saveNow()
+		}
+		a.finishQuit()
+		return
+	}
+	if a.quitReady || a.saveSkipped {
+		a.finishQuit()
+		return
+	}
+	e.PreventDefault()
+	a.saveNowAsync(func(err error) {
+		if err != nil {
+			a.quitting = false
+			a.askQuit(err, func() {
+				a.saveSkipped = true
+				quit()
+			})
+			return
+		}
+		post(func() {
+			// A local save completes inside OnBeforeQuit. Retry only after
+			// MyGo delivers OnQuitCanceled for that prevented attempt, or
+			// the cancellation clears quitReady and every retry saves again.
+			a.quitReady = true
+			quit()
+		})
+	})
 }
 
 func (a *app) finishQuit() {
@@ -327,11 +339,16 @@ func (a *app) open() {
 		}
 		a.rememberProject(s.Dir)
 		a.saveSettings()
-		restored := !a.NoRestoreLayout && a.restoreLayout()
-		if !restored {
+		restore := layoutRestoreMissing
+		if !a.NoRestoreLayout {
+			restore = a.restoreLayoutStatus()
+		}
+		if restore.needsFallback() {
 			a.focusFirstNote()
-		} else if t := a.tab(); t != nil {
-			a.focusReq = t.editorPane()
+		} else if restore == layoutRestoreOK {
+			if t := a.tab(); t != nil {
+				a.focusReq = t.editorPane()
+			}
 		}
 		a.openStartupFile()
 		a.startup = Startup{}
@@ -339,7 +356,9 @@ func (a *app) open() {
 			a.revealInTree(n)
 		}
 		a.revealTab = true
-		a.saveLayout()
+		if restore != layoutRestoreInvalid {
+			a.saveLayout()
+		}
 	}
 	a.quitting = false
 	a.saveSkipped = false
@@ -449,8 +468,8 @@ func (a *app) askQuit(err error, proceed func()) {
 }
 
 // saveNow writes every unsaved note, the layout and the settings. It
-// returns the first note that could not be written, so a project switch
-// can stop before dropping unsaved work.
+// returns the first write error, so a project switch or quit can stop
+// before dropping unsaved work.
 func (a *app) saveNow() error {
 	var first error
 	if a.store != nil {
@@ -460,8 +479,13 @@ func (a *app) saveNow() error {
 		}
 	}
 	if a.layoutDirty {
-		a.saveLayout()
-		a.layoutDirty = false
+		if err := a.saveLayout(); err != nil {
+			if first == nil {
+				first = err
+			}
+		} else {
+			a.layoutDirty = false
+		}
 	}
 	a.saveSettings()
 	return first
@@ -532,6 +556,7 @@ func (a *app) persistLayout(c *ui.Context) {
 	if time.Since(a.lastChange) < 550*time.Millisecond {
 		return
 	}
-	a.saveLayout()
-	a.layoutDirty = false
+	if err := a.saveLayout(); err == nil {
+		a.layoutDirty = false
+	}
 }

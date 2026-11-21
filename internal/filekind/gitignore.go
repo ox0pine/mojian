@@ -43,7 +43,7 @@ type ignorePattern struct {
 // those of its parents, and the last pattern in a file that matches
 // wins, as Git applies them.
 func (g *GitIgnore) DirIgnored(rel string) bool {
-	rel = strings.Trim(strings.TrimSpace(filepath.ToSlash(rel)), "/")
+	rel = strings.Trim(filepath.ToSlash(rel), "/")
 	if rel == "" || rel == "." {
 		return false
 	}

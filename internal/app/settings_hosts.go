@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 
+	"mojian/internal/fs"
 	"mojian/internal/icons"
 
 	"github.com/egoist/mygo/ui"
@@ -492,7 +494,6 @@ func (a *app) saveHostEdit(host string) {
 				p.Term.Spec.Server = addr
 				p.Term.Client = nil
 				p.Term.startErr = ""
-				p.Term.connecting = false
 			})
 			if rc := a.remoteConn(host); rc != nil {
 				a.detachRemoteConn(rc)
@@ -501,8 +502,15 @@ func (a *app) saveHostEdit(host string) {
 			for key, ws := range a.workspaces {
 				if ws.serverAlias == host {
 					delete(a.workspaces, key)
+					oldLayout := ws.layoutPath
 					ws.serverAlias = addr
 					ws.key = workspaceKeyRemote(addr, ws.remotePath)
+					ws.layoutPath = a.projectLayoutPath("remote:" + addr + ":" + ws.remotePath)
+					if oldLayout != "" && ws.layoutPath != "" && oldLayout != ws.layoutPath {
+						if err := fs.MoveFileAtomic(oldLayout, ws.layoutPath); err != nil {
+							log.Print(err)
+						}
+					}
 					rekey = append(rekey, ws)
 				}
 			}

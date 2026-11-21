@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/egoist/mygo"
 )
@@ -123,6 +124,11 @@ func (u *UI) PasteInto(rel string) {
 		case src.remote && src.move:
 			newRel, err = u.store().MoveRel(p, dest)
 		case src.remote:
+			source := filepath.Clean(p)
+			if source == dest || dest != "" && strings.HasPrefix(dest, source+string(filepath.Separator)) {
+				err = errors.New("a folder cannot be copied into itself")
+				break
+			}
 			newRel = u.store().UniqueRel(dest, filepath.Base(p), true)
 			err = u.store().FS.Copy(p, newRel)
 		case src.move:

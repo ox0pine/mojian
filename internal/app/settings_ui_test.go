@@ -150,6 +150,98 @@ func TestSettingsShortcutRecording(t *testing.T) {
 	}
 }
 
+func TestShowTabShortcutPrecedesConflictingCommand(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.harness = true
+	a.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	a.newTab()
+	second := a.store.ByRelPath("Reading notes.md")
+	a.openNote(second)
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	if a.active != 1 {
+		t.Fatalf("active tab before the shortcut: %d", a.active)
+	}
+	second.Buf.Set(second.Text() + "\nUnsaved.")
+	if !second.Dirty() {
+		t.Fatal("the second note did not become dirty")
+	}
+	a.setShortcut(cmdSave.ID, showTabAccel(1))
+	mods, key, ok := parseAccel(showTabAccel(1))
+	if !ok {
+		t.Fatalf("tab accelerator does not parse: %q", showTabAccel(1))
+	}
+	tt.Key(mods, key)
+	tt.Frame()
+	if a.active != 0 {
+		t.Fatalf("the conflicting command took precedence over Show Tab 1: active=%d", a.active)
+	}
+	if !second.Dirty() {
+		t.Fatal("the conflicting Save All command ran")
+	}
+}
+
+func TestShowTabMenuAcceleratorsYieldToShortcutRecording(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	a.settings.Cat = settingsKeyboard
+	tt := ui.NewTester(a.settingsWindowView, 900, 640)
+	tt.Frame()
+	if err := tt.Click("Shortcut for Save All"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.settings.Recording != cmdSave.ID {
+		t.Fatalf("Save All is not recording: %q", a.settings.Recording)
+	}
+	assertAccelerators := func(recording bool) {
+		t.Helper()
+		menu := a.menu()
+		for i := 1; i <= 9; i++ {
+			label := fmt.Sprintf("Show Tab %d", i)
+			want := showTabAccel(i)
+			if recording {
+				want = ""
+			}
+			found := false
+			for _, top := range menu.Items() {
+				if top.Label != "Tabs" {
+					continue
+				}
+				for _, item := range top.Submenu {
+					if item.Label != label {
+						continue
+					}
+					found = true
+					if item.Accelerator != want {
+						t.Fatalf("%s accelerator while recording=%v: got %q, want %q", label, recording, item.Accelerator, want)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("%s menu item is missing", label)
+			}
+		}
+	}
+	assertAccelerators(true)
+
+	mods, key, ok := parseAccel(showTabAccel(1))
+	if !ok {
+		t.Fatalf("tab accelerator does not parse: %q", showTabAccel(1))
+	}
+	tt.Key(mods, key)
+	tt.Frame()
+	if got := a.commandAccel(cmdSave); got != showTabAccel(1) {
+		t.Fatalf("the recording control did not receive the tab keys: got %q, want %q", got, showTabAccel(1))
+	}
+	if a.settings.Recording != "" {
+		t.Fatal("recording did not stop after the tab keys")
+	}
+	assertAccelerators(false)
+}
+
 func TestShortcutDefaultsParseAndDoNotCollide(t *testing.T) {
 	seen := map[string]string{}
 	for _, c := range paletteCommands {
@@ -771,6 +863,7 @@ func TestFinishHostSetupKeepsConnection(t *testing.T) {
 }
 
 func TestSettingsShellCommandInstallsAndRemoves(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	if runtime.GOOS == "windows" {
 		t.Skip("zsh/bash only")
 	}

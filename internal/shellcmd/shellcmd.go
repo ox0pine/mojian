@@ -231,12 +231,24 @@ func findBlock(text string) (start, end int, found bool, err error) {
 }
 
 // resolve follows a symlinked startup file to the file it names, so a
-// dotfile that lives elsewhere stays a symlink.
+// dotfile that lives elsewhere stays a symlink. Readlink also covers a
+// dangling link: its target is the file Install must create, not the link.
 func resolve(path string) string {
 	if p, err := filepath.EvalSymlinks(path); err == nil {
 		return p
 	}
-	return path
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return path
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		return path
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(path), target)
+	}
+	return filepath.Clean(target)
 }
 
 // quote makes s one shell word, including a path that holds a quote.

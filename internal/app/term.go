@@ -24,6 +24,20 @@ type termTab struct {
 
 	startErr   string
 	connecting bool
+	connectSeq uint64
+}
+
+// beginConnect marks a new attach attempt as the only one that may update
+// this pane. Connection changes call invalidateConnect to supersede it.
+func (t *termTab) beginConnect() uint64 {
+	t.connectSeq++
+	t.connecting = true
+	return t.connectSeq
+}
+
+func (t *termTab) invalidateConnect() {
+	t.connectSeq++
+	t.connecting = false
 }
 
 // termSpec is what a terminal pane opens: the login shell, or SSH to a
