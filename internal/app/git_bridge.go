@@ -97,7 +97,16 @@ func (r serverGitRunner) RealPath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(res.Stdout), nil
+	if res.Code != 0 {
+		msg := strings.TrimSpace(res.Stderr)
+		if msg == "" {
+			msg = "pwd failed"
+		}
+		return "", errors.New(msg)
+	}
+	out := strings.TrimSuffix(res.Stdout, "\n")
+	out = strings.TrimSuffix(out, "\r")
+	return out, nil
 }
 
 func (r serverGitRunner) Readlink(dir, rel string) (string, error) {

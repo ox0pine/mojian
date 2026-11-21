@@ -1,6 +1,8 @@
 package git
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -39,6 +41,28 @@ func (h *pageHost) EditorTheme(*ui.Context) *editor.Theme {
 func (h *pageHost) EditorFont() (ui.Font, float32, int) { return ui.Font{}, 16, 4 }
 func (h *pageHost) SwitchBranch(string, string) error   { return nil }
 func (h *pageHost) CreateBranch(string, string) error   { return nil }
+
+func TestRunGitRejectsOutputOverLimit(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := runGit(dir, "init", "-q"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "large.txt")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", (2<<20)+1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := runGit(dir, "hash-object", "-w", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := runGit(dir, "cat-file", "blob", strings.TrimSpace(hash))
+	if err == nil || !strings.Contains(err.Error(), "exceeded 2 MiB") {
+		t.Fatalf("oversized output error = %v", err)
+	}
+	if len(out) != 2<<20 {
+		t.Fatalf("captured output length = %d, want %d", len(out), 2<<20)
+	}
+}
 
 func TestParseDiff(t *testing.T) {
 	diff := `diff --git a/x.py b/x.py

@@ -233,6 +233,11 @@ func (a *app) registerActiveWorkspace() {
 // connection, as quitting the app does. The servers keep running.
 func (a *app) closeWorkspaces() {
 	a.initWorkspaces()
+	a.remoteClosing = true
+	// A closing pane has already left its tab's split tree. Finish those
+	// overlays first so their terminals receive Kill too; their leases
+	// keep the control clients alive until the requests complete.
+	a.dropPaneOverlays(nil)
 	if key := a.activeWorkspaceKey(); key != "" {
 		a.workspace.key = key
 		a.workspaces[key] = a.workspace
@@ -240,7 +245,12 @@ func (a *app) closeWorkspaces() {
 	for _, ws := range a.workspaces {
 		closeWorkspaceTerminals(ws)
 	}
-	a.hostService().CloseAll()
+	for host, rc := range a.hostService().Conns() {
+		if a.remoteRefs[host] > 0 {
+			continue
+		}
+		a.detachRemoteConn(rc)
+	}
 	a.remotePickHost = ""
 	a.remoteOpening = false
 }

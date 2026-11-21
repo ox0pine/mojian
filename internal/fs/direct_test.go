@@ -59,6 +59,30 @@ func TestDirectListHidesGitignoredFolders(t *testing.T) {
 	}
 }
 
+func TestDirectCaseRenamePreservesExistingTemporaryName(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "a.md")
+	if err := os.WriteFile(source, []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "A.md")); err != nil {
+		t.Skip("the filesystem is case-sensitive")
+	}
+	bystander := source + ".mojian-rename"
+	if err := os.WriteFile(bystander, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewDirect(root).Rename("a.md", "A.md"); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(bystander); err != nil || string(data) != "keep me" {
+		t.Fatalf("the existing temporary name was consumed: data=%q err=%v", data, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "A.md")); err != nil || string(data) != "source" {
+		t.Fatalf("the renamed file has data=%q err=%v", data, err)
+	}
+}
+
 func TestWriteFileAtomicPreservesPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "run.sh")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {

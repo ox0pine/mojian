@@ -26,6 +26,11 @@ func (s *Store) MaterializeAsset(f *Asset) (string, error) {
 	if f == nil {
 		return "", fmt.Errorf("no file")
 	}
+	if f.IsBinary() {
+		// The binary pane needs only metadata; never download a remote file
+		// merely to show its name and size.
+		return f.Path, nil
+	}
 	p, err := s.FS.Fetch(f.Rel, f.Size, f.Mod, f.Hash)
 	if err != nil {
 		return "", err

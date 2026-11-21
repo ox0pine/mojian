@@ -39,7 +39,8 @@ func (u *UI) CopySelectionTo(rel string, cut bool) {
 }
 
 // PasteSource is what a paste will copy or move: paths from the system
-// clipboard for a local project, or the app's own remote clipboard.
+// clipboard for a local project, the app's local copy fallback when that
+// clipboard is unreadable, or the app's own remote clipboard.
 type PasteSource struct {
 	paths  []string
 	move   bool
@@ -79,7 +80,11 @@ func (u *UI) FilePasteSource() (PasteSource, error) {
 	remoteProject := u.store().IsRemote()
 	if remoteProject {
 		if !clip.Remote || len(clip.Paths) == 0 {
-			if len(u.SystemClipboardFiles()) > 0 {
+			files, err := u.SystemClipboardFiles()
+			if err != nil {
+				return PasteSource{}, fmt.Errorf("read the system clipboard: %w", err)
+			}
+			if len(files) > 0 {
 				return PasteSource{}, errors.New("a remote project cannot paste Finder files; copy them in the Explorer first")
 			}
 			return PasteSource{}, errors.New("the clipboard has no files from this remote project")
@@ -89,17 +94,21 @@ func (u *UI) FilePasteSource() (PasteSource, error) {
 		}
 		return PasteSource{paths: append([]string(nil), clip.Paths...), move: clip.Cut, remote: true}, nil
 	}
-	files := u.SystemClipboardFiles()
+	files, err := u.SystemClipboardFiles()
+	if err != nil {
+		if len(clip.Paths) > 0 && !clip.Remote {
+			// An unreadable system clipboard cannot validate a cut. The
+			// app's own paths remain pasteable, but only as a copy.
+			return PasteSource{paths: append([]string(nil), clip.Paths...)}, nil
+		}
+		return PasteSource{}, fmt.Errorf("read the system clipboard: %w", err)
+	}
 	switch {
 	case clip.Cut && len(clip.Paths) > 0 && !clip.Remote && sameFiles(files, clip.Paths):
 		// The cut is still the system clipboard's content: move it.
 		return PasteSource{paths: append([]string(nil), clip.Paths...), move: true}, nil
 	case len(files) > 0:
 		return PasteSource{paths: files}, nil
-	case len(clip.Paths) > 0 && !clip.Remote:
-		// A clipboard that could not be read still pastes what the app
-		// copied, as a copy unless the cut is still the app's own.
-		return PasteSource{paths: append([]string(nil), clip.Paths...), move: clip.Cut}, nil
 	}
 	return PasteSource{}, errors.New("the clipboard has no files")
 }

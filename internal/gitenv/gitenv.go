@@ -13,7 +13,7 @@ import (
 var drop = map[string]bool{
 	"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_INDEX_FILE": true,
 	"GIT_OBJECT_DIRECTORY": true, "GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
-	"GIT_COMMON_DIR": true,
+	"GIT_COMMON_DIR": true, "GIT_CONFIG_COUNT": true,
 }
 
 // Env returns the inherited environment without Git's redirect variables,
@@ -30,8 +30,13 @@ func Env(extra ...string) []string {
 }
 
 func dropEnv(key string) bool {
-	if runtime.GOOS == "windows" {
+	return dropEnvForOS(key, runtime.GOOS)
+}
+
+func dropEnvForOS(key, goos string) bool {
+	if goos == "windows" {
 		key = strings.ToUpper(key)
 	}
-	return drop[key]
+	return drop[key] || strings.HasPrefix(key, "GIT_CONFIG_KEY_") ||
+		strings.HasPrefix(key, "GIT_CONFIG_VALUE_")
 }

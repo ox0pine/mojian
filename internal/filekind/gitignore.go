@@ -114,7 +114,16 @@ func (r *ignoreRules) match(rel string) (bool, bool) {
 // without matches at any depth.
 func parseIgnore(line string) (ignorePattern, bool) {
 	line = strings.TrimSuffix(line, "\r")
-	line = strings.TrimRight(line, " ")
+	for strings.HasSuffix(line, " ") {
+		backslashes := 0
+		for i := len(line) - 2; i >= 0 && line[i] == '\\'; i-- {
+			backslashes++
+		}
+		if backslashes%2 == 1 {
+			break
+		}
+		line = strings.TrimSuffix(line, " ")
+	}
 	if line == "" || strings.HasPrefix(line, "#") {
 		return ignorePattern{}, false
 	}
@@ -140,8 +149,8 @@ func parseIgnore(line string) (ignorePattern, bool) {
 }
 
 // globRegexp turns a gitignore glob into a regular expression. A pattern
-// without a slash matches a path component at any depth; ** crosses
-// folders, and * and ? do not.
+// without a slash matches a path component at any depth; a ** path
+// component crosses folders, while ordinary stars and ? do not.
 func globRegexp(glob string, anchored bool) string {
 	var b strings.Builder
 	if !anchored {
@@ -151,12 +160,20 @@ func globRegexp(glob string, anchored bool) string {
 		switch ch := glob[i]; ch {
 		case '*':
 			if i+1 < len(glob) && glob[i+1] == '*' {
-				i++
-				if i+1 < len(glob) && glob[i+1] == '/' {
-					i++
+				end := i + 2
+				component := i == 0 || glob[i-1] == '/'
+				switch {
+				case component && end < len(glob) && glob[end] == '/':
+					i = end
 					b.WriteString(`(?:.*/)?`)
-				} else {
+				case i > 0 && glob[i-1] == '/' && end == len(glob):
+					i++
 					b.WriteString(`.*`)
+				default:
+					// Consecutive stars inside an ordinary component have
+					// the same directory boundary as a single star.
+					i++
+					b.WriteString(`[^/]*[^/]*`)
 				}
 			} else {
 				b.WriteString(`[^/]*`)
@@ -171,7 +188,20 @@ func globRegexp(glob string, anchored bool) string {
 			if end < len(glob) && glob[end] == ']' {
 				end++
 			}
-			for end < len(glob) && glob[end] != ']' {
+			for end < len(glob) {
+				if glob[end] == '\\' && end+1 < len(glob) {
+					end += 2
+					continue
+				}
+				if glob[end] == '[' && end+1 < len(glob) && glob[end+1] == ':' {
+					if close := strings.Index(glob[end+2:], ":]"); close >= 0 {
+						end += close + 4
+						continue
+					}
+				}
+				if glob[end] == ']' {
+					break
+				}
 				end++
 			}
 			if end >= len(glob) {

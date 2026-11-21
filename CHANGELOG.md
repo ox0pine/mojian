@@ -2,24 +2,40 @@
 
 ## 0.6.1
 
+- The Explorer and Quick Open list every regular file, including archives, model/data files and
+  unknown binary formats. Binary files open in a metadata-only, not-editable-as-text pane, work in
+  restored layouts, and are never downloaded from a remote project just to show their names.
 - Quitting no longer loops or stalls after synchronous saves, and quit retries still run after
   every window has closed.
-- Background agents queue concurrent permission requests, preserve successful results across
-  process shutdown, report refusals and truncated turns accurately, clear cancelled permissions,
-  and refresh project files when a turn ends.
+- Background agents queue concurrent permission requests, bind deferred answers to the exact
+  request, preserve successful results across process shutdown, report refusals and truncated turns
+  accurately, clear cancelled permissions, and refresh project files when a turn ends. Stopping an
+  agent terminates its whole process group or Windows Job Object, including tool children.
 - Remote terminals attach only the latest connection attempt, host edits invalidate old work and
-  move saved layouts, and the session server refuses new PTYs during shutdown, copies symlinks
-  safely and rejects recursive directory copies.
-- Storage keeps path revisions so in-flight saves cannot overwrite recreated or renamed files,
-  stale refreshes cannot resurrect old listings, and server-backed projects support case-only
-  renames. Special files and directory symlinks no longer block or confuse project listings.
+  replace stale saved layouts, and protocol 6 replaces local v4/v5 instances while requiring a
+  remote restart for the new file kinds, refuses new PTYs
+  during shutdown, waits for every terminating session in parallel, copies symlinks safely and
+  rejects recursive directory copies. Continuous terminal output cannot starve control replies or
+  block an ordered slow-stream close.
+- Storage serializes path changes with snapshot writes and keeps path revisions for every create,
+  rename, copy, move and trash, so in-flight saves cannot overwrite recreated or renamed files and
+  stale refreshes cannot resurrect old listings. Case-only renames preserve unrelated temporary
+  files and broken symlinks; special files and directory symlinks stay out of project listings.
 - Git keeps history and workspace results in their own projects, handles unborn HEADs, literal
   pathspecs, symlinks and unusual paths, and shows binary or mode-only explanations instead of
-  blank diff viewers.
+  blank diff viewers. Oversized output is an explicit error rather than a partial success, inherited
+  config environment cannot redirect the worktree, and remote roots keep trailing spaces.
 - Layouts restore focus, active and empty tabs without overwriting malformed files or hiding write
   failures; Explorer reveals work during search and scroll selected folders into view; second
   instances preserve launch files, shell installation keeps symlinked rc files, and updates honor
   system proxies.
+- Settings-only window closure restores menu shortcuts and leaves host operations retryable, stale
+  setup connections are reaped, second-instance paths survive a busy remote open, and counted
+  terminal leases keep clients alive until stale sessions are killed. Stop Server no longer
+  immediately restarts itself through a visible terminal.
+- Explorer paste no longer moves an old Cut after the clipboard changes, blurred name fields commit
+  the intended draft without stealing a newer one, and selection reveals filtered files. Gitignore
+  matching now follows Git for component-local `**`, escaped trailing spaces and POSIX classes.
 
 ## 0.6.0
 

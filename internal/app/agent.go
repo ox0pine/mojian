@@ -278,10 +278,18 @@ func cancelAgentPermissions(t *agentTask) {
 // answerAgentTask answers the permission the task waits for.
 func (a *app) answerAgentTask(option string) {
 	t := a.agentTask
-	if t == nil || t.perm == nil {
+	if t == nil {
 		return
 	}
-	t.perm.Answer(option)
+	a.answerAgentPermission(t, t.perm, option)
+}
+
+// answerAgentPermission answers only the request a delayed click captured.
+func (a *app) answerAgentPermission(t *agentTask, p *acp.Permission, option string) {
+	if a.agentTask != t || p == nil || t.perm != p {
+		return
+	}
+	p.Answer(option)
 	t.perm = nil
 	a.nextAgentPermission(t)
 	a.invalidate()
@@ -444,26 +452,27 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 
 // agentPermission shows the options the agent asked the user to choose.
 func (a *app) agentPermission(c *ui.Context, k *colors, t *agentTask) {
+	p := t.perm
 	ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
-		title := t.perm.Title
+		title := p.Title
 		if title == "" {
 			title = "The agent needs permission to continue."
 		}
 		ui.Text(c, title).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.Text)
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			hasReject := false
-			for _, o := range t.perm.Options {
+			for _, o := range p.Options {
 				if strings.EqualFold(strings.TrimSpace(o.Name), "Reject") {
 					hasReject = true
 				}
 				option := o.ID
 				if ui.Button(c, o.Name).Clicked() {
-					a.later(func() { a.answerAgentTask(option) })
+					a.later(func() { a.answerAgentPermission(t, p, option) })
 				}
 			}
 			if !hasReject {
 				if ui.Button(c, "Reject").Clicked() {
-					a.later(func() { a.answerAgentTask("") })
+					a.later(func() { a.answerAgentPermission(t, p, "") })
 				}
 			}
 		})

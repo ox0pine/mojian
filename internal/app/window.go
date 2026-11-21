@@ -109,6 +109,7 @@ func (a *app) createWindow(stateKey string) *mygo.Window {
 	})
 	a.win = win
 	a.windowSeq++
+	a.remoteClosing = false
 	a.closeReady = false
 	win.OnFocus(func() {
 		a.refreshProjectOnFocus()
@@ -139,6 +140,24 @@ func (a *app) createWindow(stateKey string) *mygo.Window {
 	return win
 }
 
+// invalidateHostOperations makes every host callback from the old window
+// stale and leaves its controls ready to retry. A probe that was still in
+// flight is unchecked so the next Settings window asks again.
+func (a *app) invalidateHostOperations() {
+	a.windowSeq++
+	a.hostSetupSeq++
+	a.hostSetupAddr = ""
+	a.hostSetupBusy = false
+	a.hostSetupMsg, a.hostSetupErr = "", ""
+	for _, st := range a.hostStates {
+		st.checkSeq++
+		if st.checking {
+			st.checked = false
+		}
+		st.checking = false
+	}
+}
+
 // windowClosed clears the window state, keeping the tabs for a reopen.
 func (a *app) windowClosed() {
 	wasQuitting := a.quitting
@@ -152,15 +171,7 @@ func (a *app) windowClosed() {
 	a.closeWorkspaces()
 	a.workspaces = nil
 	a.win = nil
-	a.windowSeq++
-	a.hostSetupSeq++
-	a.hostSetupAddr = ""
-	a.hostSetupBusy = false
-	a.hostSetupMsg, a.hostSetupErr = "", ""
-	for _, st := range a.hostStates {
-		st.checkSeq++
-		st.checking = false
-	}
+	a.invalidateHostOperations()
 	a.closeReady = false
 	a.saveWaiters = nil
 	a.cancelRemoteSave()
@@ -213,17 +224,27 @@ func (a *app) openSettingsWindow() {
 		Content:              ui.View(a.settingsWindowView),
 	})
 	a.settingsWin = win
-	win.OnClosed(func() {
-		a.settingsWin = nil
-		a.settings.StopRecording()
-		a.settings.Query = ""
-		a.settings.Found, a.settings.Hits, a.settings.Reveal = nil, nil, ""
-		a.settings.KeyFilter = ""
-		a.settings.FontPick = false
-		a.hostEditAddr, a.hostRemoveAddr, a.hostStopAddr, a.settings.Notice = "", "", "", ""
-		a.localStopAsk = false
-	})
+	win.OnClosed(a.settingsWindowClosed)
 	win.Focus()
+}
+
+// settingsWindowClosed resets Settings-only state. StopRecording must run
+// while settingsWin is still non-nil so refreshMenu restores every native
+// accelerator, including the fixed Show Tab keys. If this was the only
+// window, its host operations belong to the same ended UI lifetime as a
+// main window's operations.
+func (a *app) settingsWindowClosed() {
+	a.settings.StopRecording()
+	a.settingsWin = nil
+	a.settings.Query = ""
+	a.settings.Found, a.settings.Hits, a.settings.Reveal = nil, nil, ""
+	a.settings.KeyFilter = ""
+	a.settings.FontPick = false
+	a.hostEditAddr, a.hostRemoveAddr, a.hostStopAddr, a.settings.Notice = "", "", "", ""
+	a.localStopAsk = false
+	if a.win == nil {
+		a.invalidateHostOperations()
+	}
 }
 
 // invalidate redraws both windows that show app state.

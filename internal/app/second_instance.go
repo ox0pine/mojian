@@ -50,6 +50,12 @@ func (a *app) applyStartup(s Startup) {
 	if s.Dir == "" {
 		return
 	}
+	if a.remoteBusy {
+		// A second launch is an explicit navigation, not a picker click.
+		// Cancel the obsolete connection so its sequence-guarded result
+		// cannot publish, then open the newest project and file normally.
+		a.cancelRemoteTask()
+	}
 	a.openProjectAndThen(s.Dir, func() {
 		// Show the file only after the project actually switched. Opening
 		// a remote project's successor waits for its save, so checking the

@@ -182,6 +182,16 @@ func (m *mux) writeLoop() {
 			}
 		case <-m.wake:
 			for {
+				// A busy stream must not starve control replies while its
+				// queue keeps refilling between writes.
+				select {
+				case f := <-m.ctrl:
+					if m.write(f) != nil {
+						return
+					}
+					continue
+				default:
+				}
 				f, ok := m.nextData()
 				if !ok {
 					break
@@ -318,9 +328,10 @@ type muxStream struct {
 	out chan streamFrame
 	in  chan []byte
 
-	buf []byte
-	mu  sync.Mutex
-	err error
+	outMu sync.Mutex
+	buf   []byte
+	mu    sync.Mutex
+	err   error
 	// finished is read by the writer under the mux's lock.
 	finished  bool
 	done      chan struct{}
@@ -386,6 +397,18 @@ func (s *muxStream) enqueue(p []byte) bool {
 		return false
 	default:
 	}
+	s.outMu.Lock()
+	defer s.outMu.Unlock()
+	select {
+	case <-s.done:
+		return false
+	default:
+	}
+	// Keep one slot for Close. A slow stream must never have to wait for
+	// space in the unrelated control queue to tell its peer it ended.
+	if len(s.out) >= cap(s.out)-1 {
+		return false
+	}
 	select {
 	case s.out <- streamFrame{data: p}:
 		s.m.wakeup()
@@ -435,6 +458,7 @@ func (s *muxStream) closeWithError(streamErr error) error {
 		// nextData uses the same lock. Once a stream is marked finished
 		// it may leave the rotation at any moment, so a late close must
 		// use the control queue rather than an unreachable out queue.
+		s.outMu.Lock()
 		s.m.mu.Lock()
 		queued := false
 		if !s.finished {
@@ -445,6 +469,7 @@ func (s *muxStream) closeWithError(streamErr error) error {
 			}
 		}
 		s.m.mu.Unlock()
+		s.outMu.Unlock()
 		if queued {
 			s.m.wakeup()
 		} else {

@@ -96,3 +96,55 @@ func TestGitIgnoreCrossesFolders(t *testing.T) {
 		}
 	}
 }
+
+func TestGitIgnoreDoubleStarInsideComponent(t *testing.T) {
+	root := t.TempDir()
+	writeIgnore(t, root, "a**b/\n")
+	g := NewGitIgnore(root)
+	for rel, want := range map[string]bool{
+		"aXXb":        true,
+		"a/b":         false,
+		"a/x/b":       false,
+		"nested/aXXb": true,
+		"nested/a/b":  false,
+	} {
+		if got := g.DirIgnored(rel); got != want {
+			t.Errorf("DirIgnored(%q) = %v, want %v", rel, got, want)
+		}
+	}
+}
+
+func TestGitIgnorePreservesEscapedTrailingSpace(t *testing.T) {
+	root := t.TempDir()
+	writeIgnore(t, root, "cache\\ \nplain \n")
+	g := NewGitIgnore(root)
+	for rel, want := range map[string]bool{
+		"cache ":        true,
+		"cache":         false,
+		"nested/cache ": true,
+		"plain":         true,
+		"plain ":        false,
+	} {
+		if got := g.DirIgnored(rel); got != want {
+			t.Errorf("DirIgnored(%q) = %v, want %v", rel, got, want)
+		}
+	}
+}
+
+func TestGitIgnorePOSIXAndEscapedRightBracket(t *testing.T) {
+	root := t.TempDir()
+	writeIgnore(t, root, "[[:digit:]]/\n[a\\]]/\n")
+	g := NewGitIgnore(root)
+	for rel, want := range map[string]bool{
+		"5":  true,
+		"5]": false,
+		"a":  true,
+		"]":  true,
+		"a]": false,
+		"x":  false,
+	} {
+		if got := g.DirIgnored(rel); got != want {
+			t.Errorf("DirIgnored(%q) = %v, want %v", rel, got, want)
+		}
+	}
+}

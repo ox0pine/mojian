@@ -391,7 +391,7 @@ func (a *app) checkHostServer(host string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
 		running, _ := hostServerRunningFn(ctx, host)
-		a.onUpdateUI(func() { a.finishHostCheck(host, seq, windowSeq, running) })
+		a.onCleanupUI(func() { a.finishHostCheck(host, seq, windowSeq, running) })
 	}()
 }
 
@@ -411,6 +411,9 @@ func (a *app) setHostRunning(host string, running bool) {
 	st := a.hostStateFor(host)
 	st.checkSeq++
 	st.running = running
+	if running {
+		st.stopped = false
+	}
 	st.checked = true
 	st.checking = false
 }
@@ -474,6 +477,7 @@ func (a *app) saveHostEdit(host string) {
 		a.hosts()[i].Name, a.hosts()[i].Address = name, addr
 		if addr != host {
 			a.cancelRemoteTaskForHost(host)
+			a.dropPickerRemoteForHost(host)
 			delete(a.hostStates, host)
 			delete(a.hostStates, addr)
 			if a.hostStopAddr == host {
@@ -495,9 +499,6 @@ func (a *app) saveHostEdit(host string) {
 				p.Term.Client = nil
 				p.Term.startErr = ""
 			})
-			if rc := a.remoteConn(host); rc != nil {
-				a.detachRemoteConn(rc)
-			}
 			var rekey []*workspace
 			for key, ws := range a.workspaces {
 				if ws.serverAlias == host {
@@ -525,6 +526,7 @@ func (a *app) saveHostEdit(host string) {
 					a.remoteProjects()[j].Host = addr
 				}
 			}
+			a.releaseRemote(host)
 		}
 		a.hostEditAddr, a.settings.Notice = "", ""
 		a.saveSettings()
@@ -569,6 +571,7 @@ func (a *app) removeHostNow(address string) {
 	// A second open may have started while the removal was waiting for
 	// its save. Cancel it again immediately before mutating host state.
 	a.cancelRemoteTaskForHost(address)
+	a.dropPickerRemoteForHost(address)
 	current := a.serverAlias == address
 	a.hostService().RemoveHost(address)
 	a.hostService().RemoveProjects(address)

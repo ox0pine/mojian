@@ -94,6 +94,108 @@ func readStream(t *testing.T, s *muxStream) (string, error) {
 	}
 }
 
+type scheduleConn struct {
+	types   chan byte
+	started chan struct{}
+	release chan struct{}
+	block   bool
+}
+
+func (c *scheduleConn) Read([]byte) (int, error) { return 0, io.EOF }
+func (c *scheduleConn) Close() error             { return nil }
+func (c *scheduleConn) Write(p []byte) (int, error) {
+	if len(p) == frameHeaderSize {
+		c.types <- p[4]
+		if c.block && p[4] == frameData {
+			c.block = false
+			close(c.started)
+			<-c.release
+		}
+	}
+	return len(p), nil
+}
+
+func TestMuxControlPrecedesQueuedStreamData(t *testing.T) {
+	conn := &scheduleConn{
+		types: make(chan byte, 4), started: make(chan struct{}), release: make(chan struct{}), block: true,
+	}
+	m := newMux(conn, bufio.NewReader(conn))
+	s := m.openStream(1)
+	if _, err := s.Write([]byte("one")); err != nil {
+		t.Fatal(err)
+	}
+	go m.writeLoop()
+	defer m.shutdown(io.EOF)
+	select {
+	case <-conn.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the first stream frame was not written")
+	}
+	if err := m.writeControl(frameResponse, []byte("answer")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Write([]byte("two")); err != nil {
+		t.Fatal(err)
+	}
+	close(conn.release)
+	if typ := <-conn.types; typ != frameData {
+		t.Fatalf("first frame type = %d, want stream data", typ)
+	}
+	select {
+	case typ := <-conn.types:
+		if typ != frameResponse {
+			t.Fatalf("second frame type = %d, want control response %d", typ, frameResponse)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the queued control response was not written")
+	}
+}
+
+func TestMuxSlowStreamCloseDoesNotWaitForControlQueue(t *testing.T) {
+	conn := &scheduleConn{
+		types: make(chan byte, ctrlQueue+streamQueue+4), started: make(chan struct{}),
+		release: make(chan struct{}), block: true,
+	}
+	m := newMux(conn, bufio.NewReader(conn))
+	s := m.openStream(1)
+	if _, err := s.Write([]byte("first")); err != nil {
+		t.Fatal(err)
+	}
+	go m.writeLoop()
+	defer func() {
+		close(conn.release)
+		m.shutdown(io.EOF)
+	}()
+	select {
+	case <-conn.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the writer did not block on the first frame")
+	}
+	for range ctrlQueue {
+		if err := m.writeControl(frameResponse, []byte("queued")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan error, 1)
+	go func() {
+		for range streamQueue + 1 {
+			if _, err := s.Write([]byte("x")); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, io.ErrShortWrite) {
+			t.Fatalf("overflow returned %v, want io.ErrShortWrite", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a slow stream's close waited for the full control queue")
+	}
+}
+
 func TestMuxTwoStreamsAreIndependent(t *testing.T) {
 	ma, mb := newTestMuxes(t)
 	s1a, s2a := ma.openStream(1), ma.openStream(2)

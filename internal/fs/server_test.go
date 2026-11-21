@@ -81,6 +81,31 @@ func TestServerStoreRenameCaseOnly(t *testing.T) {
 	}
 }
 
+func TestServerStoreCaseRenameKeepsTemporarySymlink(t *testing.T) {
+	client := startFilesystemServer(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("contents\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bystander := filepath.Join(root, "a.md.mojian-rename")
+	if err := os.Symlink("missing-target", bystander); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	s := project.New(fs.NewServer(client, root, t.TempDir(), true))
+	if err := s.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Rename("a.md", "A.md"); err != nil {
+		t.Fatal(err)
+	}
+	if target, err := os.Readlink(bystander); err != nil || target != "missing-target" {
+		t.Fatalf("the temporary symlink was replaced: target=%q err=%v", target, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "A.md")); err != nil || string(data) != "contents\n" {
+		t.Fatalf("renamed contents = %q, %v", data, err)
+	}
+}
+
 func TestServerStoreCaseRenameKeepsDistinctDestination(t *testing.T) {
 	root := t.TempDir()
 	lower := filepath.Join(root, "a.md")

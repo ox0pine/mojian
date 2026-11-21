@@ -10,14 +10,25 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"mojian/internal/filekind"
 )
 
 func startOpsServer(t *testing.T) (*Client, string) {
 	t.Helper()
+	c, dir, _ := startOpsServerWithDone(t)
+	return c, dir
+}
+
+func startOpsServerWithDone(t *testing.T) (*Client, string, <-chan error) {
+	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("MOJIAN_DIR", dir)
 	done := make(chan error, 1)
-	go func() { done <- Serve() }()
+	go func() {
+		done <- Serve()
+		close(done)
+	}()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		if _, err := os.Stat(SocketPath()); err == nil {
@@ -40,7 +51,7 @@ func startOpsServer(t *testing.T) (*Client, string) {
 		case <-time.After(3 * time.Second):
 		}
 	})
-	return c, dir
+	return c, dir, done
 }
 
 func TestExecRunsCommandsWithOutputAndCode(t *testing.T) {
@@ -95,6 +106,29 @@ func TestWriteFileAtomicKeepsMode(t *testing.T) {
 	}
 }
 
+func TestStatEntryTreatsBrokenSymlinkAsExisting(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "existing-link")
+	if err := os.Symlink(filepath.Join(root, "missing-target"), link); err != nil {
+		t.Fatal(err)
+	}
+	linkInfo, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := statEntry(link)
+	if err != nil {
+		t.Fatalf("stat broken symlink: %v", err)
+	}
+	if entry.Rel != link || entry.Dir || entry.Kind != filekind.Other {
+		t.Fatalf("broken symlink entry: %+v", entry)
+	}
+	if entry.Size != linkInfo.Size() || !entry.Mod.Equal(linkInfo.ModTime()) {
+		t.Fatalf("broken symlink metadata: got size %d mod %s, want size %d mod %s",
+			entry.Size, entry.Mod, linkInfo.Size(), linkInfo.ModTime())
+	}
+}
+
 func TestKillEndsTheWholeProcessGroup(t *testing.T) {
 	c, dir := startOpsServer(t)
 	pidFile := filepath.Join(dir, "child.pid")
@@ -137,6 +171,78 @@ func TestKillEndsTheWholeProcessGroup(t *testing.T) {
 			t.Fatalf("child process %d survived the session kill", child)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func createInterruptIgnoringSession(t *testing.T, c *Client, dir, markerName string) SessionInfo {
+	t.Helper()
+	marker := filepath.Join(dir, markerName)
+	info, err := c.Create(CreateOptions{
+		Command: []string{"sh", "-c", "trap '' INT; printf ready > " + strconv.Quote(marker) + "; while :; do sleep 60; done"},
+		Dir:     dir,
+		Cols:    40, Rows: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			return info
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("interrupt-ignoring shell did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestShutdownWaitsForSessionKilledJustBefore(t *testing.T) {
+	c, dir, done := startOpsServerWithDone(t)
+	info := createInterruptIgnoringSession(t, c, dir, "killed-before-shutdown")
+	if err := c.Kill(info.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("server did not join the in-flight session kill")
+	}
+	if err := syscall.Kill(info.PID, 0); err == nil {
+		t.Fatalf("session process %d was still running when Serve returned", info.PID)
+	}
+}
+
+func TestShutdownKillsSessionsInParallel(t *testing.T) {
+	c, dir, done := startOpsServerWithDone(t)
+	const sessionCount = 6
+	infos := make([]SessionInfo, 0, sessionCount)
+	for i := range sessionCount {
+		infos = append(infos, createInterruptIgnoringSession(t, c, dir, "parallel-"+strconv.Itoa(i)))
+	}
+	if err := c.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("session kills accumulated sequentially instead of running in parallel")
+	}
+	for _, info := range infos {
+		if err := syscall.Kill(info.PID, 0); err == nil {
+			t.Fatalf("session process %d survived shutdown", info.PID)
+		}
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"mojian/internal/filekind"
 	"mojian/internal/theme"
 
 	"github.com/egoist/mygo/ui"
@@ -40,6 +41,7 @@ type Asset struct {
 	Rel  string
 	Path string
 	Name string
+	Kind filekind.Kind
 	Size int64
 	Mod  time.Time
 	// Hash is the server's content hash for a remote asset.
@@ -52,6 +54,10 @@ type Asset struct {
 	Img  ui.ImageSource
 	Err  error
 }
+
+// IsBinary reports whether the pane shows file metadata instead of
+// decoding the file as a picture, PDF, or text.
+func (f *Asset) IsBinary() bool { return f != nil && f.Kind == filekind.Binary }
 
 // LocalPath is the file the viewer reads: the fetched copy for a remote
 // project, the project file otherwise.

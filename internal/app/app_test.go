@@ -294,6 +294,73 @@ func TestNewFileThroughUI(t *testing.T) {
 	}
 }
 
+func TestNewFileDraftBlurCommitsAfterClick(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.treeSel = "scripts"
+	tt := ui.NewTester(a.view, 1100, 700)
+	if err := tt.Click("New File"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Type("worker.py")
+	tt.Frame()
+	if a.treeDraft == nil || a.treeDraft.Name != "worker.py" {
+		t.Fatalf("draft before blur: %+v", a.treeDraft)
+	}
+
+	if err := tt.Click("app.js"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+
+	created := a.store.ByRelPath(filepath.Join("scripts", "worker.py"))
+	if created == nil {
+		t.Fatalf("clicking away lost the new-file draft (err=%q)", a.err)
+	}
+	if a.currentNote() == created {
+		t.Fatal("the blurred draft stole focus from the clicked file")
+	}
+}
+
+func TestRenameBlurCommitsWithoutReplacingNewDraft(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	target := filepath.Join("scripts", "tasks.py")
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	a.startRenameNode(target)
+	tt.Frame()
+	if a.treeDraft == nil {
+		t.Fatal("the rename input did not open")
+	}
+	a.treeDraft.Name = "worker.py"
+	tt.Frame()
+
+	if err := tt.Click("app.js"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	a.startNewFileIn("Ideas")
+	newDraft := a.treeDraft
+	if newDraft == nil {
+		t.Fatal("the replacement draft did not start")
+	}
+	newDraft.Name = "fresh.md"
+	tt.Frame()
+
+	if got := a.store.ByRelPath(filepath.Join("scripts", "worker.py")); got == nil {
+		t.Fatalf("clicking away lost the rename (err=%q)", a.err)
+	}
+	if a.treeDraft != newDraft || a.treeDraft.Name != "fresh.md" {
+		t.Fatalf("the old blur replaced the new draft: %+v", a.treeDraft)
+	}
+	if a.treeSel != "Ideas" {
+		t.Fatalf("the old rename changed the new draft's selection to %q", a.treeSel)
+	}
+}
+
 func TestTabStripRevealsActive(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)
@@ -441,6 +508,57 @@ func TestAssetsAppearAndOpen(t *testing.T) {
 	}
 	if !tt.HasText("cover.png") {
 		t.Fatalf("asset pane texts: %q", tt.Texts())
+	}
+}
+
+func TestBinaryFilesAppearOpenAndRestore(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	for name, data := range map[string][]byte{
+		"archive.zip":  {0x50, 0x4b, 0, 0},
+		"model.pt":     {0, 1, 2},
+		"blob.unknown": {0, 1, 2},
+	} {
+		if err := os.WriteFile(filepath.Join(a.store.Dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.store.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"archive.zip", "model.pt", "blob.unknown"} {
+		f := a.store.AssetByRel(name)
+		if f == nil || !f.IsBinary() {
+			t.Fatalf("%s was not indexed as a binary file: %+v", name, f)
+		}
+	}
+	a.paletteQuery = "archive.zip"
+	items := a.paletteItems()
+	opened := false
+	for _, item := range items {
+		if item.id == "asset:archive.zip" {
+			item.run()
+			opened = true
+		}
+	}
+	if !opened {
+		t.Fatal("Quick Open did not list the binary file")
+	}
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	if !tt.HasText("archive.zip") || !tt.HasText("Binary") || !tt.HasText("This file cannot be edited as text.") {
+		t.Fatalf("binary pane texts: %q", tt.Texts())
+	}
+	a.layoutPath = filepath.Join(t.TempDir(), "layout.json")
+	if err := a.saveLayout(); err != nil {
+		t.Fatal(err)
+	}
+	a.tabs, a.active = nil, 0
+	if status := a.restoreLayoutStatus(); status != layoutRestoreOK {
+		t.Fatalf("binary layout restore status = %v", status)
+	}
+	if p := a.tab().Focus; p == nil || p.Asset == nil || p.Asset.Rel != "archive.zip" || !p.Asset.IsBinary() {
+		t.Fatalf("restored pane does not show the binary file: %+v", p)
 	}
 }
 

@@ -55,11 +55,16 @@ its bundled `ssh.exe`.
    long path's socket moves to a hashed name through `SocketPathIn`. Windows uses a per-user named
    pipe (`\\.\pipe\mojian-<hash>`) protected by an owner-only SDDL. A remote server sets
    `MOJIAN_RUNTIME_DIR` to its own runtime directory, which the stdio bridge reads back.
-2. A connection is framed and multiplexed (`ProtocolVersion` 5): a 9-byte header of payload
+2. A connection is framed and multiplexed (`ProtocolVersion` 6): a 9-byte header of payload
    length, type and stream, then the payload. One connection carries every control request and
-   every terminal stream, so the transport only has to be a byte stream. Small responses use one
-   frame; responses over 64 MiB use `frameResponsePart` chunks carrying their request id, offset
-   and total size, with a 256 MiB reassembly limit. A slow terminal stream is closed at both ends
+   every terminal stream, so the transport only has to be a byte stream. Control frames are
+   considered before every queued stream frame, so continuous output cannot starve a response. Each
+   stream reserves one queue slot for its ordered close marker, which never waits behind a full
+   control queue. Small responses use one frame; responses over 64 MiB use `frameResponsePart`
+   chunks carrying their request id, offset
+   and total size, with a 256 MiB reassembly limit. File responses preserve `os.ErrNotExist` in a
+   response code, so a remote rename can distinguish a missing destination from a permission or
+   transport failure. A slow terminal stream is closed at both ends
    without closing the control connection. A terminal pane asks `Client.Stream` for a stream id
    on the connection it already has, and the server answers on that stream before replaying the
    session's screen. Quitting the app closes the connection, not the PTY: reopening reattaches to
@@ -73,7 +78,7 @@ its bundled `ssh.exe`.
    that an old release is unused: another device's bridge may still be between resolving `current`
    and starting its server. Provisioning runs `ssh -T <host> -- current/mojian-server stdio`. The bridge
    dials the server socket, starting a detached `mojian-server` when none runs, and copies stdio
-   to it; the client speaks v5 through that pipe. `remote.Dial` does the same, `Provision` returns
+   to it; the client speaks v6 through that pipe. `remote.Dial` does the same, `Provision` returns
    the live `Conn` it ended with, and the app keeps it in the pool. Nothing is forwarded and no
    local socket is created, which is why Windows needs only `ssh.exe`.
 4. The remote server stays alive while any of its sessions exists, so a dropped SSH connection does
@@ -84,8 +89,9 @@ its bundled `ssh.exe`.
 ## Contracts and failure behavior
 
 - A server of another build answers with a different version; the client returns
-  `session.ProtocolError{Server, Client}` and the app does not attach. A local server from an
-  older build is stopped through the pre-v4 one-line shutdown and replaced. A remote one cannot
+  `session.ProtocolError{Server, Client}` and the app does not attach. A local v4/v5 server is stopped
+  with its framed shutdown, a pre-v4 server with its one-line JSON shutdown, and either is replaced
+  only after its socket disappears. A remote one cannot
   be stopped safely behind the user's back (its terminals and agents would end), so `Dial` reports
   `remote.ErrNeedsRestart` and the host's row asks for Stop Server instead. This classification
   requires either a framed protocol error or a confirmed pre-v4 JSON hello; a timeout, overload or
@@ -96,11 +102,15 @@ its bundled `ssh.exe`.
   a server that loses the race exit instead of binding a second socket.
 - Shutdown rejects new Create requests. If shutdown begins while a PTY is being created, that
   session either joins the final kill snapshot or is killed before Create returns an error; it can
-  never register after the snapshot and outlive the stopped server.
+  never register after the snapshot and outlive the stopped server. Sessions already detached by a
+  Kill request stay in the same termination wait group. Final kills start in parallel, share the
+  one-second interrupt grace period, and wait for actual process exit before `Serve` returns.
 - A remote project root may be a symlink to a directory; tree listings resolve that root and return
   the target's entries. Copying rejects a source/destination overlap before creating anything,
   including a directory destination below the source through a symlinked parent. File, directory
-  and broken symlinks are recreated with their original link text instead of being followed.
+  and broken symlinks are recreated with their original link text instead of being followed. Stat
+  reports a broken symlink as an existing non-directory entry, so a rename cannot overwrite it as
+  though its name were free.
 - Windows local projects keep files and Git on `fs.Direct`; its local session server owns
   terminals only, so the local `exec` op is unavailable. Remote hosts work on Windows the same way
   as elsewhere, because the transport is `ssh.exe` over pipes: remote projects use the remote
@@ -139,8 +149,15 @@ its bundled `ssh.exe`.
   its result would update a window that no longer exists; the next window starts fresh.
 - New and split remote terminals also dial and create their sessions off the UI thread. Their pane
   enters the layout in a connecting state, and a result whose pane or window disappeared is not
-  attached; a session already created for that stale result is killed. A duplicate connection made
-  while another one entered the pool is closed instead of overwriting it.
+  attached; a session already created for that stale result is killed. Every Create and stale Kill
+  holds an independent counted connection lease until cleanup finishes, so closing the last project
+  cannot close the client first. A duplicate connection made while another one entered the pool is
+  closed instead of overwriting it. Closing panes finish their overlays and Kill requests before
+  their clients close, and a stopped host leaves its panes stopped until an explicit Start Server.
+- Host setup, stop and probe completions use the application main queue even after the last window
+  closes. Closing the only Settings window invalidates those operations and leaves them retryable;
+  a stale successful setup still closes its connection instead of leaking it. Editing or removing a
+  host closes its old directory picker and invalidates queued directory results.
 - A restored terminal on the project on screen waits for the project's connection instead of
   showing Try Again; `installRemoteConn` clears the waiting state and the pane attaches. A failed
   reconnect puts the connection error behind Try Again.

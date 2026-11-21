@@ -66,6 +66,10 @@ func (a *app) assetBody(c *ui.Context, k *colors, p *pane) {
 	if p.assetView == nil {
 		p.assetView = &assetView{}
 	}
+	if p.Asset.IsBinary() {
+		a.binaryBody(c, k, p)
+		return
+	}
 	if isPDFPath(p.Asset.Path) {
 		a.pdfBody(c, k, p)
 		return
@@ -80,6 +84,21 @@ func (a *app) assetBody(c *ui.Context, k *colors, p *pane) {
 			ui.Image(c, img).Fill().Fit(ui.Contain)
 		})
 		a.assetFooter(c, k, p, "Image")
+	})
+}
+
+func (a *app) binaryBody(c *ui.Context, k *colors, p *pane) {
+	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Box(c).Grow(1).MinHeight(0).Center().Padding(24).Children(func() {
+			ui.Column(c).Center().Gap(8).Children(func() {
+				ui.Icon(c, icons.Icon("file-text")).Size(28, 28).TextColor(k.TextMuted)
+				ui.Text(c, p.Asset.Name).FontSize(c.Theme().Rem(14.0 / 13)).FontWeight(600).TextColor(k.Text).
+					TextAlign(ui.Center).MaxWidth(460)
+				ui.Text(c, "This file cannot be edited as text.").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).
+					TextAlign(ui.Center).MaxWidth(460)
+			})
+		})
+		a.assetFooter(c, k, p, "Binary")
 	})
 }
 
@@ -267,7 +286,7 @@ func (a *app) assetFooter(c *ui.Context, k *colors, p *pane, kind string) {
 }
 
 func (a *app) openButton(c *ui.Context, k *colors, p *pane) {
-	if runtime.GOOS == "js" {
+	if runtime.GOOS == "js" || p.Asset.IsBinary() && a.store != nil && a.store.IsRemote() {
 		return
 	}
 	b := ui.ButtonBase(c).Padding(4, 9).Radius(radius).

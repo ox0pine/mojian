@@ -164,6 +164,68 @@ func TestRemoteGitRunsOnTheServer(t *testing.T) {
 	}
 }
 
+func TestRemoteGitRealPathPreservesTrailingSpace(t *testing.T) {
+	client, done := startTestSessionServer(t, t.TempDir())
+	defer client.Close()
+	defer func() { _ = client.Shutdown(); <-done }()
+	root := filepath.Join(t.TempDir(), "project ")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := serverGitRunner{client: client}
+	got, err := runner.RealPath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("real path = %q, want %q", got, want)
+	}
+	if _, err := runner.RealPath(filepath.Join(root, "missing")); err == nil {
+		t.Fatal("a failed pwd was reported as a valid path")
+	}
+}
+
+func TestRemoteBinaryListsWithoutMaterializing(t *testing.T) {
+	client, done := startTestSessionServer(t, t.TempDir())
+	stopped := false
+	defer func() {
+		if !stopped {
+			_ = client.Shutdown()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Error("session server did not stop")
+			}
+		}
+		_ = client.Close()
+	}()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "model.pt"), []byte{0, 1, 2}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openServerStore(client, root, t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asset := s.AssetByRel("model.pt")
+	if asset == nil || !asset.IsBinary() {
+		t.Fatalf("remote binary listing: %+v", asset)
+	}
+	if err := client.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	stopped = true
+	path, err := s.MaterializeAsset(asset)
+	if err != nil || path != asset.Path || asset.Local != "" {
+		t.Fatalf("binary metadata required a server read: path=%q local=%q err=%v", path, asset.Local, err)
+	}
+}
+
 func TestRemoteAssetCacheUsesContentHash(t *testing.T) {
 	client, done := startTestSessionServer(t, t.TempDir())
 	defer client.Close()

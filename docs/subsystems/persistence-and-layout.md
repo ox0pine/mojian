@@ -65,7 +65,9 @@ that produce both files, and the environment overrides that move them.
   alone: opening the project neither creates a fallback tab nor writes over the original bytes.
 - `MOJIAN_VAULT` selects the project folder; `MOJIAN_DIR` moves the data, socket and log directory
   (see [session-and-remote.md](session-and-remote.md)).
-- Both files are written with `fs.WriteFileAtomic`; a partial file is never left behind.
+- Both files are written with `fs.WriteFileAtomic`; a partial file is never left behind. Editing a
+  host address migrates its layouts with `fs.MoveFileAtomic`; an existing destination is replaced
+  with the source's complete contents, never kept as a stale layout that wins on the next launch.
 - Switching projects bumps `git.Page.Seq`/`DiffSeq` so a refresh from the project being stashed
   cannot land in the one being activated.
 - A project's row in the project chip carries a trash button: `closeLocalProject` or

@@ -123,8 +123,7 @@ func (s *Store) Rename(oldRel, name string) (string, []*Note, error) {
 			isDir = e.Dir
 		}
 	}
-	s.pathsChanged()
-	if err := s.FS.Rename(oldRel, newRel); err != nil {
+	if err := s.mutatePath(func() error { return s.FS.Rename(oldRel, newRel) }); err != nil {
 		return "", nil, err
 	}
 	changed := s.NotesUnder(oldRel, isDir)
@@ -138,8 +137,7 @@ func (s *Store) Rename(oldRel, name string) (string, []*Note, error) {
 // Trash moves rel out of the project and forgets its notes. Invalidating
 // path snapshots first keeps an in-flight save from recreating the file.
 func (s *Store) Trash(rel string) error {
-	s.pathsChanged()
-	if err := s.FS.Trash(rel); err != nil {
+	if err := s.mutatePath(func() error { return s.FS.Trash(rel) }); err != nil {
 		return err
 	}
 	s.Forget(rel)
@@ -178,7 +176,7 @@ func (s *Store) CopyInto(srcAbs, destDirRel string) (string, error) {
 		return "", errors.New("a folder cannot be copied into itself")
 	}
 	destRel := s.UniqueRel(destDirRel, filepath.Base(srcAbs), true)
-	if err := s.FS.CopyFrom(srcAbs, destRel); err != nil {
+	if err := s.mutatePath(func() error { return s.FS.CopyFrom(srcAbs, destRel) }); err != nil {
 		return "", err
 	}
 	if err := s.Refresh(); err != nil {
@@ -215,7 +213,7 @@ func (s *Store) MoveInto(srcAbs, destDirRel string) (string, error) {
 			return "", err
 		}
 		newRel := s.UniqueRel(destDirRel, filepath.Base(srcAbs), false)
-		if err := s.FS.MoveFrom(srcAbs, newRel); err != nil {
+		if err := s.mutatePath(func() error { return s.FS.MoveFrom(srcAbs, newRel) }); err != nil {
 			return "", err
 		}
 		s.Remap(oldRel, newRel, e.Dir)
@@ -225,7 +223,7 @@ func (s *Store) MoveInto(srcAbs, destDirRel string) (string, error) {
 		return newRel, nil
 	}
 	destRel := s.UniqueRel(destDirRel, filepath.Base(srcAbs), false)
-	if err := s.FS.MoveFrom(srcAbs, destRel); err != nil {
+	if err := s.mutatePath(func() error { return s.FS.MoveFrom(srcAbs, destRel) }); err != nil {
 		return "", err
 	}
 	if err := s.Refresh(); err != nil {
@@ -256,7 +254,7 @@ func (s *Store) MoveRel(rel, dest string) (string, error) {
 		return "", err
 	}
 	newRel := s.UniqueRel(dest, filepath.Base(rel), false)
-	if err := s.FS.Rename(rel, newRel); err != nil {
+	if err := s.mutatePath(func() error { return s.FS.Rename(rel, newRel) }); err != nil {
 		return "", err
 	}
 	s.Remap(rel, newRel, e.Dir)
@@ -269,7 +267,7 @@ func (s *Store) MoveRel(rel, dest string) (string, error) {
 // DuplicateRel copies rel beside it, named "name copy".
 func (s *Store) DuplicateRel(rel, dest string) (string, error) {
 	newRel := s.UniqueRel(dest, filepath.Base(rel), true)
-	if err := s.FS.Copy(rel, newRel); err != nil {
+	if err := s.mutatePath(func() error { return s.FS.Copy(rel, newRel) }); err != nil {
 		return "", err
 	}
 	if err := s.Refresh(); err != nil {

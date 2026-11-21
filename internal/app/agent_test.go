@@ -10,6 +10,8 @@ import (
 	"mojian/internal/acp"
 	"mojian/internal/fs"
 	"mojian/internal/project"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func TestAgentNotificationBodyCondensesTheAnswer(t *testing.T) {
@@ -128,6 +130,42 @@ func TestAgentPermissionCancellationClearsOnlyThatRequest(t *testing.T) {
 	a.agentTaskEvent(task, acp.Event{Kind: acp.KindPermissionResolved, Permission: second})
 	if task.perm != nil || a.agentOpen {
 		t.Fatal("the last cancelled request did not close the permission sheet")
+	}
+}
+
+func TestStaleAgentPermissionAnswerCannotAnswerNextRequest(t *testing.T) {
+	registerFonts()
+	cases := []struct {
+		button  string
+		options []acp.Option
+	}{
+		{button: "Allow", options: []acp.Option{{ID: "allow", Name: "Allow"}}},
+		{button: "Reject"},
+	}
+	for _, tc := range cases {
+		first := &acp.Permission{Title: "first", Options: tc.options}
+		second := &acp.Permission{Title: "second"}
+		task := &agentTask{prompt: "edit"}
+		a := newProjectApp(t)
+		a.agentTask = task
+		a.harness = true
+		a.agentTaskEvent(task, acp.Event{Kind: acp.KindPermission, Permission: first})
+		a.agentTaskEvent(task, acp.Event{Kind: acp.KindPermission, Permission: second})
+		tt := ui.NewTester(a.view, 1100, 700)
+		tt.Frame()
+		if err := tt.Click(tc.button); err != nil {
+			t.Fatal(err)
+		}
+		a.agentTaskEvent(task, acp.Event{Kind: acp.KindPermissionResolved, Permission: first})
+		if task.perm != second {
+			t.Fatalf("%s click: cancelling the first request did not promote the second", tc.button)
+		}
+		for range 2 {
+			tt.Frame()
+		}
+		if task.perm != second || !a.agentOpen {
+			t.Fatalf("%s click on the cancelled request answered its successor", tc.button)
+		}
 	}
 }
 

@@ -287,14 +287,10 @@ func (u *UI) treeDraftInput(c *ui.Context, d *Draft, placeholder string) {
 	case in.Shortcut(0, ui.KeyEscape):
 		u.CancelTreeDraft()
 	case in.Submitted():
-		u.later(func() { u.SubmitTreeDraft() })
+		u.later(func() { u.submitTreeDraft(d) })
 	case d.Focused && !in.Focused():
 		d.Focused = false
-		if d.Kind == DraftRename {
-			u.later(func() { u.SubmitTreeDraft() })
-		} else {
-			u.CancelTreeDraft()
-		}
+		u.later(func() { u.submitTreeDraft(d) })
 	}
 }
 

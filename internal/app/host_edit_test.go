@@ -63,11 +63,17 @@ func TestHostEditMovesLayoutToNewAddress(t *testing.T) {
 	a.hostService().AddHost("Old", "old-box")
 	a.saveLayout()
 	oldLayout := ws.layoutPath
+	newLayout := a.projectLayoutPath("remote:new-box:/srv/app")
+	if err := os.MkdirAll(filepath.Dir(newLayout), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newLayout, []byte(`{"tabs":[],"active":0}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	a.hostEditAddress, a.hostEditName = "new-box", "New"
 
 	a.saveHostEdit("old-box")
 
-	newLayout := a.projectLayoutPath("remote:new-box:/srv/app")
 	if ws.layoutPath != newLayout {
 		t.Fatalf("layout path = %q, want new host path %q", ws.layoutPath, newLayout)
 	}

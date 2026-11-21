@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,7 +31,18 @@ type Store struct {
 	Tree    *TreeNode
 	Assets  map[string]*Asset
 
+	mutationMu  sync.RWMutex
 	mutationSeq atomic.Uint64
+}
+
+// mutatePath serializes a filesystem path change with snapshot writes. The
+// revision rejects older listings and later saves; the lock also prevents a
+// write that already passed its checks from landing after a rename or recreate.
+func (s *Store) mutatePath(fn func() error) error {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+	s.pathsChanged()
+	return fn()
 }
 
 // MutationSeq identifies the store's path state. It is safe to check from
@@ -115,7 +127,7 @@ func (s *Store) Apply(entries []session.FileEntry, bodies map[string]string) {
 			s.Notes = append(s.Notes, n)
 			s.ByRel[rel] = n
 			s.ByPath[n.Path] = n
-		case filekind.Asset:
+		case filekind.Asset, filekind.Binary:
 			f := previousAssets[rel]
 			if f == nil || !f.Mod.Equal(e.Mod) || f.Size != e.Size || f.Hash != e.Hash {
 				f = &Asset{
@@ -123,6 +135,7 @@ func (s *Store) Apply(entries []session.FileEntry, bodies map[string]string) {
 					Size: e.Size, Mod: e.Mod, Hash: e.Hash,
 				}
 			}
+			f.Kind = e.Kind
 			assets[rel] = f
 		}
 	}
@@ -326,6 +339,8 @@ func (s *Store) WriteSnapshot(ctx context.Context, snapshot SaveSnapshot) error 
 			return fmt.Errorf("%s: %w; local edits were kept; copy them elsewhere before reloading", snapshot.rel, ErrFileChanged)
 		}
 	}
+	s.mutationMu.RLock()
+	defer s.mutationMu.RUnlock()
 	if snapshot.mutationSeq != s.MutationSeq() {
 		return ErrSaveSnapshotStale
 	}

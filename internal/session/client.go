@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -35,6 +36,11 @@ type responseAssembly struct {
 	total    int
 	received int
 }
+
+type notExistError struct{ message string }
+
+func (e *notExistError) Error() string { return e.message }
+func (e *notExistError) Unwrap() error { return os.ErrNotExist }
 
 // Connect connects to the server, starting one in the background when
 // none runs.
@@ -147,10 +153,12 @@ func connectAt(path string, spawn bool) (*Client, error) {
 	if !spawn {
 		return nil, err
 	}
-	// A detached server from an older build holds the socket and cannot
-	// read frames; the old one-line shutdown is the only way to stop it.
+	// Replace only a confirmed older server. A handshake or network
+	// failure is not permission to stop a healthy v5 server.
 	for attempt := 0; attempt < 3; attempt++ {
-		_ = legacyShutdown(path)
+		if err = stopIncompatible(path, err); err != nil {
+			return nil, err
+		}
 		time.Sleep(100 * time.Millisecond)
 		conn, derr := dialAt(path, true)
 		if derr != nil {
@@ -193,16 +201,163 @@ func dialAt(path string, spawn bool) (net.Conn, error) {
 	return conn, nil
 }
 
-// legacyShutdown stops a pre-v4 server at path, whose protocol is one
-// JSON line per request. It is the only thing that build understands.
-func legacyShutdown(path string) error {
+// stopIncompatible stops only a server whose older protocol was confirmed
+// by its framed version error or by a pre-v4 JSON hello.
+func stopIncompatible(path string, connectErr error) error {
+	var protocolErr *ProtocolError
+	if errors.As(connectErr, &protocolErr) {
+		if protocolErr.Server < 4 || protocolErr.Server >= ProtocolVersion {
+			return connectErr
+		}
+		if err := framedShutdown(path, protocolErr.Server); err != nil {
+			return fmt.Errorf("session: stopping protocol %d server: %w", protocolErr.Server, err)
+		}
+	} else {
+		if !legacyProtocol(path) {
+			return connectErr
+		}
+		if err := legacyShutdown(path); err != nil {
+			return fmt.Errorf("session: stopping legacy server: %w", err)
+		}
+	}
+	return waitStopped(path)
+}
+
+// framedShutdown speaks the selected framed protocol through shutdown.
+// Versions 4 and later have the same hello, request and small response
+// frames; response chunks are irrelevant to this one small response.
+func framedShutdown(path string, version int) error {
 	conn, err := dial(path)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	_, err = conn.Write([]byte(`{"id":1,"op":"shutdown"}` + "\n"))
-	return err
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
+	r := bufio.NewReaderSize(conn, 1<<20)
+	hello, _ := json.Marshal(Hello{Version: version, Role: "client"})
+	if err := writeFrame(conn, frame{typ: frameHello, payload: hello}); err != nil {
+		return err
+	}
+	f, err := readFrame(r)
+	if err != nil {
+		return err
+	}
+	if f.typ != frameHello {
+		return fmt.Errorf("session: unexpected handshake frame %d", f.typ)
+	}
+	var answer Hello
+	if err := json.Unmarshal(f.payload, &answer); err != nil {
+		return err
+	}
+	if answer.Version != version {
+		return fmt.Errorf("session: server changed protocol from %d to %d", version, answer.Version)
+	}
+	request, _ := json.Marshal(Request{ID: 1, Op: "shutdown"})
+	if err := writeFrame(conn, frame{typ: frameRequest, payload: request}); err != nil {
+		return err
+	}
+	f, err = readFrame(r)
+	if err != nil {
+		return err
+	}
+	if f.typ != frameResponse {
+		return fmt.Errorf("session: unexpected shutdown response frame %d", f.typ)
+	}
+	var response Response
+	if err := json.Unmarshal(f.payload, &response); err != nil {
+		return err
+	}
+	if response.ID != 1 {
+		return fmt.Errorf("session: shutdown response has id %d", response.ID)
+	}
+	if response.Error != "" {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
+// legacyProtocol explicitly probes the pre-v4 one-line JSON protocol. An
+// arbitrary handshake failure must not turn into a shutdown request.
+func legacyProtocol(path string) bool {
+	response, err := legacyRequest(path, Request{ID: 1, Op: "hello"})
+	if err != nil || response.Error != "" {
+		return false
+	}
+	var hello Hello
+	if json.Unmarshal(response.Data, &hello) != nil {
+		return false
+	}
+	return hello.Version > 0 && hello.Version < 4
+}
+
+// legacyShutdown stops a pre-v4 server at path, whose protocol is one
+// JSON line per request. It is the only thing that build understands.
+func legacyShutdown(path string) error {
+	response, err := legacyRequest(path, Request{ID: 1, Op: "shutdown"})
+	if err != nil {
+		return err
+	}
+	if response.Error != "" {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
+func legacyRequest(path string, req Request) (Response, error) {
+	conn, err := dial(path)
+	if err != nil {
+		return Response{}, err
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return Response{}, err
+	}
+	request, _ := json.Marshal(req)
+	if err := writeAll(conn, append(request, '\n')); err != nil {
+		return Response{}, err
+	}
+	line, err := bufio.NewReaderSize(conn, 64<<10).ReadSlice('\n')
+	if err != nil {
+		return Response{}, err
+	}
+	var response Response
+	if err := json.Unmarshal(line, &response); err != nil {
+		return Response{}, err
+	}
+	if response.ID != req.ID {
+		return Response{}, fmt.Errorf("session: legacy response has id %d", response.ID)
+	}
+	return response, nil
+}
+
+// waitStopped waits until the old listener has gone. Serve removes its
+// socket only after every session has exited, so this also confirms that
+// shutdown did not merely accept the request and leave processes behind.
+func waitStopped(path string) error {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if runtime.GOOS == "windows" {
+			conn, err := dialTimeout(path, 50*time.Millisecond)
+			if err != nil {
+				return nil
+			}
+			_ = conn.Close()
+		} else {
+			_, err := os.Stat(path)
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if time.Now().After(deadline) {
+			return errors.New("session: server is still running after shutdown")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 // Closed closes when the connection, and every stream on it, is gone.
@@ -362,6 +517,9 @@ func (c *Client) callContext(ctx context.Context, req Request, out any) error {
 			return err
 		}
 		if res.Error != "" {
+			if res.Code == responseNotExist {
+				return &notExistError{message: res.Error}
+			}
 			return errors.New(res.Error)
 		}
 		if out != nil && len(res.Data) > 0 {
@@ -430,20 +588,20 @@ func Ready() bool {
 // Stop asks the server at the standard socket to shut down. A missing
 // socket means no server is running, which is already the wanted state.
 func Stop() error {
-	if c, err := ConnectAt(SocketPath()); err == nil {
-		defer c.Close()
-		if err := c.Shutdown(); err == nil {
-			return nil
+	path := SocketPath()
+	c, err := ConnectAt(path)
+	if err == nil {
+		shutdownErr := c.Shutdown()
+		_ = c.Close()
+		if shutdownErr != nil {
+			return shutdownErr
 		}
+		return waitStopped(path)
 	}
-	// An older server cannot answer a request; stop it the old way.
-	if err := legacyShutdown(SocketPath()); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
-	return nil
+	return stopIncompatible(path, err)
 }
 
 // Stream is a terminal's byte stream attached to a session.

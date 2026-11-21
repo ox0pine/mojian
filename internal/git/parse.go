@@ -242,6 +242,9 @@ func runGit(dir string, args ...string) (string, error) {
 	if ctx.Err() != nil {
 		return "", errors.New("git timed out")
 	}
+	if out.truncated {
+		return out.String(), errors.New("git output exceeded 2 MiB")
+	}
 	if err != nil {
 		msg := strings.TrimSpace(errb.String())
 		if msg == "" {
@@ -257,14 +260,20 @@ func runGit(dir string, args ...string) (string, error) {
 func gitEnv() []string { return gitenv.Env() }
 
 type cappedBuffer struct {
-	bytes.Buffer
-	limit int
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
 }
 
+func (b *cappedBuffer) String() string { return b.buf.String() }
+
 func (b *cappedBuffer) Write(p []byte) (int, error) {
-	if b.Len() < b.limit {
-		n := min(len(p), b.limit-b.Len())
-		_, _ = b.Buffer.Write(p[:n])
+	if len(p) > b.limit-b.buf.Len() {
+		b.truncated = true
+	}
+	if b.buf.Len() < b.limit {
+		n := min(len(p), b.limit-b.buf.Len())
+		_, _ = b.buf.Write(p[:n])
 	}
 	return len(p), nil
 }

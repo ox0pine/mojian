@@ -65,6 +65,9 @@ func TestRestoredTerminalUsesItsOwnServer(t *testing.T) {
 	a.setRemoteConn(&remote.Conn{Host: "one", Client: one})
 	a.setRemoteConn(&remote.Conn{Host: "two", Client: two})
 	p := newTermPane(newTermPaneSpec(termSpec{Server: "two"}, info.ID))
+	tb := &tab{ID: nextID("t"), Root: &node{Pane: p}, Focus: p}
+	a.tabs = []*tab{tb}
+	a.active = 0
 	a.startRestoredTerminal(p)
 	if p.Term.startErr != "" {
 		t.Fatalf("restoring the terminal: %s", p.Term.startErr)

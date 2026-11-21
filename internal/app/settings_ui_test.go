@@ -150,6 +150,28 @@ func TestSettingsShortcutRecording(t *testing.T) {
 	}
 }
 
+func TestSettingsCloseRestoresShowTabAccelerators(t *testing.T) {
+	a := newProjectApp(t)
+	a.initSettings()
+	a.settings.Recording = cmdSave.ID
+	for i := 1; i <= 9; i++ {
+		if got := a.menuAccel(showTabAccel(i)); got != "" {
+			t.Fatalf("Show Tab %d accelerator while recording = %q, want empty", i, got)
+		}
+	}
+
+	a.settingsWindowClosed()
+
+	if a.settings.Recording != "" {
+		t.Fatal("closing Settings left shortcut recording active")
+	}
+	for i := 1; i <= 9; i++ {
+		if got, want := a.menuAccel(showTabAccel(i)), showTabAccel(i); got != want {
+			t.Fatalf("Show Tab %d accelerator after close = %q, want %q", i, got, want)
+		}
+	}
+}
+
 func TestShowTabShortcutPrecedesConflictingCommand(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)

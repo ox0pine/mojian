@@ -1,11 +1,13 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/transfer"
 )
 
 // useClipboardFiles makes the next clipboard reads see files, and
@@ -14,6 +16,14 @@ func useClipboardFiles(t *testing.T, files ...string) {
 	t.Helper()
 	oldRead, oldWrite := readClipboardFiles, writeClipboardFiles
 	readClipboardFiles = func() ([]string, error) { return files, nil }
+	writeClipboardFiles = func(...string) error { return nil }
+	t.Cleanup(func() { readClipboardFiles, writeClipboardFiles = oldRead, oldWrite })
+}
+
+func useClipboardReadError(t *testing.T, err error) {
+	t.Helper()
+	oldRead, oldWrite := readClipboardFiles, writeClipboardFiles
+	readClipboardFiles = func() ([]string, error) { return nil, err }
 	writeClipboardFiles = func(...string) error { return nil }
 	t.Cleanup(func() { readClipboardFiles, writeClipboardFiles = oldRead, oldWrite })
 }
@@ -72,6 +82,48 @@ func TestCutMovesWhenTheClipboardStillHoldsIt(t *testing.T) {
 	}
 	if a.fileCut {
 		t.Fatal("a move left the cut marker set")
+	}
+}
+
+func TestPasteWithTextOnlyClipboardDoesNotMoveCut(t *testing.T) {
+	a := newProjectApp(t)
+	a.win = &mygo.Window{}
+	py := a.store.ByRelPath(filepath.Join("scripts", "tasks.py"))
+	useClipboardReadError(t, transfer.ErrFormat)
+	a.copySelectionTo(py.Rel, true)
+	a.pasteInto("Ideas")
+
+	if a.err != "the clipboard has no files" {
+		t.Fatalf("paste error = %q, want the no-files error", a.err)
+	}
+	if _, err := os.Stat(filepath.Join(a.store.Dir, "scripts", "tasks.py")); err != nil {
+		t.Fatalf("the text-only clipboard moved the cut source: %v", err)
+	}
+	if a.store.ByRelPath(filepath.Join("Ideas", "tasks.py")) != nil {
+		t.Fatal("the old cut was pasted after the system clipboard became text")
+	}
+}
+
+func TestPasteFallsBackToCopyWhenClipboardReadFails(t *testing.T) {
+	a := newProjectApp(t)
+	a.win = &mygo.Window{}
+	useClipboardReadError(t, errors.New("clipboard unavailable"))
+
+	py := a.store.ByRelPath(filepath.Join("scripts", "tasks.py"))
+	a.copySelectionTo(py.Rel, true)
+	a.pasteInto("Ideas")
+
+	if a.err != "" {
+		t.Fatalf("the internal clipboard fallback failed: %q", a.err)
+	}
+	if _, err := os.Stat(filepath.Join(a.store.Dir, "scripts", "tasks.py")); err != nil {
+		t.Fatalf("an unverified cut moved the source: %v", err)
+	}
+	if a.store.ByRelPath(filepath.Join("Ideas", "tasks copy.py")) == nil {
+		t.Fatal("the internal clipboard fallback did not copy the file")
+	}
+	if a.fileCut {
+		t.Fatal("the copy fallback left the cut marker set")
 	}
 }
 

@@ -2,6 +2,7 @@ package fs
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -138,8 +139,19 @@ func (d *Direct) Rename(oldRel, newRel string) error {
 	if existing, err := os.Lstat(newAbs); err == nil {
 		if os.SameFile(info, existing) {
 			// A case-only rename on a case-insensitive volume needs a step
-			// aside before the new spelling can take the old name.
+			// aside before the new spelling can take the old name. Never
+			// replace an unrelated file that already uses the temporary name.
 			tmp := oldAbs + ".mojian-rename"
+			for i := 2; ; i++ {
+				_, err := os.Lstat(tmp)
+				if errors.Is(err, os.ErrNotExist) {
+					break
+				}
+				if err != nil {
+					return err
+				}
+				tmp = fmt.Sprintf("%s.mojian-rename-%d", oldAbs, i)
+			}
 			if err := os.Rename(oldAbs, tmp); err != nil {
 				return err
 			}

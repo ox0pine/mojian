@@ -187,14 +187,15 @@ type Options struct {
 
 // Session is one running agent and its open session.
 type Session struct {
-	cmd    *exec.Cmd
-	conn   *sdk.ClientSideConnection
-	id     sdk.SessionId
-	events func(Event)
-	stderr *tail
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan struct{}
+	cmd     *exec.Cmd
+	process *processTree
+	conn    *sdk.ClientSideConnection
+	id      sdk.SessionId
+	events  func(Event)
+	stderr  *tail
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
 
 	mu           sync.Mutex
 	promptCancel context.CancelFunc
@@ -215,25 +216,35 @@ func Start(ctx context.Context, o Options) (*Session, error) {
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = o.Dir
 	cmd.Env = append(os.Environ(), o.Env...)
+	process, err := newProcessTree(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", strings.Join(command, " "), err)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		process.close()
 		return nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		_ = stdin.Close()
+		process.close()
 		return nil, err
 	}
 	s := &Session{
-		cmd:    cmd,
-		events: o.Events,
-		stderr: &tail{},
-		done:   make(chan struct{}),
+		cmd:     cmd,
+		process: process,
+		events:  o.Events,
+		stderr:  &tail{},
+		done:    make(chan struct{}),
 	}
 	cmd.Stderr = s.stderr
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.conn = sdk.NewClientSideConnection(&client{s: s}, stdin, stdout)
-	if err := cmd.Start(); err != nil {
+	if err := s.process.start(); err != nil {
 		s.cancel()
+		_ = stdin.Close()
+		_ = stdout.Close()
 		return nil, fmt.Errorf("%s: %w", strings.Join(command, " "), err)
 	}
 	go s.wait()
@@ -275,6 +286,7 @@ func (s *Session) wrap(what string, err error) error {
 // wait reaps the process and reports its end once.
 func (s *Session) wait() {
 	_ = s.cmd.Wait()
+	s.process.close()
 	s.cancel()
 	select {
 	case <-s.done:
@@ -349,8 +361,12 @@ func (s *Session) Close() {
 		cancel()
 	}
 	s.cancel()
-	if s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
+	select {
+	case <-s.done:
+		// A numeric process-group ID may be reused after Wait reaps the agent.
+		return
+	default:
+		s.process.kill()
 	}
 }
 

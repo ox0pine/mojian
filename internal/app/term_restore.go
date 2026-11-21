@@ -20,6 +20,13 @@ var killTerminalSessionFn = func(client *session.Client, sid string) error {
 	return client.Kill(sid)
 }
 
+const remoteServerStoppedError = "server stopped; start it in Settings › Hosts"
+
+func (a *app) remoteTerminalStopped(host string) bool {
+	st := a.hostStates[host]
+	return st != nil && st.stopped
+}
+
 // terminalCreateOptions is what a new session needs, read on the UI
 // thread before the request goes out.
 func (a *app) terminalCreateOptions(spec termSpec) session.CreateOptions {
@@ -82,12 +89,14 @@ func (a *app) startRemoteTerminal(p *pane) {
 	if t.Spec.Host != "" || host == "" || host == localServerID {
 		return
 	}
+	if a.remoteTerminalStopped(host) {
+		t.startErr = remoteServerStoppedError
+		a.invalidate()
+		return
+	}
 	opts := a.terminalCreateOptions(t.Spec)
 	existing := a.remoteForHost(host)
-	temporaryKeep := !a.remoteKeep[host]
-	if temporaryKeep {
-		a.keepRemote(host)
-	}
+	release := a.retainRemote(host)
 	seq := t.beginConnect()
 	t.startErr = ""
 	a.invalidate()
@@ -107,14 +116,8 @@ func (a *app) startRemoteTerminal(p *pane) {
 				}
 			}
 		}
-		onWindow(win, func() {
-			release := func() {
-				if temporaryKeep {
-					delete(a.remoteKeep, host)
-				}
-				a.reapRemotes()
-			}
-			a.finishRemoteTerminal(p, t, result, a.win == win, release, func() { onWindow(win, release) })
+		a.onCleanupUI(func() {
+			a.finishRemoteTerminal(p, t, result, a.win == win, release, func() { a.onCleanupUI(release) })
 		})
 	}()
 }
@@ -235,6 +238,11 @@ func (a *app) startRestoredTerminal(p *pane) {
 			t.Spec.Server = localServerID
 		}
 	}
+	if t.Spec.Server != "" && t.Spec.Server != localServerID && a.remoteTerminalStopped(t.Spec.Server) {
+		t.startErr = remoteServerStoppedError
+		a.invalidate()
+		return
+	}
 	if t.SID == "" && t.Spec.Host == "" {
 		if t.Spec.Server != localServerID && a.shellStarter == nil {
 			a.startRemoteTerminal(p)
@@ -263,6 +271,11 @@ func (a *app) startRestoredTerminal(p *pane) {
 	opts := a.terminalCreateOptions(t.Spec)
 	sid := t.SID
 	seq := t.beginConnect()
+	release := func() {}
+	if t.Spec.Server != "" && t.Spec.Server != localServerID && t.Spec.Host == "" {
+		release = a.retainRemote(t.Spec.Server)
+	}
+	releaseAsync := func() { a.onCleanupUI(release) }
 	a.invalidate()
 	win := a.win
 	finish := func(sid string, created bool, err error) {
@@ -272,21 +285,27 @@ func (a *app) startRestoredTerminal(p *pane) {
 		}
 		if stale {
 			// Never attach an old result to a replacement pane. A newly
-			// created session still needs its SID reaped.
+			// created session still needs its SID reaped before the lease
+			// on its connection ends.
 			if created {
-				go func() { _ = killTerminalSessionFn(client, sid) }()
+				cleanupRemoteTerminal(client, sid, nil, releaseAsync)
+			} else {
+				release()
 			}
 			return
 		}
 		if err != nil {
 			t.startErr = err.Error()
+			release()
 			a.invalidate()
 			return
 		}
 		tt, err := a.attachTerminal(client, sid, t.Spec)
 		if err != nil {
 			if created {
-				go func() { _ = killTerminalSessionFn(client, sid) }()
+				cleanupRemoteTerminal(client, sid, nil, releaseAsync)
+			} else {
+				release()
 			}
 			t.startErr = err.Error()
 			a.invalidate()
@@ -294,6 +313,7 @@ func (a *app) startRestoredTerminal(p *pane) {
 		}
 		t.Term, t.SID, t.stream, t.Client = tt.Term, tt.SID, tt.stream, tt.Client
 		t.startErr = ""
+		release()
 		a.changed()
 		a.invalidate()
 	}
@@ -305,7 +325,7 @@ func (a *app) startRestoredTerminal(p *pane) {
 	}
 	go func() {
 		sid, created, err := prepareTerminalSession(client, sid, opts)
-		onWindow(win, func() { finish(sid, created, err) })
+		a.onCleanupUI(func() { finish(sid, created, err) })
 	}()
 }
 
@@ -355,5 +375,24 @@ func (a *app) endTerminal(t *termTab) {
 		return
 	}
 	sid := t.SID
-	go func() { _ = killTerminalSessionFn(client, sid) }()
+	remoteServer := t.Spec.Host == "" && t.Spec.Server != "" && t.Spec.Server != localServerID
+	if remoteServer {
+		release := a.retainRemote(t.Spec.Server)
+		go func() {
+			_ = killTerminalSessionFn(client, sid)
+			a.onCleanupUI(release)
+		}()
+		return
+	}
+	a.localTerminalKills++
+	go func() {
+		_ = killTerminalSessionFn(client, sid)
+		a.onCleanupUI(func() {
+			a.localTerminalKills--
+			if a.localTerminalKills == 0 && a.remoteClosing && a.sessionClient != nil {
+				_ = a.sessionClient.Close()
+				a.sessionClient = nil
+			}
+		})
+	}()
 }

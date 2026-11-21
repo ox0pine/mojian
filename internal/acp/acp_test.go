@@ -3,6 +3,9 @@ package acp
 import (
 	"context"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -11,8 +14,17 @@ import (
 	sdk "github.com/coder/acp-go-sdk"
 )
 
+const testMarkerDelay = 2 * time.Second
+
 // TestMain lets the test binary act as the agent when Start asks for it.
 func TestMain(m *testing.M) {
+	if os.Getenv("MOJIAN_TEST_ACP_MARKER_CHILD") == "1" {
+		time.Sleep(testMarkerDelay)
+		if err := os.WriteFile(os.Getenv("MOJIAN_TEST_ACP_MARKER"), []byte("survived"), 0o600); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	if os.Getenv("MOJIAN_TEST_ACP_AGENT") == "1" {
 		runTestAgent()
 		return
@@ -47,6 +59,15 @@ func (a *testAgent) Logout(context.Context, sdk.LogoutRequest) (sdk.LogoutRespon
 }
 
 func (a *testAgent) NewSession(context.Context, sdk.NewSessionRequest) (sdk.NewSessionResponse, error) {
+	if os.Getenv("MOJIAN_TEST_ACP_MARKER") != "" {
+		child := exec.Command(os.Args[0])
+		child.Env = append(os.Environ(), "MOJIAN_TEST_ACP_MARKER_CHILD=1")
+		if err := child.Start(); err != nil {
+			return sdk.NewSessionResponse{}, err
+		}
+		// The agent deliberately leaves this tool child running until Close.
+		_ = child.Process.Release()
+	}
 	return sdk.NewSessionResponse{SessionId: "test-session"}, nil
 }
 
@@ -201,6 +222,37 @@ func TestSessionCloseEndsTheProcess(t *testing.T) {
 	case <-s.Done():
 	case <-time.After(10 * time.Second):
 		t.Fatal("the agent process did not end")
+	}
+	s.Close()
+}
+
+func TestSessionCloseKillsProcessGroup(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("process-group regression runs on Unix")
+	}
+	marker := filepath.Join(t.TempDir(), "tool-child-survived")
+	s, err := Start(context.Background(), Options{
+		Dir:     t.TempDir(),
+		Command: []string{os.Args[0]},
+		Env: []string{
+			"MOJIAN_TEST_ACP_AGENT=1",
+			"MOJIAN_TEST_ACP_MARKER=" + marker,
+		},
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	s.Close()
+	select {
+	case <-s.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the agent process group did not end")
+	}
+	time.Sleep(testMarkerDelay + 500*time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the agent's tool child survived Close and wrote its marker")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat marker: %v", err)
 	}
 }
 

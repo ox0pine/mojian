@@ -46,6 +46,7 @@ type Server struct {
 	started  time.Time
 	quit     chan struct{}
 	once     sync.Once
+	kills    sync.WaitGroup
 	// trees caches listTree results; a file operation clears it and a
 	// short TTL picks up changes made outside the server.
 	trees map[string]treeCacheEntry
@@ -96,15 +97,7 @@ func Serve() error {
 		if err != nil {
 			select {
 			case <-s.quit:
-				s.mu.Lock()
-				all := make([]*session, 0, len(s.sessions))
-				for _, ss := range s.sessions {
-					all = append(all, ss)
-				}
-				s.mu.Unlock()
-				for _, ss := range all {
-					ss.kill()
-				}
+				s.stopSessions()
 				removeSocket(sock)
 				return nil
 			default:
@@ -124,6 +117,31 @@ func (s *Server) shutdown() {
 		defer s.mu.Unlock()
 		close(s.quit)
 	})
+}
+
+// stopSessions detaches every registered session and starts all final
+// kills before waiting. A kill request that already detached its session
+// is included in the same wait group; one that arrives later finds no
+// session and cannot add work after the wait starts.
+func (s *Server) stopSessions() {
+	s.mu.Lock()
+	all := make([]*session, 0, len(s.sessions))
+	for id, ss := range s.sessions {
+		all = append(all, ss)
+		delete(s.sessions, id)
+	}
+	s.order = nil
+	s.kills.Add(len(all))
+	s.mu.Unlock()
+	for _, ss := range all {
+		go s.killSession(ss)
+	}
+	s.kills.Wait()
+}
+
+func (s *Server) killSession(ss *session) {
+	defer s.kills.Done()
+	ss.kill()
 }
 
 // pruneLoop forgets exited sessions; the server itself runs until it is
@@ -248,6 +266,9 @@ func (s *Server) request(req Request) Response {
 	res := Response{ID: req.ID}
 	if err != nil {
 		res.Error = err.Error()
+		if errors.Is(err, os.ErrNotExist) {
+			res.Code = responseNotExist
+		}
 	} else if data != nil {
 		res.Data, _ = json.Marshal(data)
 	}
@@ -384,18 +405,21 @@ func (s *Server) do(req Request) (any, error) {
 		s.mu.Unlock()
 		return ss.info(), nil
 	case "kill":
-		ss, err := s.session(req.SID)
-		if err != nil {
-			return nil, nil
-		}
 		// Do not hold the control connection for the shell's interrupt
 		// grace period; the session is detached at once and killed in
-		// the background.
+		// the background. Detaching and adding to kills are atomic with
+		// the final shutdown snapshot, so Serve cannot miss this process.
 		s.mu.Lock()
-		delete(s.sessions, req.SID)
-		s.order = removeString(s.order, req.SID)
+		ss := s.sessions[req.SID]
+		if ss != nil {
+			delete(s.sessions, req.SID)
+			s.order = removeString(s.order, req.SID)
+			s.kills.Add(1)
+		}
 		s.mu.Unlock()
-		go ss.kill()
+		if ss != nil {
+			go s.killSession(ss)
+		}
 		return nil, nil
 	case "resize":
 		ss, err := s.session(req.SID)
@@ -703,10 +727,13 @@ func (s *session) kill() {
 	if !exited {
 		_ = s.proc.Interrupt()
 	}
+	timer := time.NewTimer(time.Second)
 	select {
 	case <-s.done:
-	case <-time.After(time.Second):
+		_ = timer.Stop()
+	case <-timer.C:
 		_ = s.proc.Kill()
+		<-s.done
 	}
 	_ = s.proc.Close()
 }
@@ -846,8 +873,19 @@ func walkTree(root string) ([]FileEntry, error) {
 }
 
 func statEntry(path string) (FileEntry, error) {
+	linkInfo, err := os.Lstat(path)
+	if err != nil {
+		return FileEntry{}, err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
+		if linkInfo.Mode()&os.ModeSymlink != 0 && errors.Is(err, os.ErrNotExist) {
+			// A broken link still occupies its directory entry. Report the
+			// link itself so a case-only rename cannot silently overwrite it.
+			return FileEntry{
+				Rel: path, Dir: false, Size: linkInfo.Size(), Mod: linkInfo.ModTime(), Kind: filekind.Other,
+			}, nil
+		}
 		return FileEntry{}, err
 	}
 	e := FileEntry{Rel: path, Dir: info.IsDir(), Size: info.Size(), Mod: info.ModTime()}

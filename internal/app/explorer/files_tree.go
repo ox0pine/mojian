@@ -64,13 +64,20 @@ func (u *UI) CancelTreeDraft() {
 
 // SubmitTreeDraft creates the named file or folder, or renames the target.
 func (u *UI) SubmitTreeDraft() {
-	d := u.TreeDraft()
+	u.submitTreeDraft(u.TreeDraft())
+}
+
+// submitTreeDraft commits the draft an input captured, even if a click has
+// already cleared the global draft before its deferred blur action runs.
+func (u *UI) submitTreeDraft(d *Draft) {
 	if d == nil || u.store() == nil {
 		return
 	}
 	name := strings.TrimSpace(d.Name)
 	if d.Kind == DraftRename && name == "" {
-		u.SetTreeDraft(nil)
+		if u.TreeDraft() == d {
+			u.SetTreeDraft(nil)
+		}
 		return
 	}
 	var (
@@ -104,8 +111,10 @@ func (u *UI) SubmitTreeDraft() {
 		u.fail(err)
 		return
 	}
-	u.SetTreeDraft(nil)
-	u.SetTreeSel(rel)
+	active := u.TreeDraft() == d
+	if active {
+		u.SetTreeDraft(nil)
+	}
 	if d.Kind == DraftFolder {
 		if u.OpenDirs() == nil {
 			u.SetOpenDirs(map[string]bool{})
@@ -115,10 +124,15 @@ func (u *UI) SubmitTreeDraft() {
 	if d.Kind == DraftRename {
 		u.remapOpenDirs(d.Target, rel)
 	}
-	u.OpenPath(filepath.Dir(rel))
-	u.SetTreeReveal(rel)
-	if d.Kind == DraftFile && n != nil {
-		u.openNote(n)
+	if active {
+		// A newer draft keeps its input and focus, and a row clicked
+		// during blur keeps its selection instead of the old draft's.
+		u.SetTreeSel(rel)
+		u.OpenPath(filepath.Dir(rel))
+		u.SetTreeReveal(rel)
+		if d.Kind == DraftFile && n != nil {
+			u.openNote(n)
+		}
 	}
 	if d.Kind == DraftRename {
 		u.resetRenamedStates(changed, before)

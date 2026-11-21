@@ -9,6 +9,7 @@ import (
 	"mojian/internal/fs"
 	"mojian/internal/testutil"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -83,7 +84,13 @@ func TestRenameThroughTreeDraft(t *testing.T) {
 
 func TestCopyPasteAndCut(t *testing.T) {
 	a := newProjectApp(t)
+	a.win = &mygo.Window{}
 	py := a.store.ByRelPath(filepath.Join("scripts", "tasks.py"))
+	pyAbs, err := a.store.AbsRel(py.Rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	useClipboardFiles(t, pyAbs)
 	a.openNote(py)
 	a.copySelectionTo(py.Rel, false)
 	a.pasteInto("Ideas")
@@ -96,6 +103,11 @@ func TestCopyPasteAndCut(t *testing.T) {
 	}
 
 	js := a.store.ByRelPath(filepath.Join("scripts", "app.js"))
+	jsAbs, err := a.store.AbsRel(js.Rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	useClipboardFiles(t, jsAbs)
 	a.openNote(js)
 	a.copySelectionTo(js.Rel, true)
 	a.pasteInto("Ideas")

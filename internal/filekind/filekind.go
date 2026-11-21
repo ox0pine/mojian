@@ -1,7 +1,7 @@
-// Package filekind classifies a project file as text, a picture or PDF
-// the viewers show, or something the tree leaves out, and names the
-// generated folders a project hides. The app and the session server both
-// use it, so a remote project lists the same files as a local one.
+// Package filekind classifies a project file as text, a picture or PDF,
+// or another regular file the tree shows without editing it as text. It
+// also names the generated folders a project hides. The app and the session
+// server both use it, so a remote project lists the same files as a local one.
 package filekind
 
 import (
@@ -17,12 +17,14 @@ import (
 type Kind uint8
 
 const (
-	// Other is a binary the app does not show: archives, media, objects.
+	// Other is not a regular project file and is left out of the tree.
 	Other Kind = iota
 	// Text opens in the editor.
 	Text
 	// Asset opens in the picture or PDF viewer.
 	Asset
+	// Binary is a regular file the tree shows without reading it as text.
+	Binary
 )
 
 // HeadSize is how much of an unknown file is read to tell text from
@@ -85,13 +87,13 @@ func Classify(path string, head []byte) Kind {
 	case assetExts[ext]:
 		return Asset
 	case binaryExts[ext]:
-		return Other
+		return Binary
 	case editor.LanguageFor(path) != nil || textExts[ext]:
 		return Text
 	case len(head) == 0:
 		return Text
 	case bytes.IndexByte(head, 0) >= 0:
-		return Other
+		return Binary
 	}
 	controls := 0
 	for _, b := range head {
@@ -100,7 +102,7 @@ func Classify(path string, head []byte) Kind {
 		}
 	}
 	if controls*100 >= len(head) {
-		return Other
+		return Binary
 	}
 	return Text
 }
@@ -121,12 +123,12 @@ func ClassifyFile(path string) (Kind, error) {
 	case assetExts[ext]:
 		return Asset, nil
 	case binaryExts[ext]:
-		return Other, nil
+		return Binary, nil
 	case editor.LanguageFor(path) != nil || textExts[ext]:
 		return Text, nil
 	}
 	if info.Size() > headLimit {
-		return Other, nil
+		return Binary, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"runtime"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"mojian/internal/session"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 )
@@ -48,7 +50,9 @@ func (h explorerHost) ResetRenamedStates(notes []*note, before map[*note]string)
 	h.a.resetRenamedStates(notes, before)
 }
 
-func (h explorerHost) SystemClipboardFiles() []string { return h.a.systemClipboardFiles() }
+func (h explorerHost) SystemClipboardFiles() ([]string, error) {
+	return h.a.systemClipboardFiles()
+}
 
 func (h explorerHost) WriteClipboardFiles(paths ...string) error {
 	return writeClipboardFiles(paths...)
@@ -326,13 +330,13 @@ func boolString(v bool) string {
 var readClipboardFiles = func() ([]string, error) { return mygo.Clipboard.ReadFiles() }
 var writeClipboardFiles = func(paths ...string) error { return mygo.Clipboard.WriteFiles(paths...) }
 
-func (a *app) systemClipboardFiles() []string {
+func (a *app) systemClipboardFiles() ([]string, error) {
 	if a.win == nil || runtime.GOOS == "js" {
-		return nil
+		return nil, nil
 	}
 	files, err := readClipboardFiles()
-	if err != nil {
-		return nil
+	if errors.Is(err, transfer.ErrFormat) {
+		return nil, nil
 	}
-	return files
+	return files, err
 }

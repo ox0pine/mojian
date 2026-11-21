@@ -20,8 +20,9 @@ import (
 
 // ProtocolVersion changes when the wire protocol does. Version 4 framed
 // every message and multiplexed control requests and terminal streams
-// over one connection. Version 5 adds chunked control responses.
-const ProtocolVersion = 5
+// over one connection. Version 5 added chunked control responses. Version
+// 6 lists binary files and preserves not-exist errors across the wire.
+const ProtocolVersion = 6
 
 // The frame types. A connection starts with a frameHello each way; after
 // that the client sends requests, opens streams and writes data, and the
@@ -168,8 +169,11 @@ type Request struct {
 type Response struct {
 	ID    int64           `json:"id"`
 	Error string          `json:"error,omitempty"`
+	Code  string          `json:"code,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
 }
+
+const responseNotExist = "not_exist"
 
 // CreateOptions starts a session.
 type CreateOptions struct {

@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -180,6 +181,17 @@ func (r *Server) Rename(oldRel, newRel string) error {
 	return pair(r, oldRel, newRel, r.ctl().Rename)
 }
 
+func serverPathExists(ctl *session.Client, name string) (bool, error) {
+	_, err := ctl.Stat(name)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
 // renameCase moves the source aside before naming it. On a case-insensitive
 // filesystem the destination then vanishes with the source; on a
 // case-sensitive filesystem a distinct destination remains and is protected.
@@ -187,7 +199,11 @@ func (r *Server) renameCase(oldAbs, newAbs string) error {
 	ctl := r.ctl()
 	tmp := oldAbs + ".mojian-rename"
 	for i := 2; ; i++ {
-		if _, err := ctl.Stat(tmp); err != nil {
+		exists, err := serverPathExists(ctl, tmp)
+		if err != nil {
+			return err
+		}
+		if !exists {
 			break
 		}
 		tmp = fmt.Sprintf("%s.mojian-rename-%d", oldAbs, i)
@@ -195,9 +211,13 @@ func (r *Server) renameCase(oldAbs, newAbs string) error {
 	if err := ctl.Rename(oldAbs, tmp); err != nil {
 		return err
 	}
-	if _, err := ctl.Stat(newAbs); err == nil {
+	exists, err := serverPathExists(ctl, newAbs)
+	if err != nil || exists {
 		if restoreErr := ctl.Rename(tmp, oldAbs); restoreErr != nil {
-			return fmt.Errorf("%s already exists; restoring the original name: %w", filepath.Base(newAbs), restoreErr)
+			return fmt.Errorf("checking %s; restoring the original name: %w", filepath.Base(newAbs), restoreErr)
+		}
+		if err != nil {
+			return err
 		}
 		return fmt.Errorf("%s already exists", filepath.Base(newAbs))
 	}

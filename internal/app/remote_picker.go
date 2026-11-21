@@ -150,6 +150,26 @@ func (a *app) dropPickerRemote() {
 	a.releaseRemote(host)
 }
 
+// dropPickerRemoteForHost invalidates a picker whose host was edited or
+// removed. Its in-flight directory result must not repopulate the next
+// picker, and clearing the busy state lets the old connection reap.
+func (a *app) dropPickerRemoteForHost(host string) {
+	if host == "" || (a.remotePickHost != host && a.remoteHost != host) {
+		return
+	}
+	a.remotePicker = false
+	a.remoteOpening = false
+	a.remoteDirsBusy = false
+	a.remoteDirsSeq++
+	a.remoteDirs = nil
+	a.remoteErr = ""
+	a.remoteQuery = ""
+	a.remoteHost = ""
+	pickHost := a.remotePickHost
+	a.remotePickHost = ""
+	a.releaseRemote(pickHost)
+}
+
 func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 	if !a.remotePicker {
 		return
@@ -454,7 +474,7 @@ func (a *app) setUpHost(host string) {
 	}
 	go func() {
 		setup, err := provisionRemoteFn(host, existing)
-		a.onUpdateUI(func() { a.finishHostSetup(host, seq, windowSeq, setup, err) })
+		a.onCleanupUI(func() { a.finishHostSetup(host, seq, windowSeq, setup, err) })
 	}()
 }
 
@@ -527,7 +547,7 @@ func (a *app) stopHostServer(host string) {
 	}
 	go func() {
 		err := stopRemoteFn(host)
-		a.onUpdateUI(func() { a.finishHostStop(host, seq, windowSeq, err) })
+		a.onCleanupUI(func() { a.finishHostStop(host, seq, windowSeq, err) })
 	}()
 }
 
@@ -567,6 +587,9 @@ func (a *app) finishHostStop(host string, seq, windowSeq int, err error) {
 			}
 		}
 	}
+	a.eachTerminalOn(host, func(p *pane) {
+		p.Term.startErr = remoteServerStoppedError
+	})
 	a.invalidate()
 }
 

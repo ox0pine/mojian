@@ -50,10 +50,39 @@ func (a *app) keepRemote(host string) {
 	a.remoteKeep[host] = true
 }
 
+// retainRemote holds one independent lease on host's connection until a
+// terminal Create or Kill has finished. The returned release is idempotent
+// and must run on the UI thread; the last lease reaps an unused connection.
+func (a *app) retainRemote(host string) func() {
+	if host == "" {
+		return func() {}
+	}
+	if a.remoteRefs == nil {
+		a.remoteRefs = map[string]int{}
+	}
+	a.remoteRefs[host]++
+	released := false
+	return func() {
+		if released {
+			return
+		}
+		released = true
+		if n := a.remoteRefs[host]; n <= 1 {
+			delete(a.remoteRefs, host)
+		} else {
+			a.remoteRefs[host] = n - 1
+		}
+		a.reapRemotes()
+	}
+}
+
 // releaseRemote closes host's pooled connection when nothing uses it any
 // more. The server and its sessions keep running on the host.
 func (a *app) releaseRemote(host string) {
-	if host == "" || a.remoteBusy || a.remoteDirsBusy || a.hostUsed(host) || a.remoteKeep[host] {
+	if host == "" || a.remoteRefs[host] > 0 {
+		return
+	}
+	if !a.remoteClosing && (a.remoteBusy || a.remoteDirsBusy || a.hostUsed(host) || a.remoteKeep[host]) {
 		return
 	}
 	rc := a.remoteConn(host)
@@ -68,7 +97,7 @@ func (a *app) releaseRemote(host string) {
 // reapRemotes drops every pooled connection whose last project or
 // terminal has gone.
 func (a *app) reapRemotes() {
-	if a.remoteBusy || a.remoteDirsBusy {
+	if !a.remoteClosing && (a.remoteBusy || a.remoteDirsBusy) {
 		return
 	}
 	for host := range a.hostService().Conns() {

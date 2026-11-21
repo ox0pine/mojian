@@ -108,7 +108,7 @@ func (s *Store) NewFolder(parent, name string) (string, error) {
 		if s.ExistsRel(rel) {
 			continue
 		}
-		if err := s.FS.Mkdir(rel); err != nil {
+		if err := s.mutatePath(func() error { return s.FS.Mkdir(rel) }); err != nil {
 			return "", err
 		}
 		if err := s.Refresh(); err != nil {

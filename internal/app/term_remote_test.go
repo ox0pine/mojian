@@ -10,6 +10,8 @@ import (
 
 	"mojian/internal/remote"
 	"mojian/internal/session"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func waitTerminalSignal(t *testing.T, ch <-chan struct{}, what string) {
@@ -158,6 +160,154 @@ func TestRemoteTerminalExistingClientCreateIsAsyncAndKeptUntilCleanup(t *testing
 	}
 	if p.Term.Term != nil || p.Term.SID != "" {
 		t.Fatal("the closed pane accepted the late Create result")
+	}
+	if err := control.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("session server did not stop")
+	}
+}
+
+func TestRemoteTerminalCreateOutlivesLastProjectKeep(t *testing.T) {
+	pooled, serverDone := startTestSessionServer(t, t.TempDir())
+	control, err := session.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	oldCreate, oldKill := createTerminalSessionFn, killTerminalSessionFn
+	t.Cleanup(func() {
+		createTerminalSessionFn, killTerminalSessionFn = oldCreate, oldKill
+	})
+	createStarted := make(chan struct{})
+	createRelease := make(chan struct{})
+	killed := make(chan string, 1)
+	createTerminalSessionFn = func(_ *session.Client, _ session.CreateOptions) (session.SessionInfo, error) {
+		close(createStarted)
+		<-createRelease
+		return session.SessionInfo{ID: "late-after-project-close"}, nil
+	}
+	killTerminalSessionFn = func(_ *session.Client, sid string) error {
+		killed <- sid
+		return nil
+	}
+
+	p := newTermPane(&termTab{Spec: termSpec{Server: "box"}})
+	tb := &tab{ID: nextID("t"), Root: &node{Pane: p}, Focus: p}
+	key := workspaceKeyRemote("box", "/srv/app")
+	ws := &workspace{key: key, serverAlias: "box", remotePath: "/srv/app", tabs: []*tab{tb}, active: 0}
+	a := &app{workspace: ws, workspaces: map[string]*workspace{key: ws}}
+	a.setRemoteConn(&remote.Conn{Host: "box", Client: pooled})
+	a.keepRemote("box")
+	a.startRemoteTerminal(p)
+	waitTerminalSignal(t, createStarted, "Create on the kept project client")
+
+	a.closeRemoteProjectAfterSave("box", "/srv/app")
+	select {
+	case <-pooled.Closed():
+		t.Fatal("closing the last project released the client while Create was pending")
+	default:
+	}
+	close(createRelease)
+	if sid := waitTerminalKill(t, killed); sid != "late-after-project-close" {
+		t.Fatalf("killed session %q, want late-after-project-close", sid)
+	}
+	select {
+	case <-pooled.Closed():
+	case <-time.After(3 * time.Second):
+		t.Fatal("the connection survived stale SID cleanup and its last lease")
+	}
+	if err := control.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("session server did not stop")
+	}
+}
+
+func TestWorkspaceCloseKillsClosingPaneBeforeClosingClient(t *testing.T) {
+	pooled, serverDone := startTestSessionServer(t, t.TempDir())
+	control, err := session.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	oldKill := killTerminalSessionFn
+	t.Cleanup(func() { killTerminalSessionFn = oldKill })
+	killStarted := make(chan string, 1)
+	killRelease := make(chan struct{})
+	killTerminalSessionFn = func(_ *session.Client, sid string) error {
+		killStarted <- sid
+		<-killRelease
+		return nil
+	}
+
+	survivor := newPane(nil)
+	closing := newTermPane(&termTab{SID: "closing-sid", Spec: termSpec{Server: "box"}, Client: pooled})
+	closing.lastBounds = ui.Rect{W: 120, H: 90}
+	tb := &tab{ID: nextID("t"), Root: &node{A: &node{Pane: survivor}, B: &node{Pane: closing}}, Focus: closing}
+	ws := &workspace{tabs: []*tab{tb}, active: 0}
+	a := &app{workspace: ws, workspaces: map[string]*workspace{}}
+	rc := &remote.Conn{Host: "box", Client: pooled}
+	a.setRemoteConn(rc)
+	a.closePane(closing)
+	if !closing.closing || tb.contains(closing) || len(a.paneOverlays) != 1 {
+		t.Fatal("the terminal pane did not enter its closing overlay")
+	}
+
+	a.closeWorkspaces()
+	if sid := waitTerminalKill(t, killStarted); sid != "closing-sid" {
+		t.Fatalf("Kill SID = %q, want closing-sid", sid)
+	}
+	if closing.closing || len(a.paneOverlays) != 0 {
+		t.Fatal("workspace close left the detached closing pane alive")
+	}
+	if a.remoteConn("box") != rc {
+		t.Fatal("workspace close dropped the client before the closing terminal's Kill completed")
+	}
+	close(killRelease)
+	select {
+	case <-pooled.Closed():
+	case <-time.After(3 * time.Second):
+		t.Fatal("the pooled client survived its completed closing-pane Kill")
+	}
+	if err := control.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("session server did not stop")
+	}
+}
+
+func TestSettingsOnlyCloseReapsStaleSetupConnection(t *testing.T) {
+	client, serverDone := startTestSessionServer(t, t.TempDir())
+	control, err := session.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	a := &app{workspace: &workspace{}, windowSeq: 2, hostSetupAddr: "box", hostSetupBusy: true, hostSetupSeq: 4}
+	a.settingsWindowClosed()
+	rc := &remote.Conn{Host: "box", Client: client}
+
+	a.onCleanupUI(func() {
+		a.finishHostSetup("box", 4, 2, &remote.Setup{Conn: rc}, nil)
+	})
+
+	select {
+	case <-client.Closed():
+	case <-time.After(3 * time.Second):
+		t.Fatal("the stale setup connection leaked after Settings-only close")
+	}
+	if a.hostSetupBusy || a.hostSetupAddr != "" {
+		t.Fatal("the stale setup restored a closed Settings window's busy state")
 	}
 	if err := control.Shutdown(); err != nil {
 		t.Fatal(err)

@@ -49,8 +49,9 @@ window, the error banner and command dispatch from menu, palette and keyboard.
    path untouched and only a newer path-bearing launch replaces it. Once open, the running window
    parses arguments against the launch's own directory, brings its window forward and opens the
    project. When leaving a remote project waits for an asynchronous save, the named file opens in a
-   continuation only after the new project is active, never against the old remote store, so a
-   launch never opens a second app.
+   continuation only after the new project is active, never against the old remote store. If an
+   older remote open is still busy, the newer launch cancels it rather than dropping the requested
+   path, so a launch never opens a second app or silently loses its file.
 2. MyGo delivers input, `Window.Update` or `Invalidate`, and calls `(*app).view` again. The view
    builds a new element tree every frame from the fields on `*app`; nothing is cached between
    frames.
@@ -94,7 +95,8 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   harness views register the tab actions before configurable commands, so the key switches tabs and
   does not run the conflicting command. While Settings records a shortcut, every menu accelerator,
   including Show Tab, is temporarily empty so macOS delivers ⌘1–⌘9 to the recording control; ending
-  recording restores the menu keys.
+  recording restores the menu keys. Closing Settings stops recording before dropping its window
+  handle, so the Settings-only lifetime restores them too.
 - Motion uses `internal/motion`: critically damped springs for pages, tabs, the tree and panes, a
   short color curve for hover; MyGo drops movement when the system asks for less motion.
 - Settings › Advanced › Shell command writes the `mojian` alias through `internal/shellcmd` into

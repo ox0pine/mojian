@@ -45,10 +45,26 @@ func WriteFileAtomic(path string, data []byte) error {
 }
 
 // MoveFileAtomic moves path within a data directory without a partial copy.
-// A missing source is already the requested end state; an existing destination
-// is left alone rather than overwritten on platforms whose rename replaces it.
+// A missing source is already the requested end state. An existing destination
+// is replaced with the source's complete contents rather than left stale.
 func MoveFileAtomic(path, newPath string) error {
+	if filepath.Clean(path) == filepath.Clean(newPath) {
+		return nil
+	}
 	if _, err := os.Stat(newPath); err == nil {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if err := WriteFileAtomic(newPath, data); err != nil {
+			return err
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 		return nil
 	} else if !os.IsNotExist(err) {
 		return err

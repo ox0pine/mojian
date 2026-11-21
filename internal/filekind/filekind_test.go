@@ -18,13 +18,13 @@ func TestClassify(t *testing.T) {
 		{"empty.unknown", nil, Text},
 		{"image.png", nil, Asset},
 		{"paper.pdf", nil, Asset},
-		{"archive.zip", nil, Other},
-		{"model.pt", nil, Other},
-		{"data.mat", nil, Other},
-		{"weights.safetensors", nil, Other},
-		{"matrix.npy", nil, Other},
-		{"blob.unknown", []byte{0, 1, 2}, Other},
-		{"binary.unknown", []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, Other},
+		{"archive.zip", nil, Binary},
+		{"model.pt", nil, Binary},
+		{"data.mat", nil, Binary},
+		{"weights.safetensors", nil, Binary},
+		{"matrix.npy", nil, Binary},
+		{"blob.unknown", []byte{0, 1, 2}, Binary},
+		{"binary.unknown", []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, Binary},
 	}
 	for _, c := range cases {
 		if got := Classify(c.name, c.head); got != c.want {
@@ -46,7 +46,7 @@ func TestClassifyFileReadsOnlyUnknownHeads(t *testing.T) {
 	if err := os.WriteFile(bin, []byte{0, 1, 2, 3}, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if kind, err := ClassifyFile(bin); err != nil || kind != Other {
+	if kind, err := ClassifyFile(bin); err != nil || kind != Binary {
 		t.Fatalf("binary: %v %v", kind, err)
 	}
 }
@@ -72,7 +72,7 @@ func TestClassifyFileSkipsHugeUnknownHeads(t *testing.T) {
 	if err := os.WriteFile(big, make([]byte, headLimit+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if kind, err := ClassifyFile(big); err != nil || kind != Other {
+	if kind, err := ClassifyFile(big); err != nil || kind != Binary {
 		t.Fatalf("large unknown file: %v %v", kind, err)
 	}
 	log := filepath.Join(dir, "server.log")
@@ -130,7 +130,7 @@ func TestClassifyFileKnownDataNeedsNoRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chmod(path, 0o644)
-	if kind, err := ClassifyFile(path); err != nil || kind != Other {
+	if kind, err := ClassifyFile(path); err != nil || kind != Binary {
 		t.Fatalf("unreadable data file: %v %v", kind, err)
 	}
 }

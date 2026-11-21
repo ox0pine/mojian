@@ -66,7 +66,13 @@ type app struct {
 	remotePickHost string // the host a picker connection was made for
 	remoteOpening  bool   // a picked project is about to open
 	remoteKeep     map[string]bool
-	remoteHomes    map[string]string
+	// remoteRefs counts terminal Create and Kill operations that still
+	// need their host's connection. remoteClosing makes their completion
+	// release connections left behind by workspace shutdown.
+	remoteRefs         map[string]int
+	remoteClosing      bool
+	localTerminalKills int
+	remoteHomes        map[string]string
 	// fileClip is the app's own clipboard: absolute local paths, or paths
 	// relative to a remote project (fileClipRemote). A cut is a one-shot
 	// intent and is cleared when the project changes.
@@ -280,7 +286,7 @@ func (a *app) beforeQuit(e *mygo.QuitEvent, quit func(), post func(func())) {
 
 func (a *app) finishQuit() {
 	a.closeWorkspaces()
-	if a.sessionClient != nil {
+	if a.sessionClient != nil && a.localTerminalKills == 0 {
 		_ = a.sessionClient.Close()
 		a.sessionClient = nil
 	}
@@ -498,6 +504,27 @@ func (a *app) fail(err error) {
 	}
 	a.err = err.Error()
 	a.invalidate()
+}
+
+// onCleanupUI posts operation cleanup to the UI thread even after the
+// last window has closed. Unlike onUpdateUI, it does not drop the work:
+// stale-result guards still reject state changes, while connections and
+// leases are always released.
+func (a *app) onCleanupUI(fn func()) {
+	switch {
+	case a.win != nil:
+		a.win.Update(fn)
+	case a.settingsWin != nil:
+		a.settingsWin.Update(fn)
+	case a.uiPost != nil:
+		a.uiPost(fn)
+	case onWindowPostFn != nil:
+		onWindowPostFn(fn)
+	case a.native:
+		mygo.App.WhenReady(fn)
+	default:
+		fn()
+	}
 }
 
 // later runs fn after the frame that asked for it, so a button does not

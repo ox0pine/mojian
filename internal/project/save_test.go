@@ -1,11 +1,13 @@
 package project
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mojian/internal/fs"
 )
@@ -196,6 +198,106 @@ func TestCommitSnapshotKeepsNewerEditDirty(t *testing.T) {
 	if n.Dirty() {
 		t.Fatal("the follow-up save left the note dirty")
 	}
+}
+
+func TestMoveRelInvalidatesSaveSnapshot(t *testing.T) {
+	s, n := newSaveStore(t, "original\n")
+	if _, err := s.NewFolder("", "folder"); err != nil {
+		t.Fatal(err)
+	}
+	n.Buffer().Set("local edit\n")
+	snapshot, changed, err := s.SnapshotSave(n)
+	if err != nil || !changed {
+		t.Fatalf("snapshot: changed=%v err=%v", changed, err)
+	}
+	if _, err := s.MoveRel("note.txt", "folder"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteSnapshot(t.Context(), snapshot); !errors.Is(err, ErrSaveSnapshotStale) {
+		t.Fatalf("the pre-move snapshot returned %v, want ErrSaveSnapshotStale", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "note.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the stale save recreated the old path: %v", err)
+	}
+	assertSaveFile(t, filepath.Join(s.Dir, "folder", "note.txt"), "original\n")
+}
+
+type blockingWriteBackend struct {
+	*fs.Direct
+	writeStarted chan struct{}
+	allowWrite   chan struct{}
+	recreated    chan struct{}
+}
+
+func (b *blockingWriteBackend) WriteContext(ctx context.Context, rel string, data []byte) error {
+	close(b.writeStarted)
+	select {
+	case <-b.allowWrite:
+		return b.Direct.Write(rel, data)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (b *blockingWriteBackend) Write(rel string, data []byte) error {
+	err := b.Direct.Write(rel, data)
+	if err == nil && rel == "note.txt" {
+		select {
+		case b.recreated <- struct{}{}:
+		default:
+		}
+	}
+	return err
+}
+
+func TestSaveCannotOverwriteRecreatedPath(t *testing.T) {
+	s, n := newSaveStore(t, "original\n")
+	backend := &blockingWriteBackend{
+		Direct: s.FS.(*fs.Direct), writeStarted: make(chan struct{}),
+		allowWrite: make(chan struct{}), recreated: make(chan struct{}, 1),
+	}
+	s.FS = backend
+	n.Buffer().Set("old edit\n")
+	snapshot, changed, err := s.SnapshotSave(n)
+	if err != nil || !changed {
+		t.Fatalf("snapshot: changed=%v err=%v", changed, err)
+	}
+	saveDone := make(chan error, 1)
+	go func() { saveDone <- s.WriteSnapshot(t.Context(), snapshot) }()
+	select {
+	case <-backend.writeStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the snapshot did not reach its write")
+	}
+	mutationDone := make(chan error, 1)
+	go func() {
+		_, _, err := s.Rename("note.txt", "renamed.txt")
+		if err == nil {
+			_, err = s.NewFileIn("", "note.txt", "new file\n")
+		}
+		mutationDone <- err
+	}()
+	mutationFinished := false
+	select {
+	case <-backend.recreated:
+		if err := <-mutationDone; err != nil {
+			t.Fatal(err)
+		}
+		mutationFinished = true
+	case <-time.After(100 * time.Millisecond):
+		// A serialized path change is still waiting for the old write.
+	}
+	close(backend.allowWrite)
+	if err := <-saveDone; err != nil {
+		t.Fatal(err)
+	}
+	if !mutationFinished {
+		if err := <-mutationDone; err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertSaveFile(t, filepath.Join(s.Dir, "note.txt"), "new file\n")
+	assertSaveFile(t, filepath.Join(s.Dir, "renamed.txt"), "old edit\n")
 }
 
 func TestMemorySaveKeepsWorking(t *testing.T) {

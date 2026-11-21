@@ -168,6 +168,114 @@ func TestNewClientReturnsProtocolErrorFrameVersion(t *testing.T) {
 	}
 }
 
+func TestStopV4UsesFramedShutdown(t *testing.T) { testStopFramedVersion(t, 4) }
+func TestStopV5UsesFramedShutdown(t *testing.T) { testStopFramedVersion(t, 5) }
+
+func testStopFramedVersion(t *testing.T, version int) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("MOJIAN_DIR", dir)
+	t.Setenv("MOJIAN_RUNTIME_DIR", dir)
+	path := SocketPath()
+	ln, err := listen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() {
+		defer removeSocket(path)
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		r := bufio.NewReader(conn)
+		f, err := readFrame(r)
+		if err != nil {
+			done <- err
+			return
+		}
+		var hello Hello
+		if err := json.Unmarshal(f.payload, &hello); err != nil {
+			done <- err
+			return
+		}
+		if f.typ != frameHello || hello.Version != ProtocolVersion {
+			done <- fmt.Errorf("initial hello: type %d, version %d", f.typ, hello.Version)
+			return
+		}
+		message, _ := json.Marshal(map[string]string{
+			"code":    "protocol",
+			"message": fmt.Sprintf("server protocol %d, client wants %d", version, ProtocolVersion),
+		})
+		if err := writeFrame(conn, frame{typ: frameError, payload: message}); err != nil {
+			done <- err
+			return
+		}
+		_ = conn.Close()
+
+		conn, err = ln.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		r = bufio.NewReader(conn)
+		f, err = readFrame(r)
+		if err != nil {
+			done <- err
+			return
+		}
+		hello = Hello{}
+		if err := json.Unmarshal(f.payload, &hello); err != nil {
+			done <- err
+			return
+		}
+		if f.typ != frameHello || hello.Version != version {
+			done <- fmt.Errorf("replacement hello: type %d, version %d", f.typ, hello.Version)
+			return
+		}
+		answer, _ := json.Marshal(Hello{Version: version, Role: "server"})
+		if err := writeFrame(conn, frame{typ: frameHello, payload: answer}); err != nil {
+			done <- err
+			return
+		}
+		f, err = readFrame(r)
+		if err != nil {
+			done <- err
+			return
+		}
+		var req Request
+		if err := json.Unmarshal(f.payload, &req); err != nil {
+			done <- err
+			return
+		}
+		if f.typ != frameRequest || req.Op != "shutdown" {
+			done <- fmt.Errorf("protocol %d request: type %d, op %q", version, f.typ, req.Op)
+			return
+		}
+		response, _ := json.Marshal(Response{ID: req.ID})
+		if err := writeFrame(conn, frame{typ: frameResponse, payload: response}); err != nil {
+			done <- err
+			return
+		}
+		_ = conn.Close()
+		done <- nil
+	}()
+	if err := Stop(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("protocol %d server did not receive framed shutdown", version)
+	}
+}
+
 func TestClientCallContextCancelsBlockedWriteAndDropsLateResponse(t *testing.T) {
 	c := newUnstartedTestClient(t)
 	for range ctrlQueue {

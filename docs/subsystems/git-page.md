@@ -113,8 +113,12 @@ also reads, switches and creates the project's branches and reloads open notes a
   builds a symlink patch whose added line is the exact target text from `Runner.Readlink` — local
   `os.Readlink` or the host's `readlink` — so Windows' Git/Go path normalization cannot make it read
   the target file. Regular files keep the existing size and binary limits.
-- `gitenv.Env` removes the variables that redirect Git at another repository, so a hook or a parent
+- `gitenv.Env` removes the variables that redirect Git at another repository, including
+  `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` pairs, so a hook or parent
   process cannot change what the page reads.
+- Local Git output is bounded, but an overflow is an explicit error rather than a silently truncated
+  status or patch. Remote `pwd -P` removes only its record newline, preserving a project root's
+  trailing spaces and reporting a failed `pwd` instead of treating its output as a path.
 - Failures render inside the page (`Page.Err`, `Page.DiffErr`) instead of the app's error banner; a
   stale result is dropped, never shown over a newer one.
 - The diff pane is MyGo's `editor.DiffView` over one `editor.DiffState` per loaded diff. The states

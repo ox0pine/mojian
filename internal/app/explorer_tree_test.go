@@ -94,6 +94,41 @@ func TestRevealRelClearsExplorerSearch(t *testing.T) {
 	}
 }
 
+func TestSelectRelRevealsFilteredFile(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.treeQuery = "Reading notes"
+	delete(a.openDirs, "scripts")
+	tt := ui.NewTester(a.view, 900, 500)
+	tt.Frame()
+	if _, ok := tt.Find("app.js"); ok {
+		t.Fatal("the search fixture did not filter app.js out")
+	}
+
+	target := filepath.Join("scripts", "app.js")
+	a.selectRel(target)
+	if a.treeQuery != "" {
+		t.Fatalf("selection left the Explorer search query as %q", a.treeQuery)
+	}
+	if a.treeSel != target {
+		t.Fatalf("selection is %q, want %q", a.treeSel, target)
+	}
+	if !a.openDirs["scripts"] {
+		t.Fatal("selection did not open the target's parent")
+	}
+	if a.treeReveal != target {
+		t.Fatalf("selection did not request a reveal for %q", target)
+	}
+	tt.Frame()
+	row, ok := tt.Find("app.js")
+	if !ok {
+		t.Fatal("the selected file is not in the tree")
+	}
+	if row.Y < 0 || row.Y+row.H > 500 {
+		t.Fatalf("the selected file is outside the viewport: %+v", row)
+	}
+}
+
 func TestSelectFolderScrollsIntoView(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)

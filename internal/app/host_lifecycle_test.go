@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"mojian/internal/fs"
 	"mojian/internal/remote"
+	"mojian/internal/session"
 )
 
 func TestHostRemovalCancelsOnlyMatchingRemoteTask(t *testing.T) {
@@ -91,6 +93,82 @@ func TestHostEditCancelsOldRemoteTask(t *testing.T) {
 	}
 }
 
+func TestHostEditInvalidatesOldRemotePicker(t *testing.T) {
+	a := &app{workspace: &workspace{}, hostEditAddr: "old-box", hostEditAddress: "new-box", hostEditName: "New"}
+	a.hostService().AddHost("Old", "old-box")
+	a.setRemoteConn(&remote.Conn{Host: "old-box"})
+	a.remotePicker = true
+	a.remoteHost, a.remotePickHost = "old-box", "old-box"
+	a.remoteDirsBusy = true
+	a.remoteDirsSeq = 7
+	a.remoteDirs = []session.FileEntry{{Rel: "old"}}
+
+	a.saveHostEdit("old-box")
+
+	if a.remotePicker || a.remoteDirsBusy || a.remoteHost != "" || a.remotePickHost != "" {
+		t.Fatalf("the edited host kept its picker: picker=%v busy=%v host=%q pick=%q", a.remotePicker, a.remoteDirsBusy, a.remoteHost, a.remotePickHost)
+	}
+	if a.remoteDirsSeq != 8 || a.remoteDirs != nil {
+		t.Fatalf("the old directory result was not invalidated: seq=%d dirs=%+v", a.remoteDirsSeq, a.remoteDirs)
+	}
+	if a.remoteConn("old-box") != nil {
+		t.Fatal("the edited host's unused picker connection was not reaped")
+	}
+}
+
+func TestHostRemovalInvalidatesOldRemotePicker(t *testing.T) {
+	a := &app{workspace: &workspace{}}
+	a.hostService().AddHost("Old", "old-box")
+	a.setRemoteConn(&remote.Conn{Host: "old-box"})
+	a.remotePicker = true
+	a.remoteHost, a.remotePickHost = "old-box", "old-box"
+	a.remoteDirsBusy = true
+	a.remoteDirsSeq = 4
+
+	a.removeHostNow("old-box")
+
+	if a.remotePicker || a.remoteDirsBusy || a.remoteHost != "" || a.remotePickHost != "" {
+		t.Fatal("the removed host kept its remote picker")
+	}
+	if a.remoteDirsSeq != 5 {
+		t.Fatalf("directory sequence = %d, want 5", a.remoteDirsSeq)
+	}
+	if a.remoteConn("old-box") != nil {
+		t.Fatal("the removed host's picker connection was not reaped")
+	}
+}
+
+func TestHostStopLeavesTerminalStoppedUntilExplicitStart(t *testing.T) {
+	oldDial := dialTerminalRemoteFn
+	t.Cleanup(func() { dialTerminalRemoteFn = oldDial })
+	dialed := false
+	dialTerminalRemoteFn = func(context.Context, string) (*remote.Conn, error) {
+		dialed = true
+		return nil, nil
+	}
+	p := newTermPane(&termTab{Spec: termSpec{Server: "box"}})
+	tb := &tab{ID: nextID("t"), Root: &node{Pane: p}, Focus: p}
+	ws := &workspace{serverAlias: "box", remotePath: "/srv/app", tabs: []*tab{tb}, active: 0}
+	a := &app{workspace: ws, workspaces: map[string]*workspace{"box": ws}, hostSetupAddr: "box", hostSetupSeq: 1}
+
+	a.finishHostStop("box", 1, 0, nil)
+	if p.Term.startErr != remoteServerStoppedError {
+		t.Fatalf("stopped terminal error = %q, want %q", p.Term.startErr, remoteServerStoppedError)
+	}
+	p.Term.startErr = ""
+	a.startRestoredTerminal(p)
+	if dialed || a.remoteBusy {
+		t.Fatal("a visible terminal redialed or restarted its stopped server")
+	}
+	if p.Term.startErr != remoteServerStoppedError {
+		t.Fatalf("terminal did not retain its stopped state: %q", p.Term.startErr)
+	}
+	a.setHostRunning("box", true)
+	if a.remoteTerminalStopped("box") {
+		t.Fatal("an explicit start did not release the stopped state")
+	}
+}
+
 func TestStaleHostStopDoesNotClearNewOperation(t *testing.T) {
 	a := &app{workspace: &workspace{}, windowSeq: 2, hostSetupSeq: 5, hostSetupAddr: "new-box", hostSetupBusy: true}
 	rc := &remote.Conn{Host: "old-box"}
@@ -138,6 +216,41 @@ func TestOnUpdateUIWithoutWindowsDropsProductionCallback(t *testing.T) {
 	a.onUpdateUI(func() { ran = true })
 	if !ran {
 		t.Fatal("the no-window test callback did not run")
+	}
+}
+
+func TestSettingsOnlyCloseInvalidatesHostOperationsAndAllowsRetry(t *testing.T) {
+	oldRunning, oldProvision, oldStop := hostServerRunningFn, provisionRemoteFn, stopRemoteFn
+	t.Cleanup(func() {
+		hostServerRunningFn, provisionRemoteFn, stopRemoteFn = oldRunning, oldProvision, oldStop
+	})
+	a := &app{workspace: &workspace{}, windowSeq: 2, hostSetupAddr: "buildbox", hostSetupBusy: true, hostSetupSeq: 4}
+	st := a.hostStateFor("buildbox")
+	st.checked, st.checking = true, true
+	st.checkSeq = 2
+
+	a.settingsWindowClosed()
+
+	if a.hostSetupBusy || a.hostSetupSeq == 4 || a.windowSeq == 2 {
+		t.Fatalf("Settings-only close left setup active: busy=%v setupSeq=%d windowSeq=%d", a.hostSetupBusy, a.hostSetupSeq, a.windowSeq)
+	}
+	if st.checking || st.checked || st.checkSeq == 2 {
+		t.Fatalf("Settings-only close left the old check active: checking=%v checked=%v seq=%d", st.checking, st.checked, st.checkSeq)
+	}
+	hostServerRunningFn = func(context.Context, string) (bool, error) { return true, nil }
+	a.checkHostServer("buildbox")
+	if st.checking || !st.checked || !st.running {
+		t.Fatalf("reopened Settings could not retry its host check: checking=%v checked=%v running=%v", st.checking, st.checked, st.running)
+	}
+	provisionRemoteFn = func(string, *remote.Conn) (*remote.Setup, error) { return &remote.Setup{}, nil }
+	a.setUpHost("buildbox")
+	if a.hostSetupBusy || !st.ready {
+		t.Fatalf("reopened Settings could not retry setup: busy=%v ready=%v", a.hostSetupBusy, st.ready)
+	}
+	stopRemoteFn = func(string) error { return nil }
+	a.stopHostServer("buildbox")
+	if a.hostSetupBusy || !st.stopped {
+		t.Fatalf("reopened Settings could not retry stop: busy=%v stopped=%v", a.hostSetupBusy, st.stopped)
 	}
 }
 

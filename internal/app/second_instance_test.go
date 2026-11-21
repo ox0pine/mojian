@@ -54,6 +54,43 @@ func TestSecondInstanceOpensFileAfterRemoteProjectSave(t *testing.T) {
 	}
 }
 
+func TestSecondInstanceCancelsRemoteTaskAndOpensFile(t *testing.T) {
+	startLocalServerForTest(t)
+	root := t.TempDir()
+	active := filepath.Join(root, "Active")
+	other := filepath.Join(root, "Other")
+	testutil.WriteVault(t, active, map[string]string{"a.md": "# A\n"})
+	testutil.WriteVault(t, other, map[string]string{"b.md": "# B\n"})
+	a := &app{workspace: &workspace{treeOpen: true}, dataDir: t.TempDir()}
+	s, err := openStoreAt(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.store = s
+	a.layoutPath = a.projectLayoutPath(s.Dir)
+	a.project = active
+	a.focusFirstNote()
+	a.registerActiveWorkspace()
+	seq, _, ctx := a.beginRemoteTask("box", "Opening an obsolete remote project")
+
+	a.applyStartup(Startup{Dir: other, File: filepath.Join(other, "b.md")})
+
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("the second launch did not cancel the obsolete remote task")
+	}
+	if a.endRemoteTask(seq) {
+		t.Fatal("the canceled remote task could still publish over the second launch")
+	}
+	if a.store == nil || a.store.Dir != resolveProjectRoot(other) {
+		t.Fatalf("the second launch did not open its local project: %+v", a.store)
+	}
+	if n := a.currentNote(); n == nil || n.Rel != "b.md" {
+		t.Fatalf("the second launch lost its file continuation: %+v", n)
+	}
+}
+
 func TestSecondInstanceOpensProjectAndFile(t *testing.T) {
 	startLocalServerForTest(t)
 	root := t.TempDir()

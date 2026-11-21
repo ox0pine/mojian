@@ -80,7 +80,7 @@ type Host interface {
 	TreeSearch() *ui.Handle
 
 	Clip() ClipState
-	SystemClipboardFiles() []string
+	SystemClipboardFiles() ([]string, error)
 	WriteClipboardFiles(paths ...string) error
 	SetClip(ClipState)
 }

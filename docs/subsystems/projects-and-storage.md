@@ -15,7 +15,7 @@ the save path, path guards and the asset cache.
 - [`internal/fs/fs.go`](../../internal/fs/fs.go) — the `Backend` interface, `Kind`, `cleanRel`,
   `joinRoot` and `relOfRoot`. Every path the store accepts goes through the guards.
 - [`internal/fs/direct.go`](../../internal/fs/direct.go) — `Direct`, a plain folder on disk with an
-  eager listing; used by Windows local projects, tests and the browser build's neighbours.
+  eager listing that reads text bodies; used by Windows local projects, tests and the browser build's neighbours.
 - [`internal/fs/memory.go`](../../internal/fs/memory.go) — `Memory`, the in-memory editor of the
   browser build; every write returns `errReadOnly`.
 - [`internal/fs/server.go`](../../internal/fs/server.go) — `Server`, a project reached through a
@@ -45,8 +45,13 @@ the save path, path guards and the asset cache.
    and are written by another pass. A snapshot also carries the store's path revision. Rename,
    recreate and trash advance that revision before their filesystem operation; a stale snapshot is
    skipped rather than written to its old path, and any surviving dirty note is saved from a fresh
-   snapshot at its current path. Saves are serialized per store, and switching projects, closing a
-   host or closing the window waits for the queue or an explicit discard decision.
+   snapshot at its current path. Every create, rename, copy, move and trash advances the revision.
+   A per-store read/write lock covers the final revision check through the end of the write RPC. The
+   slower baseline read happens before that lock, so a path change never waits behind a listing or
+   read; it either waits for an actual write or makes it stale before it can touch an old path. A late
+   write cannot overwrite a file recreated at that path. Saves are serialized per store, and
+   switching projects, closing a host or closing the window waits for the queue or an explicit
+   discard decision.
 3. `Store.Refresh` reads one listing and reconciles it into notes, assets and the tree: notes keep
    their shared buffers; a direct listing reloads changed clean notes in place with `Buffer.Reset`,
    while dirty notes retain both their edits and saved baseline. Vanished clean files drop out;
@@ -73,8 +78,9 @@ the save path, path guards and the asset cache.
 - A server project has no local mirror. `Server.List` names files with their size, time, kind and an
   asset's content hash; a note's text is read when it opens. `Direct` keeps the eager listing,
   `Server` the lazy one. Listing classifies by extension first: data and model files (`.mat`, `.pt`,
-  `.npy`, `.h5`, …) are skipped without opening them, and an unknown extension over 4 MB is treated
-  as data rather than reading its head. The session server keeps each project's listing for five
+  `.npy`, `.h5`, …) are listed as binary without opening them, and an unknown extension over 4 MB is
+  also binary rather than being read. Every regular file therefore appears in the Explorer and Quick
+  Open; only text bodies and picture/PDF previews read file contents. The session server keeps each project's listing for five
   seconds; `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy` and `Exec` clear it, and `ListFresh`
   bypasses it for the app's explicit Refresh. A repeated listing then costs a round trip instead of
   walking hundreds of thousands of files again.
@@ -93,7 +99,8 @@ the save path, path guards and the asset cache.
 - Server-backed case-only renames move the source to an unused temporary name before taking the new
   spelling. If a distinct destination remains on a case-sensitive host, the source is restored and
   the rename fails; on a case-insensitive host the destination alias disappears with the source and
-  the new spelling replaces it, matching `Direct`.
+  the new spelling replaces it, matching `Direct`. Both backends choose an unused temporary name,
+  and a broken symlink still counts as an existing destination rather than free space.
 - A listing that cannot read the project root (for example a denied macOS folder permission) returns
   that error instead of an empty listing, so the store and Explorer keep their previous tree. An
   unreadable folder below a readable root is skipped so the rest of the project stays usable.
@@ -103,11 +110,14 @@ the save path, path guards and the asset cache.
   ignores still lists and opens, so an ignored `.env` or log is not lost. `.git`, `.svn`, `.hg` and
   `.mojian-trash` are hidden by name. Patterns follow Git: `#` comments, `!` negation, a trailing
   `/` for folders, a `/` inside anchoring the pattern to the `.gitignore`'s folder, `**` crossing
-  folders, and a deeper `.gitignore` overriding its parents. Directory matching normalizes path separators and redundant
+  folders only in Git's special positions, and a deeper `.gitignore` overriding its parents. Escaped
+  trailing spaces, POSIX classes and escaped `]` follow Git as well. Directory matching normalizes path separators and redundant
   `/` characters only; leading or trailing spaces in a real directory name are preserved, so only the exact Git match
   is skipped.
-- The Explorer's search filters the same notes and assets that Quick Open lists: an image or PDF
-  match stays visible and opens through `openRel`, and Enter opens the first note or asset match.
+- The Explorer's search filters the same notes and assets that Quick Open lists: an image, PDF or
+  binary match stays visible and opens through `openRel`, and Enter opens the first note or asset
+  match. A binary pane shows its name, size and a not-editable-as-text explanation; a local file can
+  open in its default app, while a remote binary is never downloaded just to show that metadata.
 - `Memory` lists nothing and refuses file operations with `errReadOnly` (its `Write` is a no-op); the browser build keeps its editor in memory.
 
 ## Verification

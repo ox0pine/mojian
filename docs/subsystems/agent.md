@@ -59,13 +59,17 @@ process that lives only as long as its task.
 
 ## Contracts and failure behavior
 
-- One task per window. Its process never outlives the window, unlike a terminal's session server.
+- One task per window. Its process tree never outlives the window, unlike a terminal's session
+  server: Unix agents run in their own process group and Windows agents in a kill-on-close Job
+  Object, so Stop and cleanup terminate tool children as well as the agent itself.
 - Notifications are the only result: never in the harness, never while quitting, no focus gate (a
   background task has no in-app output to watch) and no setting of its own. Titles: `Agent finished`,
   `Agent refused`, `Agent incomplete`, `Agent tool failed`, `Agent needs permission`, `Agent error`,
   `Agent stopped`, `Agent could not start`.
 - Permissions block only their own request until the sheet is answered; concurrent requests wait in
-  FIFO order, cancellation clears stale UI, and the notification still fires first. The command
+  FIFO order, cancellation clears stale UI, and the notification still fires first. A deferred click
+  captures both the task and permission pointer, so an old answer cannot approve or reject a newer
+  request. The command
   reopens the sheet later. A process `Closed` event alone never completes the task: the pending
   prompt response or error remains authoritative, so an immediate exit cannot erase a final answer.
 - The task is not persisted: a launch starts with no agent. A missing `omp` or a protocol error is

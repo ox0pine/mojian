@@ -109,9 +109,12 @@ func (u *UI) Trash(rel string) {
 
 // SelectRel selects a tree row and reveals it.
 func (u *UI) SelectRel(rel string) {
-	u.SetTreeSel(rel)
-	u.SetTreeReveal(rel)
-	u.OpenPath(filepath.Dir(rel))
+	if rel == "" {
+		u.SetTreeSel("")
+		u.SetTreeReveal("")
+	} else {
+		u.RevealRel(rel)
+	}
 	u.invalidate()
 }
 
