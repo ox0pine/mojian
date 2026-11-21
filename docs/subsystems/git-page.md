@@ -25,8 +25,8 @@ branches and reloads open notes after a checkout.
   `makeBranch`, `branchMenuBody`, `branchMenuRow`, `newBranchBody`.
 - [`internal/git/view.go`](../../internal/git/view.go) — `(*Page).View`: header, file list, diff
   pane and its empty/loading/error states.
-- [`internal/gitenv/gitenv.go`](../../internal/gitenv/gitenv.go) — `Env`, the environment Git runs
-  in.
+- [`internal/git/gitenv/gitenv.go`](../../internal/git/gitenv/gitenv.go) — `Env`, the environment
+  Git runs in.
 - [`internal/git/branch.go`](../../internal/git/branch.go) — `Branch`, `BranchData`,
   `ReadBranches`, `SwitchBranch`, `CreateBranch`, `branchName`, `retryCheckout`.
 - [`internal/app/git_bridge.go`](../../internal/app/git_bridge.go) — `*app`'s implementation of
@@ -53,7 +53,7 @@ branches and reloads open notes after a checkout.
    that read is pending, and for `BranchData.Root == ""`.
 5. The menu is a `ui.MenuBase` menu anchored below that chip, not a centered dialog: the chip is
    the menu button, so Up/Down/Home/End, type-ahead, Escape/Tab and focus return come from MyGo.
-   `branchMenuBody` draws it from the shared title-bar pieces in `internal/app/context_menu.go`:
+   `branchMenuBody` draws it from the shared title-bar pieces in `internal/app/widgets/menu.go`:
    a `BRANCHES` header with the shortcut as a plain child, one 34-pixel menu item per branch —
    leading check and `PanelSel` fill on the current one — a `New Branch…` item under a divider,
    and `branchNote` for the reading, empty and failure lines. `New Branch…` keeps the menu open
@@ -147,7 +147,7 @@ branches and reloads open notes after a checkout.
   "… diff truncated" note. The viewer brings selection, copy, find, go-to-line and its own
   scrollbar, and draws its gutter, so the page no longer draws rows, numbers or per-line colors.
 - Editor panes in a Git repository asynchronously read each open file's `HEAD` text through
-  `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/diffbase.go`)
+  `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/git_bridge.go`)
   and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation. Switching
   branches or mutating Git from the page invalidates the cache.
 - `BranchData.Current` is the checked-out branch, or the short hash of a detached HEAD with

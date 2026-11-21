@@ -23,7 +23,7 @@ import (
 	"mojian/internal/app/settingsui"
 	"mojian/internal/fs"
 	"mojian/internal/prefs"
-	"mojian/internal/remotehost"
+	"mojian/internal/remote/remotehost"
 	"mojian/internal/session"
 	"mojian/internal/update"
 

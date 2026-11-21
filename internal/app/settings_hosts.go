@@ -8,7 +8,7 @@ import (
 
 	"mojian/internal/fs"
 	"mojian/internal/icons"
-	"mojian/internal/remotehost"
+	"mojian/internal/remote/remotehost"
 
 	"github.com/egoist/mygo/ui"
 )

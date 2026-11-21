@@ -33,20 +33,19 @@ Tests: [docs/testing.md](docs/testing.md). Driving the UI headlessly: [docs/harn
 | `cmd/harness/` | Dev-only MCP server that renders the real views headlessly over disposable projects. |
 | `docs/subsystems/` | Contract pages for the UI shell, storage, session/remote, Git, persistence and themes. |
 | `site/` | The marketing website: React 19, Vite 8 and Base UI. It is the repo's one Node/Bun build; the app and its `go test` path do not use it. Commands, layout and deployment are in `site/README.md`. |
-| `internal/app/` | The window in one package: `app.go` state and `Run`, `view.go` root, `window.go` lifecycle, `model.go` split tree, `layout.go`, `store.go` openers, `menu.go`, `context_menu.go` (the title-bar menus' shared pieces), `style.go` (the one list row, section label and empty states), `sheet.go` (the search sheets' shared header), `palette.go`, `pane.go` card and drag/drop, `pane_actions.go`, `splitter.go`, `term.go`, `remote_project.go` and `remote_picker.go`, `settings_file.go`, `settings_host.go` and `settings_hosts.go`, `headless.go`, `git_bridge.go` and `branch.go`. `widgets_bridge.go` and `aliases.go` are the names this package gives lower ones. Its UI layers are subpackages: `explorer/`, `settingsui/`, `widgets/`, `commands/`. |
+| `internal/app/` | The window in one package: `app.go` state and `Run`, `launch.go` CLI startup and single-instance handoff, `view.go` root, `window.go` lifecycle, `pane_tree.go` split tree/directions/divider, `layout.go`, `store.go` local and server openers, `menu.go`, `palette.go` palette and quick open, `search.go`, `pane.go` card and drag/drop, `pane_actions.go`, `term.go`, `term_restore.go`, `term_sheets.go` SSH and session pickers, `remote_pool.go`, `remote_project.go` and `remote_picker.go`, `settings.go` and `settings_hosts.go`, `commands_host.go`, `bridges.go` (aliases and bridges to lower packages), `headless.go`, `git_bridge.go` and `branch.go`. Its UI and preview layers are subpackages: `commands/`, `explorer/`, `preview/`, `settingsui/`, `widgets/`. |
 | `internal/detach/` | A launch from a terminal re-runs the binary in its own session and leaves the shell; the detached copy appends its output to `app.log` under the data directory. |
 | `internal/project/` | `Store`, `Note`, `Asset` and `TreeNode`: listing, save, rename/copy/move, asset cache, editor buffers. |
 | `internal/fs/` | Project storage: `Backend`, `Direct`, `Memory`, `Server`, path guards, atomic writes and cached-file names. |
 | `internal/session/` | PTY server and client, wire protocol, remote file ops, spawn/lock, platform stubs. |
-| `internal/git/` | Working-tree diff page and branches: status/diff reading, parsing, branch read and switch, view. |
+| `internal/git/`, `internal/git/gitenv/` | Working-tree diff page and branches: status/diff reading, parsing, branch read and switch, view, and sanitized Git environment (`gitenv`). |
 | `internal/acp/` | One Agent Client Protocol session over stdio, and the known agent commands (omp, Claude Code, Codex and others, through ACP adapters) tried in order: process, initialize, session, prompt, cancel, events. |
-| `internal/gitenv/` | The environment Git commands run in, without redirect variables. |
 | `internal/theme/` | The ten color themes and their derivation, `Colors`, `Radius`, background painting, editor and terminal themes, font registration. |
 | `internal/motion/` | `ui.ElementTransition` values (`Page`, `Tab`, `Tree`, `Row`, `Pane`, `Colors`), springs for interruptible changes. |
 | `internal/icons/` | Lucide action icons and Material Icon Theme file icons, cached from embedded SVG. |
 | `internal/assets/` | `embed.FS` of icons, brand marks and JetBrains Mono. |
 | `internal/remotebin/` | Embedded Linux `mojian-server` binaries and libghostty `.so` files (generated). |
-| `internal/remote/`, `internal/remotehost/` | SSH provisioning, binary upload and forwarding; the host list, remembered remote projects and the connection pool. |
+| `internal/remote/`, `internal/remote/remotehost/` | SSH provisioning, binary upload and forwarding; the host list, `~/.ssh/config` import, remembered remote projects and the connection pool. |
 | `internal/prefs/` | The one preference schema, defaults and range validation. |
 | `internal/settings/` | Pure Settings page table: categories, rows, kinds, search words. |
 | `internal/shellcmd/` | The `mojian` alias Settings installs in zsh or bash, in one marked block. |

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
+	"mojian/internal/app/preview"
 	"mojian/internal/icons"
 
 	"github.com/egoist/mygo"
@@ -45,14 +45,14 @@ func (a *app) markdownBody(c *ui.Context, k *colors, p *pane, overlay bool) {
 					backend := a.store.FS
 					remoteRead = backend.Read
 				}
-				load := markdownImages(filepath.Dir(p.Note.Path), local, p.Note.Rel, remoteRead)
+				load := preview.MarkdownImages(filepath.Dir(p.Note.Path), local, p.Note.Rel, remoteRead)
 				// HTML blocks carry a README's badges and linked
 				// pictures, which the view would otherwise show as
 				// source.
-				images := map[string]*markdownImage{}
+				images := map[string]*preview.MarkdownImage{}
 				opts.LoadImage = load
 				opts.HTML = func(c *ui.Context, block string) {
-					markdownHTMLBlock(c, block, images, load, a.colorsOf(c), !a.harness)
+					preview.MarkdownHTMLBlock(c, block, images, load, a.colorsOf(c), !a.harness)
 				}
 				p.md = opts
 			}
@@ -141,11 +141,11 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 		}
 		if post != nil {
 			go func() {
-				dir, count, err := pdfOpen(path)
+				dir, count, err := preview.PDFOpen(path)
 				post(func() { finish(dir, count, err) })
 			}()
 		} else {
-			dir, count, err := pdfOpen(path)
+			dir, count, err := preview.PDFOpen(path)
 			finish(dir, count, err)
 		}
 	}
@@ -196,11 +196,11 @@ func (a *app) pdfBody(c *ui.Context, k *colors, p *pane) {
 					}
 					if post != nil {
 						go func() {
-							file, err := pdfRenderPage(path, dir, page+1)
+							file, err := preview.PDFRenderPage(path, dir, page+1)
 							post(func() { finishPage(file, err) })
 						}()
 					} else {
-						file, err := pdfRenderPage(path, dir, page+1)
+						file, err := preview.PDFRenderPage(path, dir, page+1)
 						finishPage(file, err)
 					}
 				}
@@ -322,10 +322,6 @@ func fileSize(n int64) string {
 	default:
 		return fmt.Sprintf("%d B", n)
 	}
-}
-
-func isPDFPath(path string) bool {
-	return strings.EqualFold(filepath.Ext(path), ".pdf")
 }
 
 // releaseAsset drops a pane's PDF preview files before it shows another

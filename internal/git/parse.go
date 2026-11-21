@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"mojian/internal/gitenv"
+	"mojian/internal/git/gitenv"
 	"mojian/internal/platform"
 
 	"github.com/egoist/mygo/ui/editor"

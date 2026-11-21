@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strings"
 
+	"mojian/internal/app/commands"
 	"mojian/internal/icons"
 
 	"github.com/egoist/mygo/ui"
@@ -102,7 +103,7 @@ func (u *UI) recordShortcut(cmd Command, mods ui.Modifiers, key ui.Key) bool {
 		u.stopRecording()
 		return true
 	}
-	name, ok := shortcutKeyName(key)
+	name, ok := commands.KeyName(key)
 	if !ok {
 		return false
 	}

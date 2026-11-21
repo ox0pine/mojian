@@ -22,10 +22,10 @@ the save path, path guards and the asset cache.
   `session.Client`, with the lazily cached asset files.
 - [`internal/fs/write.go`](../../internal/fs/write.go) — `WriteFileAtomic`.
 - [`internal/app/store.go`](../../internal/app/store.go) — `openStoreAt`, `openStore`,
-  `openDefaultStore`, `defaultStoreDir`, `resolveProjectRoot`.
-- [`internal/app/server.go`](../../internal/app/server.go) — `openServerStore` and
-  `openLocalStore`; the latter opens a Windows project through `Direct` and macOS/Linux projects
-  through the local session server.
+  `openDefaultStore`, `defaultStoreDir`, `resolveProjectRoot`, `openServerStore`, `openLocalStore`,
+  and local session server lifecycle (`startLocalServer`, `stopLocalServer`); `openLocalStore`
+  opens a Windows project through `Direct` and macOS/Linux projects through the local session
+  server.
 - [`internal/app/project.go`](../../internal/app/project.go) and
   [`internal/app/pane_actions.go`](../../internal/app/pane_actions.go) — `openRel`, `openNote`.
 

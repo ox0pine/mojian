@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"mojian/internal/gitenv"
+	"mojian/internal/git/gitenv"
 )
 
 const (

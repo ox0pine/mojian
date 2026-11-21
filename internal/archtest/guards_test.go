@@ -139,14 +139,14 @@ func osCalls(f *ast.File, fset *token.FileSet) []call {
 func TestAppImportsStayBehindTheBridges(t *testing.T) {
 	allowed := map[string]map[string]bool{
 		"mojian/internal/theme": {
-			"settings_host.go": true, "theme_bridge.go": true,
+			"bridges.go": true, "settings.go": true,
 		},
 		"mojian/internal/platform": {
-			"platform_bridge.go": true,
+			"bridges.go": true,
 		},
 		"mojian/internal/remote": {
-			"remote_bridge.go": true, "remote_picker.go": true, "remote_pool.go": true,
-			"remote_project.go": true, "remotehost_host.go": true, "settings_host.go": true,
+			"remote_picker.go": true, "remote_pool.go": true,
+			"remote_project.go": true, "settings.go": true,
 		},
 	}
 	var violations []string
@@ -173,7 +173,7 @@ func TestAppWritesAndCommandsStayBehindStorage(t *testing.T) {
 	for _, path := range appFiles(t) {
 		f, fset := parseFile(t, path)
 		file := filepath.Base(path)
-		if imports(f)["os/exec"] && file != "pdfrender.go" {
+		if imports(f)["os/exec"] {
 			violations = append(violations, file+
 				": imports os/exec; commands belong to internal/platform or a lower package")
 		}

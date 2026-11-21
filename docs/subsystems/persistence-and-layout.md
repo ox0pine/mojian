@@ -10,8 +10,8 @@ that produce both files, and the environment overrides that move them.
 
 - [`internal/prefs/prefs.go`](../../internal/prefs/prefs.go) — `Prefs`, `Default`, `Sanitize`, the
   one preference schema, its defaults and range validation.
-- [`internal/app/settings_file.go`](../../internal/app/settings_file.go) — `settingsFile`,
-  `loadSettings`, `saveSettingsSoon`, `saveSettings`, and the preference getters.
+- [`internal/app/settings.go`](../../internal/app/settings.go) — `settingsFile`,
+  `loadSettings`, `saveSettingsSoon`, `saveSettings`, the preference getters, and `settingsHost`.
 - [`internal/app/layout.go`](../../internal/app/layout.go) — `layoutFile`, `layoutTab`,
   `layoutNode`, `layoutPane`, `layoutTerminal`, `layoutOf`, `snapshotLayout`, `restoreLayoutStatus`,
   `restoreColumns`, `saveLayout`.

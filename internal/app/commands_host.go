@@ -1,6 +1,21 @@
 package app
 
-import "mojian/internal/app/commands"
+import (
+	"strings"
+
+	"mojian/internal/app/commands"
+
+	"github.com/egoist/mygo"
+)
+
+// openSettingsCommand opens Settings, assigned after the view is built:
+// a direct call from cmdSettings' initializer would make the command
+// table depend on the window that lists it.
+var openSettingsCommand func(*app)
+
+func init() {
+	openSettingsCommand = func(a *app) { a.openSettingsWindow() }
+}
 
 // initCommands binds the static command table to this window.
 func (a *app) initCommands() {
@@ -56,4 +71,88 @@ func (a *app) commandRegistry() *commands.Registry {
 		a.initCommands()
 	}
 	return a.commands
+}
+
+// commandAccel is the accelerator the menus give a command: its own,
+// unless the user rebound it in Settings.
+func (a *app) commandAccel(c *commands.Command) string {
+	if c == nil {
+		return ""
+	}
+	if v, ok := a.shortcutKeys[c.ID]; ok {
+		return v
+	}
+	return c.Default()
+}
+
+// commandKeys is the keys a command shows beside its name, in the
+// platform's notation.
+func (a *app) commandKeys(c *commands.Command) string {
+	if c == nil {
+		return ""
+	}
+	if v, ok := a.shortcutKeys[c.ID]; ok {
+		return shortcutDisplay(v)
+	}
+	if c.Display != "" {
+		return nativeKeys(c.Display)
+	}
+	return shortcutDisplay(a.commandAccel(c))
+}
+
+// menuAccel gives a menu item its keys, none while a shortcut is being
+// typed: macOS takes a key bound to a menu before the focused control
+// sees it, which would split a pane instead of recording its keys.
+func (a *app) menuAccel(accel string) string {
+	if a.settings.Recording != "" {
+		return ""
+	}
+	return accel
+}
+
+// setShortcutValue binds a command, taking the keys from any other that had
+// them; the default's own keys remove the binding. The returned notice is
+// shown by the Settings window.
+func (a *app) setShortcutValue(id, accel string) string {
+	if a.shortcutKeys == nil {
+		a.shortcutKeys = map[string]string{}
+	}
+	sc := make(map[string]string, len(a.shortcutKeys))
+	for k, v := range a.shortcutKeys {
+		sc[k] = v
+	}
+	notice := ""
+	if accel != "" {
+		for _, other := range paletteCommands {
+			if other.ID == id {
+				continue
+			}
+			if sameAccel(a.commandAccel(other), accel) {
+				sc[other.ID] = ""
+				notice = shortcutDisplay(accel) + " was used by " + strings.TrimSuffix(other.Title, "…") + "; it is now unbound."
+			}
+		}
+	}
+	c := commandByID(id)
+	if c != nil && sameAccel(accel, c.Default()) {
+		delete(sc, id)
+	} else {
+		sc[id] = accel
+	}
+	if len(sc) == 0 {
+		sc = nil
+	}
+	a.shortcutKeys = sc
+	a.settings.IndexDirty = true
+	a.saveSettings()
+	a.refreshMenu()
+	a.invalidate()
+	return notice
+}
+
+// refreshMenu gives the menu bar the accelerators the settings now say.
+func (a *app) refreshMenu() {
+	if a.win != nil || a.settingsWin != nil {
+		mygo.App.SetMenu(a.menu())
+	}
 }

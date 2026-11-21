@@ -1,0 +1,103 @@
+package widgets
+
+import (
+	"mojian/internal/icons"
+	"mojian/internal/theme"
+
+	"github.com/egoist/mygo/ui"
+)
+
+const (
+	MenuW     = 288 // the width every title bar menu opens with
+	MenuRowH  = 34  // one choice in it, the height of a list row
+	MenuMaxH  = 338 // nine choices with their gaps, then the list scrolls
+	MenuInset = 8   // the left and right padding of a row
+)
+
+// MenuSurface styles the popover the machine, project and branch menus
+// share, so the three open at one size, corner and shadow.
+func MenuSurface(panel ui.Element, k *theme.Colors, drop float32) {
+	panel.Width(MenuW).Padding(6).Radius(theme.Radius).Background(k.Panel).
+		Border(1, k.PanelBorder).Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
+		Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
+}
+
+// MenuHeader is the caption at the top of a menu, with the keys that run
+// the same command at its right end.
+func MenuHeader(c *ui.Context, k *theme.Colors, title, keys string) {
+	ui.Row(c).Padding(6, MenuInset, 4, MenuInset).AlignItems(ui.Center).Children(func() {
+		SectionLabel(c, k, title)
+		ui.Spacer(c)
+		if keys != "" {
+			ui.Text(c, keys).FontSize(c.Theme().Rem(10.0 / 13)).TextColor(k.TextFaint)
+		}
+	})
+}
+
+// MenuItem is one row of a drawn menu, keyed so its identity follows it
+// when the rows around it change.
+func MenuItem(m ui.MenuParts, key any) ui.Element {
+	return m.Item().Key(key)
+}
+
+// MenuChoice is one single-line choice: its icon, its label, and the
+// check the current one shows in place of the icon, on the selected fill.
+func MenuChoice(c *ui.Context, k *theme.Colors, m ui.MenuParts, key any, icon, label string, current bool) ui.Element {
+	row := MenuItem(m, key).Height(MenuRowH).Padding(0, MenuInset).Gap(8).
+		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
+	if current {
+		row.Background(k.PanelSel)
+	} else if row.Highlighted() {
+		row.Background(k.Hover)
+	}
+	weight := 500
+	if current {
+		weight = 600
+	}
+	row.Children(func() {
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			if current {
+				ui.Icon(c, icons.Icon("check")).Size(14, 14).TextColor(k.Text)
+			} else {
+				ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
+			}
+		})
+		ui.Text(c, label).FontSize(c.Theme().Rem(1)).FontWeight(weight).TextColor(k.Text).
+			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+	})
+	return row
+}
+
+// MenuAction is a row that does something rather than choose a value:
+// the foot of a menu, above its divider.
+func MenuAction(c *ui.Context, k *theme.Colors, m ui.MenuParts, key any, icon, label string) ui.Element {
+	row := MenuItem(m, key).Height(MenuRowH).Padding(0, MenuInset).Gap(8).
+		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
+	if row.Highlighted() {
+		row.Background(k.Hover)
+	}
+	row.Children(func() {
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			ui.Icon(c, icons.Icon(icon)).Size(15, 15).TextColor(k.TextMuted)
+		})
+		ui.Text(c, label).FontSize(c.Theme().Rem(1)).TextColor(k.Text)
+	})
+	return row
+}
+
+// MenuNote is a menu's empty, loading or error line, in the same place
+// and size whether it explains a missing host, project or branch.
+func MenuNote(c *ui.Context, k *theme.Colors, text string, danger bool) {
+	face := k.TextFaint
+	if danger {
+		face = k.Danger
+	}
+	ui.Text(c, text).FontSize(c.Theme().Rem(12.5/13)).TextColor(face).Padding(6, MenuInset)
+}
+
+// MenuList scrolls a menu's choices once they would run past the window.
+// Its rows keep the 34-pixel height and 4-pixel gap of the window's lists,
+// so a menu row and a list row are the same shape.
+func MenuList(c *ui.Context, body func()) {
+	ui.Scroll(c).MaxHeight(MenuMaxH).Gap(4).Children(body)
+}

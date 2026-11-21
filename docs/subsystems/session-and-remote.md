@@ -35,13 +35,12 @@ its bundled `ssh.exe`.
   `LockFileEx` lock.
 - [`internal/remote/remote.go`](../../internal/remote/remote.go) — `Dial`, `Provision`, `Install`
   (probe, upload, stdio connect, stop), `Conn`, `Close`, `ErrNeedsRestart`.
-- [`internal/remotehost/`](../../internal/remotehost) — `Service`: the host list, remembered remote
-  projects and the pool of `*remote.Conn` keyed by host.
+- [`internal/remote/remotehost/`](../../internal/remote/remotehost) — `Service`: the host list,
+  `~/.ssh/config` import, remembered remote projects and the pool of `*remote.Conn` keyed by host.
 - [`internal/app/remote_project.go`](../../internal/app/remote_project.go) — opening, reconnecting
   and the loading task state.
-- [`internal/app/remote_pool.go`](../../internal/app/remote_pool.go) and
-  [`internal/app/remote_bridge.go`](../../internal/app/remote_bridge.go) — the app's view of the
-  pool and of `internal/remote`.
+- [`internal/app/remote_pool.go`](../../internal/app/remote_pool.go) — the app's view of the pool,
+  host service and `internal/remote`.
 - [`cmd/mojian-server/main.go`](../../cmd/mojian-server/main.go) — the uploaded binary; `-stop`
   ends a remote server.
 - [`internal/remotebin/`](../../internal/remotebin) — the embedded Linux server binaries and
@@ -118,7 +117,7 @@ its bundled `ssh.exe`.
   "ssh was not found; install the OpenSSH client".
 - Every device that reaches a host gets its own connection to the same detached server, so several
   apps can use one host at once. View › Attach Terminal Session… (`attach-terminal`,
-  `internal/app/session_picker.go`) lists live sessions on the active server (with title, working
+  `internal/app/term_sheets.go`) lists live sessions on the active server (with title, working
   directory `SessionInfo.Dir` and age), attaches a chosen session into a pane (or focuses it if
   already open), and can kill orphan sessions.
 - Terminal panes show the running program's live OSC title (`Term.Title()`) in the pane header when

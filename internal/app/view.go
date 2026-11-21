@@ -4,7 +4,6 @@ import (
 	"github.com/egoist/mygo/ui"
 	"mojian/internal/app/commands"
 
-	"mojian/internal/icons"
 	"mojian/internal/motion"
 )
 
@@ -203,29 +202,6 @@ func titleChip(e ui.Element, k *colors, open bool) ui.Element {
 		e.Background(k.Hover)
 	}
 	return e
-}
-
-// iconButton is a borderless button of an icon, with a face on hover;
-// label names it for screen readers and its tooltip.
-func iconButton(c *ui.Context, k *colors, name, label string, size, iconSize float32) ui.Element {
-	// ButtonBase carries the focus, Enter and Space, and the button role;
-	// only the look is ours.
-	b := ui.ButtonBase(c).Size(size, size).Radius(radius).
-		Cursor(ui.CursorPointer).Label(label)
-	if b.Pressed() {
-		b.Background(k.Pressed)
-	} else if b.Hovered() {
-		b.Background(k.Hover)
-	}
-	b.Transition(motion.Colors)
-	col := k.IconMuted
-	if b.Hovered() {
-		col = k.Text
-	}
-	b.Children(func() {
-		ui.Icon(c, icons.Icon(name)).Size(iconSize, iconSize).TextColor(col)
-	})
-	return b
 }
 
 // tabContent lays out the tab's split tree, or the one zoomed. Each

@@ -9,29 +9,32 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 ## Source of truth
 
 - [`main.go`](../../main.go) — the command line and the `app.Run` entry;
-  [`internal/app/startup.go`](../../internal/app/startup.go) parses the path a launch names, and
-  [`internal/app/second_instance.go`](../../internal/app/second_instance.go) hands a later
-  launch's command line to the window that is already open.
+  [`internal/app/launch.go`](../../internal/app/launch.go) parses the path a launch names and hands
+  a later launch's command line to the window that is already open.
 - [`internal/app/app.go`](../../internal/app/app.go) — `app`, `Run`, `open`, `initialStore`,
   `later`, `runPending`, `changed`, `scheduleLayoutSave`, `persistLayout`, `fail`.
 - [`internal/app/view.go`](../../internal/app/view.go) — `(*app).view`, the window root:
   title bar, workspace switch, pane overlays and the error banner.
-- [`internal/app/context_menu.go`](../../internal/app/context_menu.go) — `menuSurface`,
-  `menuHeader`, `menuChoice`, `menuAction`, `menuNote`, `menuList`: the one look the three
-  title-bar menus share.
+- [`internal/app/widgets/`](../../internal/app/widgets) — shared list rows, `CommandDialog`,
+  `SheetHeader`, `IconButton`, `SectionLabel`, `EmptyLine`, `EmptyState`, and the title-bar menu
+  chrome (`MenuSurface`, `MenuHeader`, `MenuChoice`, `MenuAction`, `MenuNote`, `MenuList`),
+  forwarded into `app` through [`internal/app/bridges.go`](../../internal/app/bridges.go).
+- [`internal/app/preview/`](../../internal/app/preview) — Markdown image/HTML preview helpers and
+  PDF page rendering.
 - [`internal/app/window.go`](../../internal/app/window.go) — `(*app).invalidate`, window and tray
   lifecycle.
-- [`internal/app/settings_host.go`](../../internal/app/settings_host.go) —
-  `(*app).settingsWindowView`, the second root, which draws Settings through
-  [`internal/app/settingsui`](../../internal/app/settingsui).
-- [`internal/app/model.go`](../../internal/app/model.go) — `tab`, `pane`, the `node` split tree,
-  directions, moves and split shares.
-- [`internal/app/splitter.go`](../../internal/app/splitter.go) — draggable dividers and share math.
+- [`internal/app/settings.go`](../../internal/app/settings.go) — settings persistence,
+  preference getters, and `(*app).settingsWindowView`, the second root, which draws Settings
+  through [`internal/app/settingsui`](../../internal/app/settingsui).
+- [`internal/app/pane_tree.go`](../../internal/app/pane_tree.go) — `tab`, `pane`, the `node` split
+  tree, directions, moves, draggable dividers and share math.
 - [`internal/app/headless.go`](../../internal/app/headless.go) — the `Headless` view API that
   `cmd/harness` drives.
-- [`internal/app/commands/`](../../internal/app/commands) and
-  [`internal/app/palette.go`](../../internal/app/palette.go) — static command metadata, the
-  per-window run registry and the command table used by menu, palette and browser shortcuts.
+- [`internal/app/commands/`](../../internal/app/commands),
+  [`internal/app/commands_host.go`](../../internal/app/commands_host.go) and
+  [`internal/app/palette.go`](../../internal/app/palette.go) — static command metadata, accelerator
+  formatting/parsing, the per-window run registry, and the command palette, quick open and browser
+  shortcuts.
 - [`internal/motion/`](../../internal/motion) — the spring transitions the view animates with.
 - [`internal/detach/`](../../internal/detach) — `FromTerminal` leaves the terminal a launch came
   from: it re-runs the binary in its own session and appends the copy's output to `app.log`.
@@ -136,19 +139,20 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   22 pixels, and the drag handle remains available.
 - The three title-bar menus are `ui.MenuBase` menus, so the chip is the menu button and
   Up/Down/Home/End, type-ahead, Escape/Tab and focus return come from MyGo. Their shared look
-  lives in `internal/app/context_menu.go`: `menuSurface` (one width, inset and shadow for all of
-  them), `menuHeader`, `menuChoice` (34 tall, with a leading check on the current entry),
-  `menuAction`, `menuNote` and `menuList` (scrolls after nine rows). Headers and notes are plain
-  children between the items, which is why the menus keep their exact look; a menu adds its own
-  rows only, and a new menu takes the same pieces rather than a fourth set of metrics.
+  lives in `internal/app/widgets/menu.go` (forwarded by `internal/app/bridges.go`): `menuSurface`
+  (one width, inset and shadow for all of them), `menuHeader`, `menuChoice` (34 tall, with a
+  leading check on the current entry), `menuAction`, `menuNote` and `menuList` (scrolls after nine
+  rows). Headers and notes are plain children between the items, which is why the menus keep their
+  exact look; a menu adds its own rows only, and a new menu takes the same pieces rather than a
+  fourth set of metrics.
 - A pane's body is one of three kinds, chosen by `paneCardMode`: a note, an asset, or a terminal.
   Background agent tasks have no pane; their sheet is part of the window's modal stack.
-- Every list row in a window is one row: `internal/app/style.go` holds `rowH` (34), `rowPadX`
-  (10), `rowGap` (10), `rowTitle` (13), `rowDetail` (12), aliased from `internal/app/widgets`,
-  which draws the one file row the pickers use. Quick open, a blank pane's picker, the Explorer's
-  search results, the Welcome page's recents, the folder pickers and the Git change list take
-  those numbers; `sectionLabel`, `emptyLine` and `emptyState` draw their captions, empty lines and
-  empty pages. Settings keeps its own denser scale inside its own window.
+- Every list row in a window is one row: `internal/app/widgets` holds `RowH` (34), `RowPadX`
+  (10), `RowGap` (10), `RowTitle` (13), `RowDetail` (12), aliased into `app` in
+  `internal/app/bridges.go`, and draws the one file row the pickers use. Quick open, a blank pane's
+  picker, the Explorer's search results, the Welcome page's recents, the folder pickers and the Git
+  change list take those numbers; `SectionLabel`, `EmptyLine` and `EmptyState` draw their captions,
+  empty lines and empty pages. Settings keeps its own denser scale inside its own window.
 - The palette, quick open, project search and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
   below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
   close button). Project search (`find-in-files`, `⇧⌘F` / `Ctrl+Shift+F`, `internal/app/search.go`)
@@ -160,8 +164,8 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   `theme.Colors.ShadowDialog` is the dialog shadow; `k.ShadowFocused` stays for popovers and floating
   overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through `iconBtnLg` (30), rather than
   a pair per call site.
-- `internal/app/theme_bridge.go` is the only file in `internal/app` that names `internal/theme`
-  (besides `settings_host.go`); `archtest` enforces it.
+- `internal/app/bridges.go` is the only file in `internal/app` that names `internal/theme`
+  (besides `settings.go`) and `internal/platform`; `archtest` enforces it.
 
 ## Verification
 
