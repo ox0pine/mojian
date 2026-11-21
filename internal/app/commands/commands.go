@@ -71,8 +71,11 @@ var Palette = []*Command{
 
 	// Views and tools.
 	{ID: "palette", Title: "Command Palette…", Accel: "CmdOrCtrl+Shift+P", Glyph: "command"},
+	{ID: "find-in-files", Title: "Search in Project…", Accel: "CmdOrCtrl+Shift+F", Glyph: "search"},
 	{ID: "toggle-tree", Title: "Toggle File Tree", Accel: "CmdOrCtrl+B", Glyph: "panel-left"},
 	{ID: "toggle-terminal", Title: "Toggle Terminal", Accel: "Ctrl+`", Glyph: "square-terminal"},
+	{ID: "attach-terminal", Title: "Attach Terminal Session…", Glyph: "square-terminal"},
+	{ID: "jump-attention", Title: "Jump to Attention", Accel: "CmdOrCtrl+J", Glyph: "bell"},
 	{ID: "run-agent-task", Title: "Run Agent Task…", Glyph: "bot"},
 	{ID: "git", Title: "Git Diff", Accel: "Ctrl+Shift+G", Glyph: "git-branch"},
 	{ID: "switch-branch", Title: "Switch Branch…", Accel: "CmdOrCtrl+Shift+B", Glyph: "git-branch"},

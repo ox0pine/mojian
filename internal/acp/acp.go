@@ -68,6 +68,13 @@ type Permission struct {
 	Options []Option
 	once    sync.Once
 	answer  chan string
+	onReply func(string)
+}
+
+// NewPermission creates a Permission bridged from another process (such as
+// the remote session server) whose reply is delivered to onReply once.
+func NewPermission(title string, options []Option, onReply func(string)) *Permission {
+	return &Permission{Title: title, Options: options, onReply: onReply}
 }
 
 // Answer sends the user's choice; later calls do nothing.
@@ -76,6 +83,9 @@ func (p *Permission) Answer(id string) {
 		return
 	}
 	p.once.Do(func() {
+		if p.onReply != nil {
+			p.onReply(id)
+		}
 		if p.answer != nil {
 			p.answer <- id
 		}
@@ -141,6 +151,57 @@ var Agents = []Agent{
 // probeTimeout bounds one agent's handshake, so an installed program that
 // is not an ACP server is skipped instead of holding the task forever.
 const probeTimeout = 20 * time.Second
+
+// Available returns the deduplicated list of known ACP agents whose
+// binary is currently found on PATH, in discovery order.
+func Available() []Agent {
+	var out []Agent
+	seen := map[string]bool{}
+	for _, agent := range Agents {
+		if _, err := exec.LookPath(agent.Command[0]); err != nil {
+			continue
+		}
+		if seen[agent.Name] {
+			continue
+		}
+		seen[agent.Name] = true
+		out = append(out, agent)
+	}
+	return out
+}
+
+// StartAgent runs the named agent (matching Agent.Name or Command[0]), or
+// falls back to StartAny when agentName is empty.
+func StartAgent(ctx context.Context, dir, agentName string, events func(Event)) (*Session, Agent, error) {
+	if strings.TrimSpace(agentName) == "" {
+		return StartAny(ctx, dir, events)
+	}
+	var failures []string
+	matched := false
+	for _, agent := range Agents {
+		if !strings.EqualFold(agent.Name, agentName) && !strings.EqualFold(agent.Command[0], agentName) {
+			continue
+		}
+		matched = true
+		if _, err := exec.LookPath(agent.Command[0]); err != nil {
+			continue
+		}
+		probe, cancel := context.WithTimeout(ctx, probeTimeout)
+		s, err := Start(probe, Options{Dir: dir, Command: agent.Command, Events: events})
+		cancel()
+		if err == nil {
+			return s, agent, nil
+		}
+		failures = append(failures, agent.Name+": "+err.Error())
+	}
+	if !matched {
+		return nil, Agent{}, fmt.Errorf("unknown ACP agent %q", agentName)
+	}
+	if len(failures) == 0 {
+		return nil, Agent{}, fmt.Errorf("ACP agent %q was not found on PATH", agentName)
+	}
+	return nil, Agent{}, errors.New(strings.Join(failures, "; "))
+}
 
 // StartAny runs the first known agent that answers, so a task does not
 // depend on one vendor's command.

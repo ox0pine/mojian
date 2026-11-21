@@ -24,7 +24,7 @@ its bundled `ssh.exe`.
   `dispatch`, `session` and `attached` streams, `listTree`.
 - [`internal/session/client.go`](../../internal/session/client.go) — `NewClient`, `Connect`,
   `ConnectAt`, `Ready`, `Client`, `Stream`, `Stop`, and the file operations (`ListTree`,
-  `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`, `Stat`).
+  `Search`, `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`, `Stat`).
 - [`internal/session/pty.go`](../../internal/session/pty.go), `pty_unix.go` and `pty_windows.go` —
   the process seam: `creack/pty` on macOS/Linux, a ConPTY implementation with a job object on
   Windows.
@@ -55,7 +55,7 @@ its bundled `ssh.exe`.
    long path's socket moves to a hashed name through `SocketPathIn`. Windows uses a per-user named
    pipe (`\\.\pipe\mojian-<hash>`) protected by an owner-only SDDL. A remote server sets
    `MOJIAN_RUNTIME_DIR` to its own runtime directory, which the stdio bridge reads back.
-2. A connection is framed and multiplexed (`ProtocolVersion` 5): a 9-byte header of payload
+2. A connection is framed and multiplexed (`ProtocolVersion` 6): a 9-byte header of payload
    length, type and stream, then the payload. One connection carries every control request and
    every terminal stream, so the transport only has to be a byte stream. Small responses use one
    frame; responses over 64 MiB use `frameResponsePart` chunks carrying their request id, offset
@@ -107,8 +107,15 @@ its bundled `ssh.exe`.
   server for files, Git and terminals, and the host UI is shown. A missing `ssh` surfaces as
   "ssh was not found; install the OpenSSH client".
 - Every device that reaches a host gets its own connection to the same detached server, so several
-  apps can use one host at once. Opening another device's terminal would need a session picker,
-  which the app does not have; the protocol itself opens any session by id.
+  apps can use one host at once. View › Attach Terminal Session… (`attach-terminal`,
+  `internal/app/session_picker.go`) lists live sessions on the active server (with title, working
+  directory `SessionInfo.Dir` and age), attaches a chosen session into a pane (or focuses it if
+  already open), and can kill orphan sessions.
+- Terminal panes show the running program's live OSC title (`Term.Title()`) in the pane header when
+  present, falling back to `Spec.title()`. When a non-focused terminal rings its bell or exits, it
+  sets a quiet attention dot on both the pane header and its tab; View › Jump to Attention (`⌘J` /
+  `Ctrl+J`) focuses a pending agent permission first, then cycles unread attention terminals and
+  clears the marker upon focus.
 - Remote connections are pooled by host and kept while a loaded project uses them, and after
   `Set Up Server` until the last project on that host is removed (`closeRemoteProject`); `CloseAll`
   ends them at quit. Choosing a server that is not the one on screen resumes its most recently
@@ -118,7 +125,10 @@ its bundled `ssh.exe`.
   the server already on screen opens the picker, so another folder on it can be opened. A dead
   control channel is dropped by `remoteForHost` and dialed again on the next use. Replacing a pooled
   connection closes the previous owner, including when Set Up and a project open finish out of order.
-- Settings › Hosts is the only host source; the app does not scan `~/.ssh/config`. At launch, and
+- Settings › Hosts is the explicit host source; the app does not automatically scan `~/.ssh/config`,
+  but Settings › Hosts offers an explicit **Import from ~/.ssh/config** button
+  (`remotehost.ReadSSHConfig`) that lists concrete non-wildcard `Host` aliases not yet in the list
+  for one-click import. At launch, and
   when the page opens, the app asks each host once (`remote.ServerRunning`) whether its server
   socket still exists, so a server left running by the previous launch shows Stop Server rather
   than Set Up Server. Each host's row sets up, starts and stops that host's server; stopping

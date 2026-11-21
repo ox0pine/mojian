@@ -108,6 +108,11 @@ the save path, path guards and the asset cache.
   is skipped.
 - The Explorer's search filters the same notes and assets that Quick Open lists: an image or PDF
   match stays visible and opens through `openRel`, and Enter opens the first note or asset match.
+- Local desktop projects also run a coarse recursive `mygo.WatchFiles` watcher (`HintsOnly`,
+  debounced, skipping `.git`, `.gitignore`-excluded directories and `.mojian-*` atomic temp files
+  in `internal/app/watch.go`). When external tools or agents modify files on disk, the watcher
+  reloads clean open notes, updates the Explorer tree and refreshes an open Git page while leaving
+  dirty notes intact. The watcher stops on project switch, remote switch, or window close.
 - `Memory` lists nothing and refuses file operations with `errReadOnly` (its `Write` is a no-op); the browser build keeps its editor in memory.
 
 ## Verification

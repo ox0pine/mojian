@@ -81,8 +81,17 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 				}
 			})
 		ui.Spacer(c)
-		if p.Loading || p.DiffLoad || p.HistoryLoad {
+		if p.Loading || p.DiffLoad || p.HistoryLoad || p.ActionBusy {
 			ui.Text(c, "Reading…").FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint)
+		}
+		splitLabel, splitGlyph := "Split Diff", "columns-2"
+		if p.SplitDiff {
+			splitLabel, splitGlyph = "Unified Diff", "rows-2"
+		}
+		if iconButton(c, k, splitGlyph, splitLabel, 26, 16).
+			Tooltip(splitLabel).Clicked() {
+			p.SplitDiff = !p.SplitDiff
+			p.h.Invalidate()
 		}
 		if iconButton(c, k, "refresh-cw", "Refresh", 26, 16).
 			Tooltip("Refresh").Clicked() {
@@ -184,6 +193,20 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 			}
 			ui.Text(c, label).FontSize(c.Theme().Rem(10.0 / 13)).FontWeight(650).TextColor(k.TextFaint)
 			ui.Spacer(c)
+			if p.Mode == ModeChanges && len(p.Changes) > 0 {
+				if p.StagedCount() < len(p.Changes) {
+					if iconButton(c, k, "plus", "Stage All", 22, 13).
+						Tooltip("Stage All").Disabled(p.ActionBusy).Clicked() {
+						p.StageAll()
+					}
+				}
+				if p.StagedCount() > 0 {
+					if iconButton(c, k, "x", "Unstage All", 22, 13).
+						Tooltip("Unstage All").Disabled(p.ActionBusy).Clicked() {
+						p.UnstageAll()
+					}
+				}
+			}
 			if n > 0 {
 				ui.Text(c, fmt.Sprintf("%d", n)).FontSize(c.Theme().Rem(10.0/13)).TextColor(k.TextFaint).
 					Padding(2, 5).Radius(theme.Radius).Background(k.Hover)
@@ -223,10 +246,18 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 							SingleLine().TruncateStart()
 					}
 				})
+				if ch.Staged {
+					col := k.DiffAdd
+					if i == p.Sel {
+						col = fg
+					}
+					ui.Icon(c, icons.Icon("check")).Size(12, 12).TextColor(col).Tooltip("Staged")
+				}
 				p.statusBadge(c, k, ch.Status, i == p.Sel)
 			})
 		}).Grow(1).MinHeight(0).Padding(6, 7).Gap(6)
 		if list.Changed() {
+			p.discardPrompt = ""
 			p.Select(p.Sel)
 		}
 		if list.Submitted() && p.Sel >= 0 && p.Sel < len(p.Changes) {
@@ -234,6 +265,56 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 				p.h.OpenPath(path)
 			}
 		}
+		if len(p.Changes) > 0 {
+			p.commitBox(c, k)
+		}
+	})
+}
+
+func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
+	staged := p.StagedCount()
+	canCommit := staged > 0 && strings.TrimSpace(p.CommitMsg) != "" && !p.ActionBusy
+	ui.Divider(c)
+	ui.Column(c).Padding(8, 10).Gap(6).Children(func() {
+		if p.ActionErr != "" {
+			ui.Text(c, p.ActionErr).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.Danger)
+		}
+		in := ui.TextInputBase(c.Key("git-commit-msg"), &p.CommitMsg).
+			Height(30).Padding(0, 8).Radius(theme.Radius).
+			Background(k.Hover).Border(1, k.PanelBorder).
+			FontSize(c.Theme().Rem(12.0 / 13)).
+			Placeholder("Commit message…").Label("Commit message")
+		if in.Submitted() && canCommit {
+			p.CommitStaged()
+		}
+		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+			note := "Stage changes to commit"
+			if staged == 1 {
+				note = "1 staged"
+			} else if staged > 1 {
+				note = fmt.Sprintf("%d staged", staged)
+			}
+			ui.Text(c, note).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
+				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			btn := ui.ButtonBase(c).Height(26).Padding(0, 10).Radius(theme.Radius).
+				Cursor(ui.CursorPointer).Label("Commit").Disabled(!canCommit).
+				Transition(motion.Colors)
+			if canCommit {
+				btn.Background(c.Theme().Accent)
+			} else {
+				btn.Background(k.Hover)
+			}
+			if btn.Clicked() {
+				p.CommitStaged()
+			}
+			fg := k.TextFaint
+			if canCommit {
+				fg = c.Theme().AccentText
+			}
+			btn.Children(func() {
+				ui.Text(c, "Commit").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(600).TextColor(fg)
+			})
+		})
 	})
 }
 
@@ -364,20 +445,58 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 			ui.Text(c, fmt.Sprintf("−%d", p.diffDel)).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(600).
 				TextColor(k.DiffDel).Shrink(0)
 		}
-		if p.h.HasPath(path) {
-			open := ui.ButtonBase(c).Padding(4, 9).Radius(theme.Radius).
-				Cursor(ui.CursorPointer).Label("Open File")
-			if open.Hovered() {
-				open.Background(k.Hover)
+		if ch, ok := p.selectedChange(); ok {
+			if !ch.Staged || ch.Unstaged {
+				if headerActionButton(c, k, "Stage", false, p.ActionBusy).Clicked() {
+					p.StageSelected()
+				}
 			}
-			if open.Clicked() {
+			if ch.Staged {
+				if headerActionButton(c, k, "Unstage", false, p.ActionBusy).Clicked() {
+					p.UnstageSelected()
+				}
+			}
+			if p.discardPrompt == ch.Path {
+				if headerActionButton(c, k, "Confirm Discard", true, p.ActionBusy).Clicked() {
+					p.DiscardSelected()
+				}
+				if headerActionButton(c, k, "Cancel", false, p.ActionBusy).Clicked() {
+					p.discardPrompt = ""
+				}
+			} else {
+				if headerActionButton(c, k, "Discard", false, p.ActionBusy).Clicked() {
+					p.discardPrompt = ch.Path
+				}
+			}
+		}
+		if p.h.HasPath(path) {
+			if headerActionButton(c, k, "Open", false, false).Label("Open File").Clicked() {
 				p.h.OpenPath(path)
 			}
-			open.Children(func() {
-				ui.Text(c, "Open").FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(500).TextColor(k.Text)
-			})
 		}
 	})
+}
+
+func headerActionButton(c *ui.Context, k *theme.Colors, text string, danger, disabled bool) ui.Element {
+	b := ui.ButtonBase(c).Padding(4, 9).Radius(theme.Radius).
+		Cursor(ui.CursorPointer).Label(text).Disabled(disabled).
+		Transition(motion.Colors)
+	fg := k.Text
+	if danger {
+		fg = k.Danger
+		b.Background(k.Danger.Alpha(0.12))
+	}
+	if b.Hovered() {
+		if danger {
+			b.Background(k.Danger.Alpha(0.2))
+		} else {
+			b.Background(k.Hover)
+		}
+	}
+	b.Children(func() {
+		ui.Text(c, text).FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(500).TextColor(fg)
+	})
+	return b
 }
 
 // commitHeader names the commit whose patch the diff pane shows.
@@ -548,10 +667,14 @@ func (p *Page) newDiffView(c *ui.Context, f FileDiff, fit bool) *editor.DiffStat
 		return nil
 	}
 	font, lineHeight, tabSize := p.h.EditorFont()
+	layout := editor.DiffUnified
+	if p.SplitDiff {
+		layout = editor.DiffSplit
+	}
 	d := &editor.DiffState{
-		Layout:         editor.DiffUnified,
+		Layout:         layout,
 		Wrap:           true,
-		Inline:         editor.DiffInlineNone,
+		Inline:         editor.DiffInlineWordAlt,
 		Indicators:     editor.DiffClassic,
 		KeepScrollbars: true,
 		FitContent:     fit,
@@ -569,6 +692,11 @@ func (p *Page) styleDiffView(c *ui.Context, d *editor.DiffState) {
 	font, lineHeight, tabSize := p.h.EditorFont()
 	d.Theme = p.h.EditorTheme(c)
 	d.Font, d.LineHeight, d.TabSize = font, lineHeight, tabSize
+	if p.SplitDiff {
+		d.Layout = editor.DiffSplit
+	} else {
+		d.Layout = editor.DiffUnified
+	}
 }
 
 // diffPatch draws every file a commit touched, each under its own

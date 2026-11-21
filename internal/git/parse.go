@@ -104,11 +104,15 @@ func parseStatus(out, prefix string) []Change {
 			display = rest
 		}
 		status := statusLetter(code)
+		staged := code != "??" && code[0] != ' ' && code[0] != '?'
+		unstaged := code == "??" || (code[1] != ' ' && code[1] != '?')
 		changes = append(changes, Change{
-			Path:    rootPath,
-			OldPath: oldPath,
-			Display: display,
-			Status:  status,
+			Path:     rootPath,
+			OldPath:  oldPath,
+			Display:  display,
+			Status:   status,
+			Staged:   staged,
+			Unstaged: unstaged,
 		})
 	}
 	sort.SliceStable(changes, func(i, j int) bool {

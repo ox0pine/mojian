@@ -8,9 +8,13 @@ import (
 
 	"mojian/internal/fs"
 	"mojian/internal/icons"
+	"mojian/internal/remotehost"
 
 	"github.com/egoist/mygo/ui"
 )
+
+// sshConfigPathFn locates ~/.ssh/config; tests replace it.
+var sshConfigPathFn = remotehost.DefaultSSHConfigPath
 
 func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 	if remoteSupported() {
@@ -38,7 +42,15 @@ func (a *app) settingsHostsPage(c *ui.Context, k *colors) {
 						a.addHostChecked()
 					}
 				})
-				ui.Text(c, "Anything ssh accepts: buildbox, me@devbox, or ssh://me@devbox:2222.").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint)
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "Anything ssh accepts: buildbox, me@devbox, or ssh://me@devbox:2222.").FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).Grow(1).MinWidth(0)
+					if settingsButton(c, "Import from ~/.ssh/config", false).Clicked() {
+						a.openSSHConfigImport()
+					}
+				})
+				if a.sshImportOpen && len(a.sshImportCandidates) > 0 {
+					a.sshImportPanel(c, k)
+				}
 			})
 		})
 	}
@@ -89,6 +101,95 @@ func (a *app) addHostChecked() {
 	a.hostDraftAddr, a.hostDraftName = "", ""
 	a.settings.Notice = ""
 	a.invalidate()
+}
+
+func (a *app) openSSHConfigImport() {
+	if !remoteSupported() {
+		return
+	}
+	hosts, err := remotehost.ReadSSHConfig(sshConfigPathFn())
+	if err != nil {
+		a.sshImportOpen = false
+		a.sshImportCandidates = nil
+		a.settings.Notice = "Could not read ~/.ssh/config."
+		a.invalidate()
+		return
+	}
+	existing := map[string]bool{}
+	for _, h := range a.hosts() {
+		existing[h.Address] = true
+	}
+	var candidates []hostConfig
+	for _, h := range hosts {
+		if existing[h.Address] {
+			continue
+		}
+		candidates = append(candidates, h)
+	}
+	if len(candidates) == 0 {
+		a.sshImportOpen = false
+		a.sshImportCandidates = nil
+		a.settings.Notice = "No new hosts found in ~/.ssh/config."
+		a.invalidate()
+		return
+	}
+	a.sshImportCandidates = candidates
+	a.sshImportOpen = true
+	a.settings.Notice = ""
+	a.invalidate()
+}
+
+func (a *app) importSSHHost(h hostConfig) {
+	a.addHost(h.Name, h.Address)
+	kept := a.sshImportCandidates[:0]
+	for _, c := range a.sshImportCandidates {
+		if c.Address != h.Address {
+			kept = append(kept, c)
+		}
+	}
+	a.sshImportCandidates = kept
+	if len(kept) == 0 {
+		a.sshImportOpen = false
+	}
+	a.invalidate()
+}
+
+func (a *app) importAllSSHHosts() {
+	for _, h := range a.sshImportCandidates {
+		a.addHost(h.Name, h.Address)
+	}
+	a.sshImportCandidates = nil
+	a.sshImportOpen = false
+	a.invalidate()
+}
+
+func (a *app) sshImportPanel(c *ui.Context, k *colors) {
+	ui.Column(c).Padding(10, 12).Gap(6).Radius(radius).Background(k.Hover).
+		Border(1, k.PanelBorder).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, "Hosts from ~/.ssh/config").FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(600).
+				TextColor(k.Text).Grow(1).MinWidth(0)
+			if settingsButton(c, "Import All", true).Clicked() {
+				a.importAllSSHHosts()
+			}
+			if settingsButton(c, "Cancel", false).Clicked() {
+				a.sshImportOpen = false
+				a.sshImportCandidates = nil
+				a.invalidate()
+			}
+		})
+		for _, cand := range append([]hostConfig(nil), a.sshImportCandidates...) {
+			cand := cand
+			ui.Row(c.Key("ssh-import-" + cand.Address)).Height(30).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icons.Icon("server")).Size(13, 13).TextColor(k.TextMuted)
+				ui.Text(c, cand.Address).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.Text).
+					SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+				if settingsButton(c, "Import", false).Label("Import " + cand.Address).Clicked() {
+					a.importSSHHost(cand)
+				}
+			})
+		}
+	})
 }
 
 func (a *app) hostSettingsRow(c *ui.Context, k *colors, host, rawName, label, detail string, selected bool) {

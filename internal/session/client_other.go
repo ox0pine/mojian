@@ -6,11 +6,17 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"mojian/internal/acp"
 )
 
 // Client is unavailable on this platform.
 type Client struct{}
 type Stream struct{}
+type ACPSession struct{}
+
+func (s *ACPSession) Cancel() {}
+func (s *ACPSession) Close()  {}
 
 var closedChan = func() <-chan struct{} {
 	ch := make(chan struct{})
@@ -52,6 +58,18 @@ func (c *Client) ListTreeFreshContext(context.Context, string) ([]FileEntry, err
 }
 func (c *Client) ListDirs(string) ([]FileEntry, error) { return nil, errUnsupported }
 func (c *Client) ListDirsContext(context.Context, string) ([]FileEntry, error) {
+	return nil, errUnsupported
+}
+func (c *Client) Search(string, SearchOptions) (SearchResult, error) {
+	return SearchResult{}, errUnsupported
+}
+func (c *Client) SearchContext(context.Context, string, SearchOptions) (SearchResult, error) {
+	return SearchResult{}, errUnsupported
+}
+func (c *Client) ACPAgentsContext(context.Context) ([]string, error) {
+	return nil, errUnsupported
+}
+func (c *Client) StartACP(context.Context, string, string, string, func(acp.Event)) (*ACPSession, error) {
 	return nil, errUnsupported
 }
 func (c *Client) ReadFile(string) ([]byte, error) { return nil, errUnsupported }

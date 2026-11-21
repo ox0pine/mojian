@@ -36,7 +36,12 @@ func (a *app) markdownBody(c *ui.Context, k *colors, p *pane) {
 			if p.md == nil {
 				opts := &markdown.Options{}
 				local := a.store == nil || !a.store.IsRemote()
-				load := markdownImages(filepath.Dir(p.Note.Path), local)
+				var remoteRead func(string) ([]byte, error)
+				if !local && a.store != nil {
+					backend := a.store.FS
+					remoteRead = backend.Read
+				}
+				load := markdownImages(filepath.Dir(p.Note.Path), local, p.Note.Rel, remoteRead)
 				// HTML blocks carry a README's badges and linked
 				// pictures, which the view would otherwise show as
 				// source.

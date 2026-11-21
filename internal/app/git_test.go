@@ -261,3 +261,44 @@ func TestGitChangesClick(t *testing.T) {
 		t.Fatalf("after click: sel %d path %q diff %q", a.git.Sel, a.git.DiffPath, a.git.Diff)
 	}
 }
+
+func TestGitPageStageCommitAndSplitDiff(t *testing.T) {
+	registerFonts()
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "# A\n\nold word\n"})
+	testutil.InitRepo(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n\nnew word\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{workspace: &workspace{treeOpen: false}}
+	s, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.store = s
+	a.focusFirstNote()
+	tt := ui.NewTester(a.view, 1100, 700)
+	a.toggleGit()
+	for range 3 {
+		tt.Frame()
+	}
+	if !tt.HasText("Stage") || !tt.HasText("Discard") || !tt.HasText("Commit") {
+		t.Fatalf("expected git actions in view: %q", tt.Texts())
+	}
+	a.git.SplitDiff = true
+	tt.Frame()
+	a.git.StageSelected()
+	tt.Frame()
+	if a.git.StagedCount() != 1 {
+		t.Fatalf("staged count = %d, want 1", a.git.StagedCount())
+	}
+	a.git.CommitMsg = "test commit from page"
+	a.git.CommitStaged()
+	tt.Frame()
+	if len(a.git.Changes) != 0 {
+		t.Fatalf("expected clean tree after commit, got %+v", a.git.Changes)
+	}
+	if a.git.CommitMsg != "" {
+		t.Fatalf("commit message not cleared: %q", a.git.CommitMsg)
+	}
+}

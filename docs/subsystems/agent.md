@@ -32,12 +32,15 @@ process that lives only as long as its task.
 ## Runtime path
 
 1. View › Run Agent Task… (`run-agent-task`) or the palette calls `openAgentTask`. A memory store
-   or a remote project is refused: the agent runs on this machine, in `a.store.Dir`. While a task
-   runs, the command reopens the sheet showing either the pending permission or the running task
-   with a Stop button.
+   is refused, while both local projects and connected remote SSH projects are supported: local
+   tasks run on this machine in `a.store.Dir`, and remote tasks stream over the active
+   `mojian-server` connection (`Client.StartACP`). Opening the sheet probes available ACP agents
+   (`acp.Available` locally, `Client.ACPAgentsContext` remotely) so the user can pick `Auto` or a
+   specific installed agent. While a task runs, the title bar shows a quiet status chip (`Agent`
+   with a spinner, or `Permission` with an attention dot) and the command reopens the sheet showing
+   the pending permission or the running task, its active tool and a Stop button.
 2. The sheet takes one line and Enter or Run calls `startAgentTask`. The sheet closes, the task is
-   stored on `*app`, and `acp.StartAny` tries the known agents in order on a goroutine, so the task
-   does not depend on one vendor's command.
+   stored on `*app`, and `acp.StartAgent` (or remote `StartACP`) runs on a goroutine.
 3. Events reach the window through `(*app).uiPoster`: `Window.Update` in a real window, the
    `Headless` queue in the harness. The task is identified by pointer, so events of a cancelled
    task are dropped.
@@ -53,8 +56,10 @@ process that lives only as long as its task.
    `max_turn_requests` notify `Agent incomplete`; cancellation notifies `Agent stopped`; a prompt
    or protocol failure notifies `Agent error`. The notification body is the answer's first 160
    characters, with a stop-reason-specific fallback when the answer is empty; its subtitle names
-   the agent and the time the task took. Finishing, failing or stopping then refreshes the project:
-   clean notes and the file tree pick up agent changes, while dirty notes keep their local edits.
+   the agent and the time the task took. The last finished summary is kept on `*app` so reopening
+   the sheet offers a **Review Diff** handoff to the Git page. Finishing, failing or stopping then
+   refreshes the project: clean notes and the file tree pick up agent changes, while dirty notes
+   keep their local edits.
 7. Closing the window, Stop or a new project stops the task and kills the agent.
 
 ## Contracts and failure behavior

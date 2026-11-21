@@ -90,9 +90,9 @@ func (a *app) menu() *mygo.Menu {
 	}})
 	viewItems := []*mygo.MenuItem{item(cmdTree)}
 	if terminalsSupported() {
-		viewItems = append(viewItems, item(cmdTerminal))
+		viewItems = append(viewItems, item(cmdTerminal), item(cmdAttachSession))
 	}
-	viewItems = append(viewItems, item(cmdAgentTask), item(cmdGit), item(cmdBranch), item(cmdPalette), mygo.Separator(), item(cmdSettings),
+	viewItems = append(viewItems, item(cmdJumpAttention), item(cmdAgentTask), item(cmdGit), item(cmdBranch), item(cmdPalette), mygo.Separator(), item(cmdSettings),
 		&mygo.MenuItem{Label: "Appearance", Submenu: []*mygo.MenuItem{
 			appearance("System", 0),
 			appearance("Light", 1),
@@ -112,6 +112,8 @@ func (a *app) menu() *mygo.Menu {
 			{Role: mygo.RoleCopy},
 			{Role: mygo.RolePaste},
 			{Role: mygo.RoleSelectAll},
+			mygo.Separator(),
+			item(cmdSearch),
 		}},
 		{Label: "View", Submenu: viewItems},
 		{Label: "Tabs", Submenu: append(tabItems,

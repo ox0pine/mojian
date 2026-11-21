@@ -17,10 +17,12 @@ import (
 const headerH = 33
 
 type Change struct {
-	Path    string // relative to the repository root, for git
-	OldPath string // where a rename or copy came from, for git
-	Display string // relative to the project, for people
-	Status  string // M, A, D, R, U, C
+	Path     string // relative to the repository root, for git
+	OldPath  string // where a rename or copy came from, for git
+	Display  string // relative to the project, for people
+	Status   string // M, A, D, R, U, C
+	Staged   bool   // has changes in the index
+	Unstaged bool   // has changes in the working tree (or untracked)
 }
 
 // Runner runs Git and reads files where the project lives: locally, or
@@ -80,6 +82,12 @@ type Host interface {
 	SwitchBranch(root, name string) error
 	// CreateBranch creates name at HEAD in root and checks it out.
 	CreateBranch(root, name string) error
+	// ReloadFiles reloads clean open notes after a working-tree mutation
+	// such as discarding a file's changes.
+	ReloadFiles()
+	// AfterGitMutation notifies the window that index or HEAD changed
+	// (e.g. after staging, discarding, or committing).
+	AfterGitMutation()
 }
 
 // PageMode is what the page's left list holds.
@@ -133,6 +141,14 @@ type Page struct {
 	patchViews []*editor.DiffState
 	viewsGen   int
 	patchCut   bool
+	SplitDiff  bool
+
+	// Working-tree write state (stage, unstage, discard, commit).
+	CommitMsg     string
+	ActionBusy    bool
+	ActionErr     string
+	ActionSeq     int
+	discardPrompt string
 
 	// BranchMenu is the page's own popover under the branch chip; it
 	// reads the branches again each time it opens.
@@ -396,10 +412,14 @@ func (p *Page) Reset() {
 	p.branchNew = false
 	p.branchName = ""
 	p.branchErr = ""
+	p.ActionBusy = false
+	p.ActionErr = ""
+	p.discardPrompt = ""
 	p.Seq++
 	p.DiffSeq++
 	p.HistorySeq++
 	p.branchSeq++
+	p.ActionSeq++
 }
 
 func (p *Page) Select(i int) {

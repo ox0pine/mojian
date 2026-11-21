@@ -5,6 +5,7 @@ package session
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -22,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"mojian/internal/acp"
 	"mojian/internal/filekind"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -211,6 +213,13 @@ func (s *Server) dispatch(m *mux, f frame) {
 		if json.Unmarshal(f.payload, &o) != nil {
 			return
 		}
+		if o.Kind == "acp" {
+			ms := m.openStream(f.stream)
+			b, _ := json.Marshal(openReply{OK: true})
+			_ = m.writeFrame(frame{typ: frameOpen, stream: f.stream, payload: b})
+			go s.serveACP(ms, o)
+			return
+		}
 		ss, err := s.session(o.SID)
 		reply := openReply{OK: err == nil}
 		var ms *muxStream
@@ -280,6 +289,19 @@ func (s *Server) do(req Request) (any, error) {
 		return out, nil
 	case "listTree":
 		return s.listTree(req.Path, req.Fresh)
+	case "search":
+		opts := SearchOptions{}
+		if req.Search != nil {
+			opts = *req.Search
+		}
+		return SearchDir(context.Background(), req.Path, opts)
+	case "acpAgents":
+		avail := acp.Available()
+		names := make([]string, 0, len(avail))
+		for _, a := range avail {
+			names = append(names, a.Name)
+		}
+		return names, nil
 	case "readFile":
 		info, err := os.Stat(req.Path)
 		if err != nil {
@@ -431,6 +453,7 @@ func newID() string {
 type session struct {
 	id      string
 	shell   string
+	dir     string
 	created time.Time
 	proc    ptyProcess
 
@@ -484,7 +507,7 @@ func newSession(id string, o CreateOptions) (*session, error) {
 	}
 	vt.Resize(cols, rows)
 	s := &session{
-		id: id, shell: name, created: time.Now(), proc: proc,
+		id: id, shell: name, dir: dir, created: time.Now(), proc: proc,
 		vt: vt, clients: map[*attached]struct{}{},
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}
@@ -725,7 +748,7 @@ func (s *session) info() SessionInfo {
 		title = s.vt.Title()
 	}
 	in := SessionInfo{
-		ID: s.id, Shell: s.shell, Created: s.created,
+		ID: s.id, Shell: s.shell, Dir: s.dir, Created: s.created,
 		Cols: s.cols, Rows: s.rows, Title: title,
 		Exited: s.exited, ExitCode: s.code,
 	}

@@ -331,6 +331,8 @@ func (a *app) runBranchChange(what string, fn func(gitpage.Runner) error) {
 		// The checkout already happened in this workspace, so reload its
 		// own store even if activation invalidated the visible callback.
 		reloadErr := store.Reload()
+		ws.diffBaseGen++
+		ws.diffBases = nil
 		if seq != ws.branch.seq {
 			return
 		}

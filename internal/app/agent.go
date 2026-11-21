@@ -9,6 +9,7 @@ import (
 
 	"mojian/internal/acp"
 	"mojian/internal/icons"
+	"mojian/internal/motion"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -24,16 +25,18 @@ type agentSession interface {
 // agentTask is the window's one background ACP task: a prompt run
 // without a pane, whose only voice is a system notification.
 type agentTask struct {
-	prompt  string
-	agent   string
-	sess    agentSession
-	cancel  context.CancelFunc
-	perm    *acp.Permission
-	perms   []*acp.Permission
-	tools   map[string]string
-	reply   strings.Builder
-	started time.Time
-	notify  func(title, subtitle, body string) // tests replace the native notification
+	prompt      string
+	agent       string
+	remote      bool
+	currentTool string
+	sess        agentSession
+	cancel      context.CancelFunc
+	perm        *acp.Permission
+	perms       []*acp.Permission
+	tools       map[string]string
+	reply       strings.Builder
+	started     time.Time
+	notify      func(title, subtitle, body string) // tests replace the native notification
 }
 
 // openAgentTask asks for the task, or shows the permission a running
@@ -43,14 +46,74 @@ func (a *app) openAgentTask() {
 		a.fail(errors.New("agent tasks need a project on disk"))
 		return
 	}
-	if a.remotePath != "" {
-		a.fail(errors.New("agent tasks need a local project"))
+	if a.store.IsRemote() && a.store.Client() == nil {
+		a.fail(errors.New("remote host is not connected"))
 		return
 	}
 	a.closeModals()
 	a.agentOpen = true
 	a.agentInput = ""
+	a.refreshAgentChoices()
 	a.invalidate()
+}
+
+// refreshAgentChoices discovers available ACP agents on this machine or on
+// the active remote host so the sheet can offer explicit selection.
+func (a *app) refreshAgentChoices() {
+	if a.store == nil || a.store.IsMemory() {
+		return
+	}
+	a.agentChoiceSeq++
+	seq := a.agentChoiceSeq
+	winSeq := a.windowSeq
+	remote := a.store.IsRemote()
+	client := a.store.Client()
+	apply := func(names []string) {
+		if a.windowSeq != winSeq || a.agentChoiceSeq != seq {
+			return
+		}
+		a.agentChoices = names
+		if a.agentSelected != "" {
+			found := false
+			for _, n := range names {
+				if n == a.agentSelected {
+					found = true
+					break
+				}
+			}
+			if !found {
+				a.agentSelected = ""
+			}
+		}
+		a.invalidate()
+	}
+	post := a.uiPoster()
+	if post == nil {
+		if !remote {
+			avail := acp.Available()
+			names := make([]string, 0, len(avail))
+			for _, ag := range avail {
+				names = append(names, ag.Name)
+			}
+			apply(names)
+		}
+		return
+	}
+	go func() {
+		var names []string
+		if remote && client != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			names, _ = client.ACPAgentsContext(ctx)
+			cancel()
+		} else if !remote {
+			avail := acp.Available()
+			names = make([]string, 0, len(avail))
+			for _, ag := range avail {
+				names = append(names, ag.Name)
+			}
+		}
+		post(func() { apply(names) })
+	}()
 }
 
 // startAgentTask runs prompt in the background and closes the sheet.
@@ -69,12 +132,61 @@ func (a *app) startAgentTask(prompt string) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	t := &agentTask{prompt: prompt, cancel: cancel, tools: map[string]string{}, started: time.Now()}
+	remote := a.store != nil && a.store.IsRemote()
+	client := a.store.Client()
+	selected := a.agentSelected
+	t := &agentTask{
+		prompt:  prompt,
+		agent:   selected,
+		remote:  remote,
+		cancel:  cancel,
+		tools:   map[string]string{},
+		started: time.Now(),
+	}
 	a.agentTask = t
 	a.agentOpen = false
 	dir := a.store.Dir
 	go func() {
-		s, _, err := acp.StartAny(ctx, dir, func(ev acp.Event) {
+		if remote {
+			if client == nil {
+				post(func() {
+					if a.agentTask != t {
+						return
+					}
+					a.agentTask = nil
+					a.notifyAgentTask(t, "Agent could not start", "", "remote host is not connected")
+					a.invalidate()
+				})
+				return
+			}
+			s, err := client.StartACP(ctx, dir, selected, prompt, func(ev acp.Event) {
+				post(func() { a.agentTaskEvent(t, ev) })
+			})
+			if err != nil {
+				post(func() {
+					if a.agentTask != t {
+						return
+					}
+					a.agentTask = nil
+					a.notifyAgentTask(t, "Agent could not start", "", err.Error())
+					a.invalidate()
+				})
+				return
+			}
+			if ctx.Err() != nil {
+				s.Close()
+				return
+			}
+			post(func() {
+				if a.agentTask != t {
+					s.Close()
+					return
+				}
+				t.sess = s
+			})
+			return
+		}
+		s, _, err := acp.StartAgent(ctx, dir, selected, func(ev acp.Event) {
 			post(func() { a.agentTaskEvent(t, ev) })
 		})
 		if err != nil {
@@ -143,6 +255,11 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 				}
 				t.tools[ev.Tool.ID] = ev.Tool.Title
 			}
+			if title := ev.Tool.Title; title != "" {
+				t.currentTool = title
+			} else if saved := t.tools[ev.Tool.ID]; saved != "" {
+				t.currentTool = saved
+			}
 			if ev.Tool.Status == acp.StatusFailed {
 				title := ev.Tool.Title
 				if title == "" {
@@ -166,6 +283,9 @@ func (a *app) agentTaskEvent(t *agentTask, ev acp.Event) {
 		a.resolveAgentPermission(t, ev.Permission)
 	case acp.KindTurnDone:
 		title, body := agentTurnNotification(ev.Stop, t.reply.String(), t.prompt)
+		a.agentLastAgent = t.agent
+		a.agentLastSummary = body
+		a.agentLastDuration = shortDuration(time.Since(t.started))
 		a.notifyAgentTask(t, title, t.agentSub(true), body)
 		a.finishAgentTask(t)
 	case acp.KindFailed:
@@ -415,6 +535,17 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 					ui.Text(c, "Running "+t.prompt).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.TextMuted).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				})
+				meta := t.agentSub(true)
+				if t.currentTool != "" {
+					if meta != "" {
+						meta += " · "
+					}
+					meta += t.currentTool
+				}
+				if meta != "" {
+					ui.Text(c, meta).FontSize(c.Theme().Rem(11.5 / 13)).TextColor(k.TextFaint).
+						SingleLine().Ellipsis("…")
+				}
 				if ui.Button(c, "Stop").Clicked() {
 					a.later(func() { a.stopAgentTask() })
 				}
@@ -422,9 +553,49 @@ func (a *app) agentSheet(c *ui.Context, k *colors) {
 			return
 		}
 		ui.Column(c).Padding(12, 16).Gap(10).Children(func() {
-			ui.Text(c, "Runs the first ACP agent it finds — omp, Claude Code, Codex, Gemini CLI, Goose and others — in the background, and notifies you when it finishes, fails or asks for permission.").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint)
-			if ui.PrimaryButton(c, "Run").Clicked() {
-				submit = true
+			if len(a.agentChoices) > 0 {
+				ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
+					if agentChoicePill(c, k, "Auto", a.agentSelected == "").Clicked() {
+						a.agentSelected = ""
+					}
+					for _, name := range a.agentChoices {
+						name := name
+						if agentChoicePill(c, k, name, a.agentSelected == name).Clicked() {
+							a.agentSelected = name
+						}
+					}
+				})
+			}
+			ui.Text(c, "Runs an ACP agent — omp, Claude Code, Codex, Gemini CLI, Goose and others — in the background (locally or on the open SSH host), and notifies you when it finishes, fails or asks for permission.").FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if ui.PrimaryButton(c, "Run").Clicked() {
+					submit = true
+				}
+				if a.agentLastSummary != "" && a.store != nil && !a.store.IsMemory() {
+					if ui.Button(c, "Review Diff").Clicked() {
+						a.agentOpen = false
+						a.later(func() {
+							if !a.git.Open {
+								a.toggleGit()
+							} else {
+								a.refreshGit()
+							}
+						})
+					}
+				}
+			})
+			if a.agentLastSummary != "" {
+				label := "Last result"
+				if a.agentLastAgent != "" {
+					label = a.agentLastAgent
+				}
+				if a.agentLastDuration != "" {
+					label += " · " + a.agentLastDuration
+				}
+				ui.Column(c).Padding(8, 10).Gap(2).Radius(radius).Background(k.Hover).Children(func() {
+					ui.Text(c, label).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(600).TextColor(k.TextMuted)
+					ui.Text(c, a.agentLastSummary).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint)
+				})
 			}
 		})
 	})
@@ -468,4 +639,64 @@ func (a *app) agentPermission(c *ui.Context, k *colors, t *agentTask) {
 			}
 		})
 	})
+}
+
+// agentStatusChip is the quiet title-bar indicator shown only while a
+// background ACP task is running or waiting for permission.
+func (a *app) agentStatusChip(c *ui.Context, k *colors) {
+	t := a.agentTask
+	if t == nil {
+		return
+	}
+	label := "Agent"
+	if t.perm != nil {
+		label = "Permission"
+	} else if t.agent != "" {
+		label = strings.Fields(t.agent)[0]
+	}
+	tip := t.prompt
+	if t.perm != nil && t.perm.Title != "" {
+		tip = "Permission needed: " + t.perm.Title
+	} else if t.currentTool != "" {
+		tip = t.prompt + " — " + t.currentTool
+	}
+	chip := ui.ButtonBase(c).Height(tabH).Padding(0, 9).Gap(6).Radius(radius - 2).
+		AlignItems(ui.Center).Cursor(ui.CursorPointer).Shrink(0).
+		Label("Agent task: " + label).Tooltip(tip).Transition(motion.Colors)
+	if chip.Hovered() {
+		chip.Background(k.Pressed)
+	} else {
+		chip.Background(k.Hover)
+	}
+	if chip.Clicked() {
+		a.later(func() { a.openAgentTask() })
+	}
+	chip.Children(func() {
+		if t.perm != nil {
+			ui.Box(c).Size(dotSize, dotSize).Radius(dotSize / 2).Background(k.Attention)
+		} else {
+			ui.Spinner(c).Size(12, 12).Label("Agent running")
+		}
+		ui.Text(c, label).FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(500).TextColor(k.Text)
+	})
+}
+
+func agentChoicePill(c *ui.Context, k *colors, name string, active bool) ui.Element {
+	b := ui.ButtonBase(c).Height(24).Padding(0, 9).Radius(radius - 2).
+		Cursor(ui.CursorPointer).Label("Agent " + name).Transition(motion.Colors)
+	fg := k.TextMuted
+	switch {
+	case active:
+		b.Background(c.Theme().Accent)
+		fg = c.Theme().AccentText
+	case b.Hovered():
+		b.Background(k.Pressed)
+		fg = k.Text
+	default:
+		b.Background(k.Hover)
+	}
+	b.Children(func() {
+		ui.Text(c, name).FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(500).TextColor(fg)
+	})
+	return b
 }

@@ -10,6 +10,9 @@ import (
 	"mojian/internal/acp"
 	"mojian/internal/fs"
 	"mojian/internal/project"
+	"mojian/internal/session"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func TestAgentNotificationBodyCondensesTheAnswer(t *testing.T) {
@@ -260,5 +263,51 @@ func TestAgentEventsRemainIsolatedToTheirTask(t *testing.T) {
 	a.agentTaskEvent(oldTask, acp.Event{Kind: acp.KindTurnDone, Stop: "end_turn"})
 	if a.agentTask != newTask {
 		t.Fatal("an old task's terminal event cleared the replacement task")
+	}
+}
+
+func TestAgentTitleBarStatusChipAndDiffHandoff(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.harness = true
+	task := &agentTask{prompt: "refactor tests", agent: "Claude Code"}
+	a.agentTask = task
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	if !tt.HasText("Claude") {
+		t.Fatalf("expected running agent chip in title bar, texts=%q", tt.Texts())
+	}
+
+	// Tool updates record currentTool, and permission flips chip label to Permission.
+	a.agentTaskEvent(task, acp.Event{Kind: acp.KindTool, Tool: &acp.Tool{ID: "1", Title: "Running go test"}})
+	if task.currentTool != "Running go test" {
+		t.Fatalf("currentTool = %q", task.currentTool)
+	}
+	a.agentTaskEvent(task, acp.Event{Kind: acp.KindPermission, Permission: &acp.Permission{Title: "Edit main.go?"}})
+	tt.Frame()
+	if !tt.HasText("Permission") {
+		t.Fatalf("expected Permission status chip, texts=%q", tt.Texts())
+	}
+
+	// Turn completion stores last summary and exposes Review Diff in the reopened sheet.
+	task.reply.WriteString("Updated main.go and tests pass.")
+	a.agentTaskEvent(task, acp.Event{Kind: acp.KindTurnDone, Stop: "end_turn"})
+	if a.agentTask != nil || !strings.Contains(a.agentLastSummary, "Updated main.go") {
+		t.Fatalf("after completion: task=%v summary=%q", a.agentTask, a.agentLastSummary)
+	}
+	a.openAgentTask()
+	a.agentChoices = []string{"Claude Code", "Codex"}
+	tt.Frame()
+	if !tt.HasText("Review Diff") || !tt.HasText("Auto") || !tt.HasText("Codex") {
+		t.Fatalf("expected agent choices and Review Diff in sheet, texts=%q", tt.Texts())
+	}
+}
+
+func TestOpenAgentTaskAllowsConnectedRemoteProject(t *testing.T) {
+	remoteStore := project.New(fs.NewServer(&session.Client{}, "/srv/repo", t.TempDir(), false))
+	a := &app{workspace: &workspace{store: remoteStore, remotePath: "/srv/repo", serverAlias: "devbox"}}
+	a.openAgentTask()
+	if !a.agentOpen || a.err != "" {
+		t.Fatalf("expected remote agent sheet open without error: open=%v err=%q", a.agentOpen, a.err)
 	}
 }
