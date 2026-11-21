@@ -166,7 +166,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				return
 			}
 			if p.Preview && isMarkdownPath(p.Note.Path) {
-				a.markdownBody(c, k, p)
+				a.markdownBody(c, k, p, overlay)
 				return
 			}
 			st := p.state
@@ -427,8 +427,10 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 	h := ui.Row(c).Height(headerH).Padding(0, 6, 0, hpad).Gap(hgap).
 		AlignItems(ui.Center).MinWidth(0)
 	if !overlay && h.DoubleClicked() {
-		t.Focus = p
-		a.toggleZoom()
+		a.later(func() {
+			t.Focus = p
+			a.toggleZoom()
+		})
 	}
 	if !overlay && h.Clicked() {
 		clearPaneAttention(p)
@@ -520,8 +522,10 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				zoom, label = "minimize-2", "Unzoom"
 			}
 			if iconButton(c, k, zoom, label+suffix, btn, isize).Tooltip(a.tip(label, cmdZoom)).Clicked() {
-				t.Focus = p
-				a.toggleZoom()
+				a.later(func() {
+					t.Focus = p
+					a.toggleZoom()
+				})
 			}
 		}
 		closeAction := func() {

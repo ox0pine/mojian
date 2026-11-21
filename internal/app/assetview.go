@@ -21,15 +21,19 @@ import (
 const maxPDFPageSide = 4096
 
 // markdownBody shows a note as rendered Markdown, with the same buffer
-// the editor writes.
-func (a *app) markdownBody(c *ui.Context, k *colors, p *pane) {
+// the editor writes. An overlay copy fading out skips TrackScroll so it
+// never binds the same scroll handle twice in one frame.
+func (a *app) markdownBody(c *ui.Context, k *colors, p *pane, overlay bool) {
 	if p.Note == nil {
 		return
 	}
-	if a.focusReq == p {
+	if !overlay && a.focusReq == p {
 		a.focusReq = nil
 	}
-	scroll := ui.Scroll(c).Grow(1).MinHeight(0).TrackScroll(&p.previewScroll)
+	scroll := ui.Scroll(c).Grow(1).MinHeight(0)
+	if !overlay {
+		scroll.TrackScroll(&p.previewScroll)
+	}
 	scroll.Children(func() {
 		ui.Column(c).MaxWidth(780).AlignSelf(ui.Center).
 			Padding(26, 34, 44, 34).Children(func() {
