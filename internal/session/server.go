@@ -74,10 +74,10 @@ func Serve() error {
 	if err != nil {
 		return err
 	}
+	defer lock.Close()
 	if err := lockFile(lock); err != nil {
 		return errors.New("session: a server already runs")
 	}
-	defer lock.Close()
 	sock := SocketPath()
 	removeSocket(sock)
 	ln, err := listen(sock)
