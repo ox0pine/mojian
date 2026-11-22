@@ -190,10 +190,20 @@ func (p *Page) selectedChange() (Change, bool) {
 	return p.Changes[p.Sel], true
 }
 
+type actionWorkspaceHost interface {
+	GitWorkspaceKey() string
+	DeferGitWorkspaceMutation(workspaceKey string, reloadFiles bool)
+}
+
 func (p *Page) runAction(reloadFiles bool, fn func(r Runner, root string) error, onSuccess func()) {
 	h := p.h
 	if h == nil || p.ActionBusy || p.Root == "" {
 		return
+	}
+	workspaceHost, hasWorkspaceHost := h.(actionWorkspaceHost)
+	workspaceKey := ""
+	if hasWorkspaceHost {
+		workspaceKey = workspaceHost.GitWorkspaceKey()
 	}
 	p.runner = h.GitRunner()
 	p.ActionBusy = true
@@ -210,13 +220,30 @@ func (p *Page) runAction(reloadFiles bool, fn func(r Runner, root string) error,
 			return
 		}
 		p.ActionBusy = false
+		// ActionSeq identifies an action on this retained page, not the
+		// project its shared Host currently shows. The mutation has already
+		// finished in the originating repository, so preserve its action
+		// state but do not run follow-up reads or callbacks against another
+		// workspace. Activation refreshes this page from its own repository.
+		currentWorkspace := true
+		if hasWorkspaceHost && workspaceKey != "" {
+			currentWorkspace = workspaceHost.GitWorkspaceKey() == workspaceKey
+		}
 		if err != nil {
 			p.ActionErr = err.Error()
-			h.Invalidate()
+			if currentWorkspace {
+				h.Invalidate()
+			}
 			return
 		}
 		if onSuccess != nil {
 			onSuccess()
+		}
+		if !currentWorkspace {
+			if hasWorkspaceHost {
+				workspaceHost.DeferGitWorkspaceMutation(workspaceKey, reloadFiles)
+			}
+			return
 		}
 		if reloadFiles {
 			h.ReloadFiles()

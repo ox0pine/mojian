@@ -12,11 +12,11 @@ branches and reloads open notes after a checkout.
 
 - [`internal/git/git.go`](../../internal/git/git.go) — `Runner`, `LocalRunner`, `Host`, `PageMode`,
   `Page` (`Seq`, `DiffSeq`, `HistorySeq`, `Loading`, `DiffLoad`, `HistoryLoad`, `Mode`, `Changes`,
-  `Sel`, `Commits`, `CommitSel`, `Diff`), `StatusData`, `Toggle`, `Refresh`, `ShowHistory`,
-  `ShowChanges`, `applyStatus`, `Select`, `loadDiff`, `applyDiff`, `loadHistory`, `applyHistory`,
-  `selectCommit`.
+  `Sel`, `Commits`, `CommitSel`, `Diff`, `DiffStaged`), `StatusData`, `Toggle`, `Refresh`,
+  `ShowHistory`, `ShowChanges`, `applyStatus`, `Select`, `loadDiff`, `applyDiff`, `loadHistory`,
+  `applyHistory`, `selectCommit`.
 - [`internal/git/parse.go`](../../internal/git/parse.go) — `repoRoot`, `ReadStatus`, `parseStatus`,
-  `statusLetter`, `ReadDiff`, `untrackedDiff`, `runGit`, `ParseDiff`, `DiffStat`, `FileDiff`,
+  `statusLetter`, `ReadDiff`, `readDiffSource`, `untrackedDiff`, `runGit`, `ParseDiff`, `DiffStat`, `FileDiff`,
   `SplitDiff`, `toFilePatch` (a `FileDiff` as the viewer's `editor.FilePatch`), `gitHunkCounts`.
 - [`internal/git/history.go`](../../internal/git/history.go) — `Commit`, `HistoryData`,
   `ReadHistory`, `parseHistory`, `ReadCommitDiff`.
@@ -43,8 +43,9 @@ branches and reloads open notes after a checkout.
    `Runner` from `Host.GitRunner()` — `LocalRunner` for a direct project, the session server's
    `Exec` for a server-backed one — and stores the result with the sequence number it started at.
 2. `applyStatus` drops a result whose sequence is stale, then parses the NUL-separated
-   `git status --porcelain` output into `Change` values. `Select` starts `loadDiff`, which calls
-   `ReadDiff` in the background and lands through `applyDiff`, guarded by `DiffSeq`.
+   `git status --porcelain` output into `Change` values. It preserves the selected file by
+   repository-relative `Change.Path`, not by its sorted row. `Select` starts `loadDiff`, which calls
+   `readDiffSource` in the background and lands through `applyDiff`, guarded by `DiffSeq`.
 3. The view reads `Page` and draws; it never starts work. `Host.Invalidate` asks the window for the
    next frame.
 4. `branchChip` draws the branch right of the project chip. Its first frame queues
@@ -70,9 +71,9 @@ branches and reloads open notes after a checkout.
    and only a still-current workspace receives banners or follow-up refreshes.
 7. `stashActiveWorkspace` and `activateWorkspace` bump `branch.seq`, so a read from the project
    that was on screen cannot land in the next one; activation reads the branch again, since a
-   terminal may have moved it while the project was away. `branch.changing`/`changeSeq` keep a
-   checkout exclusive across those activations even though read loading is reset; its completion
-   clears only the originating workspace's operation.
+   terminal may have moved it while the project was away, and refreshes an open Git page from its
+   own workspace. `branch.changing`/`changeSeq` keep a checkout exclusive across those activations
+   even though read loading is reset; its completion clears only the originating workspace's operation.
 8. `Page.ShowHistory` swaps the left list for the repository's commits. `ReadHistory` runs in the
    background under `HistorySeq` and lands through `applyHistory`; the selected commit's patch is
    `ReadCommitDiff`, landing through `applyDiff` under the same `DiffSeq` as a working-tree diff
@@ -107,13 +108,17 @@ branches and reloads open notes after a checkout.
   uses Git's `--literal-pathspecs`, so `[`, `*`, `?` and leading `:` remain filename characters.
 - `repoRoot` removes only rev-parse's CRLF record terminator, not whitespace in the directory name;
   a repository root ending in a space therefore remains usable by status and branch reads.
-- On an unborn HEAD, `ReadDiff` compares the working tree with Git's empty tree (hashed with
-  `hash-object -t tree /dev/null`), not just the index. An `AM` file thus includes both its staged
-  addition and subsequent unstaged lines.
+- `ReadDiff` remains the combined HEAD-to-working-tree reader for callers that need it. On the page,
+  a file with both staged and unstaged changes instead has an explicit Unstaged/Staged switch:
+  `readDiffSource` reads `git diff` or `git diff --cached`, and hunk actions use the same list the
+  person sees. A mixed file opens on Unstaged; a staged-only file opens on its cached diff. On an
+  unborn HEAD, the combined and staged readers compare against Git's empty tree (hashed with
+  `hash-object -t tree /dev/null`), so an `AM` file still exposes both its addition and later edits.
 - Before reading an untracked file, `untrackedDiff` asks Git for a raw no-index diff. Mode `120000`
   builds a symlink patch whose added line is the exact target text from `Runner.Readlink` — local
   `os.Readlink` or the host's `readlink` — so Windows' Git/Go path normalization cannot make it read
-  the target file. Regular files keep the existing size and binary limits.
+  the target file. Regular files keep the existing size and binary limits. A text file without a
+  trailing newline gets Git's `\ No newline at end of file` marker instead of an invented newline.
 - `gitenv.Env` removes the variables that redirect Git at another repository, including
   `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` pairs, so a hook or parent
   process cannot change what the page reads.
@@ -134,7 +139,10 @@ branches and reloads open notes after a checkout.
   `git apply` on both local and remote `session.Client.ExecStdin`) run through the active `Runner`
   off the UI thread, guarded by `ActionBusy` and `ActionSeq`. `Discard` requires a second
   confirmation click (`Confirm Discard`) and calls `Host.ReloadFiles` so open clean notes reflect
-  the restored file; every completed mutation calls `Host.AfterGitMutation` and refreshes the page.
+  the restored file; every completed mutation calls `Host.AfterGitMutation` and refreshes the page
+  only while its originating workspace is still current. A completion in a cached workspace defers
+  those host callbacks and its own refresh until activation, using the host-and-path workspace key,
+  so it cannot read or mutate the project currently on screen.
 - `toFilePatch` turns a parsed `FileDiff` into the viewer's `editor.FilePatch`: hunk headers keep
   their counts and section text, a blank context line regains its space prefix, and a `\ No newline`
   line stays as it is. Every other line is cut at `diffLineRunes` (2000) with `…` after its prefix,
@@ -148,10 +156,12 @@ branches and reloads open notes after a checkout.
   its heading; the 2500-line budget cuts whole hunks (`cutFileDiff`) and still ends with the
   "… diff truncated" note. The viewer brings selection, copy, find, go-to-line and its own
   scrollbar, and draws its gutter, so the page no longer draws rows, numbers or per-line colors.
-- Previous/Next Hunk uses `DiffState.GoToHunk` with the toolbar's absolute index, rather than a
-  relative command from a caret that may still be before the first hunk. `HunkSel` then follows the
-  viewport after wheel, scrollbar and keyboard navigation, so the counter and hunk actions stay on
-  the change the person sees.
+- `hunkRuns` maps each Git `@@` hunk to its first MyGo change run: unchanged context can split one
+  Git hunk into several viewer runs. Previous/Next Hunk uses that mapping with `DiffState.GoToHunk`;
+  scroll position maps back through the same ranges and wins over an old caret, while a newly moved
+  caret updates the selection without scrolling. The counter, visible patch and hunk action therefore
+  stay on the same change. File and hunk mutations live in compact Actions menus, with the same
+  confirmation flow, so all operations remain reachable at the minimum window width.
 - Editor panes in a Git repository asynchronously read each open file's `HEAD` text through
   `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/git_bridge.go`)
   and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation (`NextHunk`,
@@ -177,6 +187,8 @@ branches and reloads open notes after a checkout.
 - With automatic Git refresh enabled, window focus calls `Page.Refresh` even when the project
   listing is still fresh enough to reuse. This catches commits that changed only `.git` metadata,
   which the project watcher excludes; in History mode the same refresh reads the commit list again.
+  The same focus path invalidates open editors' cached HEAD buffers, so their gutters do not keep
+  comparing against the pre-commit HEAD.
 - The page's branch menu reads the branches again when it opens, so a branch added in a terminal
   appears without a refresh. It never opens the title bar's menu: its popover anchors to the page's
   chip and its state is the page's. A checkout is refused while a note holds unsaved edits, and the

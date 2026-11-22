@@ -144,9 +144,24 @@ func statusLetter(code string) string {
 	}
 }
 
+type diffSource uint8
+
+const (
+	diffCombined diffSource = iota
+	diffUnstaged
+	diffStaged
+)
+
 // ReadDiff reads one file's diff against HEAD, including staged and
 // unstaged work. Untracked files are shown as additions.
 func ReadDiff(r Runner, root string, c Change) (string, error) {
+	return readDiffSource(r, root, c, diffCombined)
+}
+
+// readDiffSource reads the exact patch a page view and its hunk actions
+// share. Mixed files use the staged or unstaged view so an index never
+// refers to a different list of hunks.
+func readDiffSource(r Runner, root string, c Change, source diffSource) (string, error) {
 	if r == nil {
 		r = LocalRunner{}
 	}
@@ -158,22 +173,36 @@ func ReadDiff(r Runner, root string, c Change) (string, error) {
 	if c.OldPath != "" && c.OldPath != path {
 		paths = append([]string{c.OldPath}, paths...)
 	}
-	out, err := r.Run(root, append([]string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "HEAD", "--"}, paths...)...)
-	if err != nil && (strings.Contains(err.Error(), "unknown revision") ||
+	args := []string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff"}
+	switch source {
+	case diffStaged:
+		args = append(args, "--cached", "HEAD")
+	case diffUnstaged:
+	default:
+		args = append(args, "HEAD")
+	}
+	args = append(args, "--")
+	out, err := r.Run(root, append(args, paths...)...)
+	if err != nil && source != diffUnstaged && (strings.Contains(err.Error(), "unknown revision") ||
 		strings.Contains(err.Error(), "bad revision") ||
 		strings.Contains(err.Error(), "ambiguous argument")) {
-		// With no HEAD, compare the working tree with the empty tree so
-		// both the staged addition and later unstaged edits are present.
+		// With no HEAD, compare the index (or the combined working tree)
+		// with Git's empty tree.
 		var tree string
 		tree, err = r.Run(root, "hash-object", "-t", "tree", "/dev/null")
 		if err == nil {
-			out, err = r.Run(root, append([]string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", strings.TrimSpace(tree), "--"}, paths...)...)
+			args := []string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff"}
+			if source == diffStaged {
+				args = append(args, "--cached")
+			}
+			args = append(args, strings.TrimSpace(tree), "--")
+			out, err = r.Run(root, append(args, paths...)...)
 		}
 	}
 	if err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(out) == "" {
+	if source == diffCombined && strings.TrimSpace(out) == "" {
 		out, err = r.Run(root, append([]string{"--literal-pathspecs", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--cached", "--"}, paths...)...)
 		if err != nil {
 			return "", err
@@ -212,6 +241,7 @@ func untrackedDiff(r Runner, root, path, display string) (string, error) {
 		return "Binary file not shown.\n", nil
 	}
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	trailingNewline := strings.HasSuffix(text, "\n")
 	lines := strings.Split(text, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
@@ -226,6 +256,9 @@ func untrackedDiff(r Runner, root, path, display string) (string, error) {
 		b.WriteByte('+')
 		b.WriteString(line)
 		b.WriteByte('\n')
+	}
+	if !trailingNewline {
+		b.WriteString("\\ No newline at end of file\n")
 	}
 	return b.String(), nil
 }

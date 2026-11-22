@@ -486,74 +486,58 @@ func (p *Page) hunkBar(c *ui.Context, k *theme.Colors) {
 		p.HunkSel = len(hunks) - 1
 	}
 	idx := p.HunkSel
-	navDisabled := p.diffView == nil || p.diffView.Comparing()
+	navDisabled := p.diffView == nil || p.diffView.Comparing() || len(p.hunkRuns) != len(hunks)
 	ui.Divider(c)
 	ui.Row(c).Height(28).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
-		if iconButton(c, k, "chevron-left", "Previous Hunk", 22, 13).
+		if iconButton(c, k, "chevron-left", "Previous Hunk", 22, 13).Shrink(0).
 			Disabled(navDisabled || idx <= 0).Clicked() {
 			p.goToHunk(idx - 1)
 		}
 		ui.Text(c, fmt.Sprintf("Hunk %d/%d", idx+1, len(hunks))).
 			FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(k.TextMuted).Shrink(0)
-		if iconButton(c, k, "chevron-right", "Next Hunk", 22, 13).
+		if iconButton(c, k, "chevron-right", "Next Hunk", 22, 13).Shrink(0).
 			Disabled(navDisabled || idx >= len(hunks)-1).Clicked() {
 			p.goToHunk(idx + 1)
 		}
 		ui.Text(c, hunks[idx].Header).Font(theme.NoteFont.Family).
 			FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if ch.Unstaged {
-			if headerActionButton(c, k, "Stage Hunk", false, p.ActionBusy).Clicked() {
-				p.StageHunkSelected(idx)
-			}
-			if p.hunkDiscard == idx {
-				if headerActionButton(c, k, "Confirm Discard", true, p.ActionBusy).Clicked() {
-					p.DiscardHunkSelected(idx)
-				}
-				if headerActionButton(c, k, "Cancel", false, p.ActionBusy).Clicked() {
-					p.hunkDiscard = -1
-				}
-			} else {
-				if headerActionButton(c, k, "Discard Hunk", false, p.ActionBusy).Clicked() {
-					p.hunkDiscard = idx
-				}
-			}
-		}
-		if ch.Staged {
-			if headerActionButton(c, k, "Unstage Hunk", false, p.ActionBusy).Clicked() {
-				p.UnstageHunkSelected(idx)
-			}
-		}
+		p.hunkActionsMenu(c, k, ch, idx)
 	})
 }
 
-// goToHunk moves both the toolbar selection and the viewer to one absolute
-// hunk. Relative NextHunk/PreviousHunk commands would start from the caret,
-// which is before the first hunk until the user clicks in the diff.
+// goToHunk moves to the first change run of one absolute Git hunk. A Git
+// hunk can contain several runs separated by unchanged context lines.
 func (p *Page) goToHunk(idx int) {
 	d := p.diffView
-	if d == nil || d.Comparing() || idx < 0 || idx >= len(d.Hunks()) {
+	if d == nil || d.Comparing() || idx < 0 || idx >= len(p.hunkRuns) {
+		return
+	}
+	run := p.hunkRuns[idx].first
+	if p.hunkRuns[idx].count == 0 || run < 0 || run >= len(d.Hunks()) {
 		return
 	}
 	p.HunkSel = idx
 	p.hunkDiscard = -1
 	p.hunkJump = true
-	d.GoToHunk(idx)
+	d.GoToHunk(run)
 	p.h.Invalidate()
 }
 
 // syncHunkSelection keeps the toolbar with the diff after wheel, scrollbar
-// and keyboard navigation. Only a changed layout needs the Hunks allocation;
-// caret movement without scrolling is enough to update the selection too.
+// and keyboard navigation. Scroll position wins over an old caret; only a
+// new caret position may change the selection without a viewport change.
 func (p *Page) syncHunkSelection(count int) {
 	d := p.diffView
 	if d == nil || count == 0 {
 		return
 	}
 	y, viewH := d.ScrollY(), d.ViewportHeight()
+	cursor := d.Cursor()
 	comparing := d.Comparing()
 	moved := p.hunkSyncGen != p.diffGen || y != p.hunkScrollY ||
 		viewH != p.hunkViewH || comparing != p.hunkComparing
+	cursorChanged := p.hunkSyncGen == p.diffGen && cursor != p.hunkCursor
 	switch {
 	case p.hunkJump && p.hunkSyncGen == p.diffGen:
 		// GoToHunk applied its scroll in the preceding diff body. Keep the
@@ -563,22 +547,38 @@ func (p *Page) syncHunkSelection(count int) {
 		p.hunkJump = false
 		center := y + viewH/2
 		selected := 0
-		for i, hunk := range d.Hunks() {
-			if i >= count || d.LineTop(editor.DiffNew, hunk.NewStart) > center {
+		runs := d.Hunks()
+		for i, mapping := range p.hunkRuns {
+			if i >= count || mapping.count == 0 || mapping.first >= len(runs) {
+				break
+			}
+			if d.LineTop(editor.DiffNew, runs[mapping.first].NewStart) > center {
 				break
 			}
 			selected = i
 		}
 		p.HunkSel = selected
-	default:
-		if current, inside := d.CurrentHunk(); inside && current < count {
-			p.HunkSel = current
+	case cursorChanged:
+		if current, inside := d.CurrentHunk(); inside {
+			if selected := p.gitHunkForRun(current); selected >= 0 && selected < count {
+				p.HunkSel = selected
+			}
 		}
 	}
 	p.hunkSyncGen = p.diffGen
 	p.hunkScrollY = y
 	p.hunkViewH = viewH
 	p.hunkComparing = comparing
+	p.hunkCursor = cursor
+}
+
+func (p *Page) gitHunkForRun(run int) int {
+	for i, mapping := range p.hunkRuns {
+		if run >= mapping.first && run < mapping.first+mapping.count {
+			return i
+		}
+	}
+	return -1
 }
 
 func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
@@ -600,6 +600,9 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 			ui.Text(c, dir).FontSize(c.Theme().Rem(12.0 / 13)).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		}
+		if ch, ok := p.selectedChange(); ok && ch.Staged && ch.Unstaged {
+			p.diffSourceButton(c, k)
+		}
 		ui.Spacer(c)
 		if status := p.changeStatus(); status != "" {
 			p.statusBadge(c, k, status, false)
@@ -611,57 +614,144 @@ func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {
 				TextColor(k.DiffDel).Shrink(0)
 		}
 		if ch, ok := p.selectedChange(); ok {
-			if !ch.Staged || ch.Unstaged {
-				if headerActionButton(c, k, "Stage", false, p.ActionBusy).Clicked() {
-					p.StageSelected()
-				}
-			}
-			if ch.Staged {
-				if headerActionButton(c, k, "Unstage", false, p.ActionBusy).Clicked() {
-					p.UnstageSelected()
-				}
-			}
-			if p.discardPrompt == ch.Path {
-				if headerActionButton(c, k, "Confirm Discard", true, p.ActionBusy).Clicked() {
-					p.DiscardSelected()
-				}
-				if headerActionButton(c, k, "Cancel", false, p.ActionBusy).Clicked() {
-					p.discardPrompt = ""
-				}
-			} else {
-				if headerActionButton(c, k, "Discard", false, p.ActionBusy).Clicked() {
-					p.discardPrompt = ch.Path
-				}
-			}
-		}
-		if p.h.HasPath(path) {
-			if headerActionButton(c, k, "Open", false, false).Label("Open File").Clicked() {
-				p.h.OpenPath(path)
-			}
+			p.fileActionsMenu(c, k, path, ch)
 		}
 	})
 }
 
-func headerActionButton(c *ui.Context, k *theme.Colors, text string, danger, disabled bool) ui.Element {
-	b := ui.ButtonBase(c).Padding(4, 9).Radius(theme.Radius).
-		Cursor(ui.CursorPointer).Label(text).Disabled(disabled).
-		Transition(motion.Colors)
+func (p *Page) diffSourceButton(c *ui.Context, k *theme.Colors) {
+	current, next := "Unstaged", "Show Staged"
+	if p.DiffStaged {
+		current, next = "Staged", "Show Unstaged"
+	}
+	b := ui.ButtonBase(c.Key("git-diff-source")).Height(22).Padding(0, 7).Radius(theme.Radius - 2).
+		Cursor(ui.CursorPointer).Label(next).Tooltip(next).Shrink(0).Transition(motion.Colors)
+	if b.Hovered() {
+		b.Background(k.Hover)
+	}
+	if b.Clicked() {
+		p.showStagedDiff(!p.DiffStaged)
+	}
+	b.Children(func() {
+		ui.Text(c, current).FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(k.TextMuted)
+	})
+}
+
+func compactActionMenu(c *ui.Context, k *theme.Colors, label string, open *bool, busy bool) ui.MenuParts {
+	m := ui.MenuBase(c, open)
+	b := m.Trigger.Height(22).Padding(0, 6).Radius(theme.Radius - 2).Gap(3).
+		Cursor(ui.CursorPointer).Label(label).Tooltip(label).Disabled(busy).Shrink(0).Transition(motion.Colors)
+	if *open || b.Hovered() {
+		b.Background(k.Hover)
+	}
+	b.Children(func() {
+		ui.Text(c, "Actions").FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(k.TextMuted)
+		ui.Icon(c, icons.Icon("chevron-down")).Size(11, 11).TextColor(k.TextFaint)
+	})
+	return m
+}
+
+func actionMenuItem(c *ui.Context, k *theme.Colors, m ui.MenuParts, key, label string, danger bool, run func()) {
+	row := m.Item().Key(key).Height(30).Padding(0, 8).Radius(theme.Radius).
+		Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
+	if row.Highlighted() {
+		row.Background(k.Hover)
+	}
 	fg := k.Text
 	if danger {
 		fg = k.Danger
-		b.Background(k.Danger.Alpha(0.12))
 	}
-	if b.Hovered() {
-		if danger {
-			b.Background(k.Danger.Alpha(0.2))
-		} else {
-			b.Background(k.Hover)
-		}
-	}
-	b.Children(func() {
-		ui.Text(c, text).FontSize(c.Theme().Rem(12.0 / 13)).FontWeight(500).TextColor(fg)
+	row.Children(func() {
+		ui.Text(c, label).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(fg)
 	})
-	return b
+	if row.Clicked() {
+		run()
+	}
+}
+
+func (p *Page) fileActionsMenu(c *ui.Context, k *theme.Colors, path string, ch Change) {
+	m := compactActionMenu(c, k, "File Actions", &p.FileActionsMenu, p.ActionBusy)
+	m.Popup(func(panel ui.Element) {
+		panel.Width(200).Padding(6).Radius(theme.Radius).
+			Background(k.Panel).Border(1, k.PanelBorder).
+			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2)
+		panel.Margin(4, 0, 0, 0)
+		if !ch.Staged || ch.Unstaged {
+			actionMenuItem(c, k, m, "stage", "Stage", false, func() {
+				p.FileActionsMenu = false
+				p.StageSelected()
+			})
+		}
+		if ch.Staged {
+			actionMenuItem(c, k, m, "unstage", "Unstage", false, func() {
+				p.FileActionsMenu = false
+				p.UnstageSelected()
+			})
+		}
+		if p.discardPrompt == ch.Path {
+			actionMenuItem(c, k, m, "confirm-discard", "Confirm Discard", true, func() {
+				p.FileActionsMenu = false
+				p.DiscardSelected()
+			})
+			actionMenuItem(c, k, m, "cancel-discard", "Cancel", false, func() {
+				p.discardPrompt = ""
+				p.FileActionsMenu = false
+				p.h.Invalidate()
+			})
+		} else {
+			actionMenuItem(c, k, m, "discard", "Discard", false, func() {
+				p.discardPrompt = ch.Path
+				p.FileActionsMenu = true
+				p.h.Invalidate()
+			})
+		}
+		if p.h.HasPath(path) {
+			ui.Divider(c).Margin(2, 4)
+			actionMenuItem(c, k, m, "open", "Open File", false, func() {
+				p.FileActionsMenu = false
+				p.h.OpenPath(path)
+			})
+		}
+	})
+}
+
+func (p *Page) hunkActionsMenu(c *ui.Context, k *theme.Colors, ch Change, idx int) {
+	m := compactActionMenu(c, k, "Hunk Actions", &p.HunkMenu, p.ActionBusy)
+	m.Popup(func(panel ui.Element) {
+		panel.Width(190).Padding(6).Radius(theme.Radius).
+			Background(k.Panel).Border(1, k.PanelBorder).
+			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2)
+		panel.Margin(4, 0, 0, 0)
+		if ch.Unstaged && !p.DiffStaged {
+			actionMenuItem(c, k, m, "stage-hunk", "Stage Hunk", false, func() {
+				p.HunkMenu = false
+				p.StageHunkSelected(idx)
+			})
+			if p.hunkDiscard == idx {
+				actionMenuItem(c, k, m, "confirm-discard-hunk", "Confirm Discard", true, func() {
+					p.HunkMenu = false
+					p.DiscardHunkSelected(idx)
+				})
+				actionMenuItem(c, k, m, "cancel-discard-hunk", "Cancel", false, func() {
+					p.hunkDiscard = -1
+					p.HunkMenu = false
+					p.h.Invalidate()
+				})
+			} else {
+				actionMenuItem(c, k, m, "discard-hunk", "Discard Hunk", false, func() {
+					p.hunkDiscard = idx
+					p.HunkMenu = true
+					p.h.Invalidate()
+				})
+			}
+		}
+		if ch.Staged && p.DiffStaged {
+			actionMenuItem(c, k, m, "unstage-hunk", "Unstage Hunk", false, func() {
+				p.HunkMenu = false
+				p.UnstageHunkSelected(idx)
+			})
+		}
+	})
 }
 
 // commitHeader names the commit whose patch the diff pane shows.
@@ -776,6 +866,7 @@ func (p *Page) buildDiffViews(c *ui.Context) {
 	}
 	p.viewsGen = p.diffGen
 	p.diffView, p.patchViews = nil, nil
+	p.hunkRuns = nil
 	p.patchCut = false
 	if p.Mode == ModeHistory {
 		p.buildPatchViews(c)
@@ -783,7 +874,38 @@ func (p *Page) buildDiffViews(c *ui.Context) {
 	}
 	if files := SplitDiff(p.Diff); len(files) > 0 {
 		p.diffView = p.newDiffView(c, files[0], false)
+		p.hunkRuns = diffHunkRuns(files[0])
 	}
+}
+
+// diffHunkRuns mirrors MyGo's patchRuns boundaries without rebuilding the
+// patch: each unchanged line ends the current run, while no-newline markers
+// do not. Indices in the returned slice are Git hunk indices.
+func diffHunkRuns(f FileDiff) []hunkRunRange {
+	var out []hunkRunRange
+	runs := 0
+	inRun := false
+	for _, line := range f.Lines {
+		switch line.kind {
+		case '@':
+			out = append(out, hunkRunRange{first: runs})
+			inRun = false
+		case '\\':
+			// A no-newline marker belongs to the preceding changed line.
+		case '+', '-':
+			if len(out) == 0 {
+				continue
+			}
+			if !inRun {
+				runs++
+				out[len(out)-1].count++
+				inRun = true
+			}
+		default:
+			inRun = false
+		}
+	}
+	return out
 }
 
 // buildPatchViews makes one viewer per file a commit touched, stopping

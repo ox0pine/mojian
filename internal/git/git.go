@@ -104,6 +104,12 @@ const (
 	ModeHistory
 )
 
+// hunkRunRange maps one Git @@ hunk to the viewer's contiguous change runs.
+type hunkRunRange struct {
+	first int
+	count int
+}
+
 // Page is the working-tree diff: its state and its view.
 type Page struct {
 	Open       bool
@@ -116,6 +122,7 @@ type Page struct {
 	Sel        int
 	Diff       string
 	DiffPath   string
+	DiffStaged bool // mixed files show either the index or working-tree patch
 	DiffErr    string
 	DiffLoad   bool
 	Seq        int
@@ -142,6 +149,7 @@ type Page struct {
 	diffAdd    int
 	diffDel    int
 	diffView   *editor.DiffState
+	hunkRuns   []hunkRunRange
 	patchViews []*editor.DiffState
 	viewsGen   int
 	patchCut   bool
@@ -152,18 +160,21 @@ type Page struct {
 	HunkSel   int
 	// The last diff layout used to derive HunkSel from scrolling. A
 	// button jump keeps its explicit selection for the following layout.
-	hunkScrollY   float64
-	hunkViewH     float64
-	hunkSyncGen   int
-	hunkComparing bool
-	hunkJump      bool
-	SyncMenu      bool
-	ActionBusy    bool
-	ActionErr     string
-	ActionInfo    string
-	ActionSeq     int
-	discardPrompt string
-	hunkDiscard   int
+	hunkScrollY     float64
+	hunkViewH       float64
+	hunkSyncGen     int
+	hunkComparing   bool
+	hunkJump        bool
+	hunkCursor      int
+	HunkMenu        bool
+	FileActionsMenu bool
+	SyncMenu        bool
+	ActionBusy      bool
+	ActionErr       string
+	ActionInfo      string
+	ActionSeq       int
+	discardPrompt   string
+	hunkDiscard     int
 
 	// BranchMenu is the page's own popover under the branch chip; it
 	// reads the branches again each time it opens.
@@ -254,6 +265,10 @@ func (p *Page) applyStatus(seq int, data StatusData) {
 		return
 	}
 	p.Loading = false
+	selectedPath := ""
+	if p.Sel >= 0 && p.Sel < len(p.Changes) {
+		selectedPath = p.Changes[p.Sel].Path
+	}
 	p.Root = data.Root
 	p.Prefix = data.Prefix
 	p.Branch = data.Branch
@@ -270,6 +285,14 @@ func (p *Page) applyStatus(seq int, data StatusData) {
 		return
 	}
 	sel := min(max(p.Sel, 0), len(data.Changes)-1)
+	if selectedPath != "" {
+		for i := range data.Changes {
+			if data.Changes[i].Path == selectedPath {
+				sel = i
+				break
+			}
+		}
+	}
 	if p.Mode == ModeHistory {
 		p.Sel = sel
 		return
@@ -311,6 +334,7 @@ func (p *Page) clearDiff() {
 	p.diffAdd, p.diffDel = 0, 0
 	p.DiffSeq++
 	p.patch = nil
+	p.hunkRuns = nil
 	p.diffGen++
 	p.diffView, p.patchViews = nil, nil
 }
@@ -453,10 +477,37 @@ func (p *Page) loadDiff(i int) {
 		return
 	}
 	change := p.Changes[i]
+	newPath := p.DiffPath != change.Display
+	source := diffCombined
+	if change.Status != "U" {
+		switch {
+		case change.Staged && change.Unstaged:
+			if newPath {
+				p.DiffStaged = false
+			}
+			if p.DiffStaged {
+				source = diffStaged
+			} else {
+				source = diffUnstaged
+			}
+		case change.Staged:
+			p.DiffStaged = true
+			source = diffStaged
+		default:
+			p.DiffStaged = false
+		}
+	}
+	if newPath {
+		p.HunkSel = 0
+		p.hunkDiscard = -1
+	}
 	p.DiffPath = change.Display
 	p.Diff = ""
 	p.DiffErr = ""
 	p.patch = nil
+	p.hunkRuns = nil
+	p.HunkMenu = false
+	p.FileActionsMenu = false
 	p.DiffLoad = true
 	p.DiffScroll = ui.ScrollState{}
 	p.diffGen++
@@ -465,13 +516,13 @@ func (p *Page) loadDiff(i int) {
 	seq := p.DiffSeq
 	root := p.Root
 	if h.Window() == nil {
-		diff, err := ReadDiff(p.runner, root, change)
+		diff, err := readDiffSource(p.runner, root, change, source)
 		p.applyDiff(seq, diff, err)
 		return
 	}
 	win := h.Window()
 	go func() {
-		diff, err := ReadDiff(p.runner, root, change)
+		diff, err := readDiffSource(p.runner, root, change, source)
 		win.Update(func() {
 			if seq == p.DiffSeq {
 				p.applyDiff(seq, diff, err)
@@ -479,6 +530,20 @@ func (p *Page) loadDiff(i int) {
 			}
 		})
 	}()
+}
+
+// showStagedDiff switches a mixed file between its two independent patch
+// lists, keeping navigation and mutation indices in the same coordinate system.
+func (p *Page) showStagedDiff(staged bool) {
+	ch, ok := p.selectedChange()
+	if !ok || !ch.Staged || !ch.Unstaged || p.DiffStaged == staged {
+		return
+	}
+	p.DiffStaged = staged
+	p.HunkSel = 0
+	p.hunkDiscard = -1
+	p.loadDiff(p.Sel)
+	p.h.Invalidate()
 }
 
 func (p *Page) applyDiff(seq int, diff string, err error) {
@@ -490,6 +555,7 @@ func (p *Page) applyDiff(seq int, diff string, err error) {
 	p.diffAdd, p.diffDel = DiffStat(diff)
 	p.DiffErr = ""
 	p.patch = nil
+	p.hunkRuns = nil
 	p.diffGen++
 	p.diffView, p.patchViews = nil, nil
 	if err != nil {

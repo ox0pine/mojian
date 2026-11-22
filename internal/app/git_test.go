@@ -322,9 +322,19 @@ func TestGitPageStageCommitAndSplitDiff(t *testing.T) {
 	for range 3 {
 		tt.Frame()
 	}
-	if !tt.HasText("Stage") || !tt.HasText("Discard") || !tt.HasText("Commit") {
-		t.Fatalf("expected git actions in view: %q", tt.Texts())
+	if !tt.HasText("Commit") {
+		t.Fatalf("expected commit action in view: %q", tt.Texts())
 	}
+	if err := tt.Click("File Actions"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Stage") || !tt.HasText("Discard") {
+		t.Fatalf("expected file actions in menu: %q", tt.Texts())
+	}
+	if err := tt.Click("File Actions"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if tt.HasText("Amend") {
 		t.Fatalf("Amend is still visible: %q", tt.Texts())
 	}

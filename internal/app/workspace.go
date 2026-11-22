@@ -34,13 +34,15 @@ type workspace struct {
 	openDirs   map[string]bool
 	tabScroll  ui.ScrollState
 
-	git         gitpage.Page
-	branch      branchState
-	diffBases   map[string]*diffBaseEntry
-	diffBaseGen int
-	lsp         *lspManager
-	nav         navHistory
-	revealTab   bool
+	git                gitpage.Page
+	gitMutationPending bool
+	gitReloadPending   bool
+	branch             branchState
+	diffBases          map[string]*diffBaseEntry
+	diffBaseGen        int
+	lsp                *lspManager
+	nav                navHistory
+	revealTab          bool
 }
 
 func workspaceKeyLocal(dir string) string {
@@ -75,6 +77,23 @@ func (a *app) activeWorkspaceKey() string {
 		return workspaceKeyLocal(a.store.Dir)
 	}
 	return ""
+}
+
+// GitWorkspaceKey identifies the project a Git action started in. Remote
+// keys include the host as well as the path: the same repository path on
+// two SSH hosts is still two different workspaces.
+func (a *app) GitWorkspaceKey() string { return a.activeWorkspaceKey() }
+
+// DeferGitWorkspaceMutation keeps a completed mutation's note reload and
+// cache invalidation with its originating cached workspace. Applying them
+// on reactivation avoids both stale A state and side effects on visible B.
+func (a *app) DeferGitWorkspaceMutation(workspaceKey string, reloadFiles bool) {
+	ws := a.workspaces[workspaceKey]
+	if ws == nil {
+		return
+	}
+	ws.gitMutationPending = true
+	ws.gitReloadPending = ws.gitReloadPending || reloadFiles
 }
 
 // stashActiveWorkspace keeps the project on screen for a later switch.
@@ -124,6 +143,23 @@ func (a *app) activateWorkspace(ws *workspace) {
 	a.git.DiffLoad = false
 	a.git.HistoryLoad = false
 	a.closeTransientUI()
+	if ws.gitMutationPending {
+		reloadFiles := ws.gitReloadPending
+		ws.gitMutationPending = false
+		ws.gitReloadPending = false
+		if reloadFiles {
+			a.ReloadFiles()
+		}
+		// The activation below always reads the branch, completing the same
+		// follow-up as AfterGitMutation without starting a duplicate read.
+		a.invalidateDiffBases()
+	}
+	if a.git.Open {
+		// A mutation that completed while this page was cached deliberately
+		// skipped its refresh. Read this workspace now; its ActionSeq remains
+		// intact so the action's own completion state is not discarded.
+		a.git.Refresh()
+	}
 	// A cut is a pending one-shot action for the project it was made in.
 	a.fileCut = false
 	// The branch may have moved while this project was off screen.

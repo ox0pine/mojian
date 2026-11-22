@@ -109,6 +109,7 @@ func (a *app) refreshProject() { a.reloadProject(true) }
 func (a *app) refreshProjectOnFocus() {
 	a.reloadProject(false)
 	if a.git.Open && !a.NoGitAutoRefresh {
+		a.invalidateDiffBases()
 		a.refreshGit()
 	}
 }
