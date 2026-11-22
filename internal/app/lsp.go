@@ -386,6 +386,7 @@ func (a *app) syncEditorLSP(p *pane, st *editor.State) {
 				if !ok {
 					return
 				}
+				a.recordNav()
 				a.openNoteAt(filepath.FromSlash(targetRel), loc.Range.Start.Line+1, loc.Range.Start.Character, loc.Range.Start.Character)
 			})
 		}()

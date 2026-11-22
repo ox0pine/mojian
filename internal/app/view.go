@@ -43,6 +43,10 @@ func (a *app) view(c *ui.Context) {
 	a.palette(c, k)
 	a.quickOpenModal(c, k)
 	a.symbolsModal(c, k)
+	a.workspaceSymbolsModal(c, k)
+	a.refsModal(c, k)
+	a.problemsModal(c, k)
+	a.renameSymbolModal(c, k)
 	a.searchModal(c, k)
 	a.remoteBusyView(c, k)
 	if !a.remoteBusy {

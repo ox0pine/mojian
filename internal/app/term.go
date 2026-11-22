@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/ui"
 )
 
 // termTab is the shell shown by a terminal pane. Its process lives in the
@@ -27,6 +29,11 @@ type termTab struct {
 	connectSeq    uint64
 	attention     bool
 	attentionNote string
+
+	findOpen     bool
+	findFocus    bool
+	findQuery    string
+	pendingPaste string
 }
 
 // displayTitle returns the terminal program's live OSC title when set,
@@ -247,6 +254,10 @@ func (a *app) startTerminal() (*termTab, error) {
 
 // defaultTerminalServer is the server a new terminal belongs to: the
 // remote project's server when one is open, else this machine.
+func (a *app) localTermSpec() termSpec {
+	return termSpec{Server: a.defaultTerminalServer()}
+}
+
 func (a *app) defaultTerminalServer() string {
 	if a.remotePath != "" && a.serverAlias != "" {
 		return a.serverAlias
@@ -362,6 +373,29 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 		Theme:        terminalTheme(a.Theme, false),
 		DarkTheme:    terminalTheme(a.Theme, true),
 		Padding:      terminal.Padding{X: 10, Y: 8},
+		OpenLink: func(link string) bool {
+			return a.openTerminalLink(tt, link)
+		},
+		OnSearch: func(terminal.SearchStatus) {
+			a.invalidate()
+		},
+		OnKey: func(mods ui.Modifiers, key ui.Key) bool {
+			// Cmd+F (macOS) or Ctrl+Shift+F (Linux/Windows) opens terminal find bar.
+			if key == ui.KeyF && ((runtime.GOOS == "darwin" && mods == ui.Super) || (runtime.GOOS != "darwin" && mods == ui.Ctrl|ui.Shift)) {
+				tt.findOpen = true
+				tt.findFocus = true
+				if tt.findQuery != "" && tt.Term != nil {
+					tt.Term.Search(tt.findQuery)
+				}
+				a.invalidate()
+				return true
+			}
+			if key == ui.KeyEscape && tt.findOpen {
+				a.closeTerminalSearch(tt, nil)
+				return true
+			}
+			return false
+		},
 		OnBell: func() {
 			update(func() {
 				a.markTerminalAttention(tt, "Bell")

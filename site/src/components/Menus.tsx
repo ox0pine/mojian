@@ -61,6 +61,7 @@ export function ThemeMenu({ t, theme, onTheme }: ThemeProps) {
 
 const links = [
   ["navFeatures", "#features"],
+  ["navWorkflow", "#shortcuts"],
   ["navFiles", "#files"],
   ["navDownload", "#download"],
 ] as const

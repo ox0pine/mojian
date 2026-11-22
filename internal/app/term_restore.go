@@ -196,6 +196,10 @@ func (a *app) finishRemoteTerminal(p *pane, t *termTab, result remoteTerminalRes
 	t.Term, t.SID, t.stream, t.Client = tt.Term, tt.SID, tt.stream, tt.Client
 	t.connecting = false
 	t.startErr = ""
+	if t.pendingPaste != "" && t.Term != nil {
+		t.Term.Paste(t.pendingPaste)
+		t.pendingPaste = ""
+	}
 	closeDuplicate()
 	release()
 	a.changed()

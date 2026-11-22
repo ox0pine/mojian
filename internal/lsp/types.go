@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -61,6 +62,76 @@ type Symbol struct {
 	Kind   int
 	Line   int // 0-based
 	Col    int // 0-based byte offset within line
+}
+
+// WorkspaceSymbol is a symbol returned by workspace/symbol.
+type WorkspaceSymbol struct {
+	Name   string
+	Detail string
+	Kind   int
+	URI    string
+	Line   int // 0-based
+	Col    int // 0-based UTF-16 character offset
+}
+
+// TextEdit is a single range replacement returned by rename or formatting.
+type TextEdit struct {
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
+}
+
+// WorkspaceEdit describes edits across one or more documents.
+type WorkspaceEdit struct {
+	Changes         map[string][]TextEdit `json:"changes,omitempty"`
+	DocumentChanges []json.RawMessage     `json:"documentChanges,omitempty"`
+}
+
+type textDocumentEdit struct {
+	TextDocument struct {
+		URI string `json:"uri"`
+	} `json:"textDocument"`
+	Edits []TextEdit `json:"edits"`
+}
+
+// ApplyTextEdits applies a set of LSP TextEdits to text and returns the updated content.
+func ApplyTextEdits(text string, edits []TextEdit) string {
+	if len(edits) == 0 {
+		return text
+	}
+	type indexedEdit struct {
+		idx        int
+		start, end int
+		newText    string
+	}
+	resolved := make([]indexedEdit, 0, len(edits))
+	for i, e := range edits {
+		s := PositionToOffset(text, e.Range.Start)
+		end := PositionToOffset(text, e.Range.End)
+		if end < s {
+			end = s
+		}
+		resolved = append(resolved, indexedEdit{idx: i, start: s, end: end, newText: e.NewText})
+	}
+	sort.Slice(resolved, func(i, j int) bool {
+		if resolved[i].start != resolved[j].start {
+			return resolved[i].start > resolved[j].start
+		}
+		if resolved[i].end != resolved[j].end {
+			return resolved[i].end > resolved[j].end
+		}
+		return resolved[i].idx > resolved[j].idx
+	})
+	out := text
+	lastStart := len(out) + 1
+	for _, e := range resolved {
+		if e.end > lastStart {
+			// Skip overlapping edit to keep offsets valid.
+			continue
+		}
+		out = out[:e.start] + e.newText + out[e.end:]
+		lastStart = e.start
+	}
+	return out
 }
 
 // SymbolKindName returns a short label for an LSP SymbolKind.

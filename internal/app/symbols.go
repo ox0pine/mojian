@@ -138,6 +138,7 @@ func (a *app) symbolsModal(c *ui.Context, k *colors) {
 
 func (a *app) jumpToSymbol(sym lsp.Symbol) {
 	if p := a.focusPane(); p != nil && p.Note != nil {
+		a.recordNav()
 		p.Preview = false
 		if p.state == nil {
 			p.state = p.Note.NewState()

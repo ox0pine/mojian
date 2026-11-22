@@ -39,17 +39,41 @@ func (a *app) statusBar(c *ui.Context, k *colors) {
 			}
 			if p != nil && p.Note != nil {
 				if srv := a.lspServerName(p.Note.Rel); srv != "" {
-					ui.Text(c, srv).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextMuted).Shrink(0)
+					btn := ui.ButtonBase(c.Key("status-lsp")).Padding(1, 5).Radius(4).
+						Cursor(ui.CursorPointer).Tooltip("Click to restart " + srv).Label("Restart " + srv)
+					if btn.Hovered() {
+						btn.Background(k.Hover)
+					}
+					if btn.Clicked() {
+						a.later(func() { a.restartLSP() })
+					}
+					btn.Children(func() {
+						ui.Text(c, srv).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextMuted).Shrink(0)
+					})
 				}
-				errs, warns := a.lspDiagCounts(p.Note.Rel)
-				if errs > 0 {
-					ui.Text(c, fmt.Sprintf("%d err", errs)).FontSize(c.Theme().Rem(11.0 / 13)).
-						FontWeight(600).TextColor(k.Danger).Shrink(0)
+			}
+			errs, warns := a.lspDiagCounts("")
+			if errs > 0 || warns > 0 {
+				btn := ui.ButtonBase(c.Key("status-problems")).Padding(1, 5).Radius(4).
+					Cursor(ui.CursorPointer).Tooltip("Show workspace problems").Label("Show problems")
+				if btn.Hovered() {
+					btn.Background(k.Hover)
 				}
-				if warns > 0 {
-					ui.Text(c, fmt.Sprintf("%d warn", warns)).FontSize(c.Theme().Rem(11.0 / 13)).
-						FontWeight(550).TextColor(k.Attention).Shrink(0)
+				if btn.Clicked() {
+					a.later(func() { a.openProblems() })
 				}
+				btn.Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						if errs > 0 {
+							ui.Text(c, fmt.Sprintf("%d err", errs)).FontSize(c.Theme().Rem(11.0 / 13)).
+								FontWeight(600).TextColor(k.Danger).Shrink(0)
+						}
+						if warns > 0 {
+							ui.Text(c, fmt.Sprintf("%d warn", warns)).FontSize(c.Theme().Rem(11.0 / 13)).
+								FontWeight(550).TextColor(k.Attention).Shrink(0)
+						}
+					})
+				})
 			}
 			if a.serverAlias != "" && a.remoteReconnecting[a.serverAlias] {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {

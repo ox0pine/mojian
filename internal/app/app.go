@@ -188,6 +188,35 @@ type app struct {
 	symbolsItems []lsp.Symbol
 	symbolsSeq   int
 
+	wsSymbolsOpen  bool
+	wsSymbolsQuery string
+	wsSymbolsLastQ string
+	wsSymbolsSel   int
+	wsSymbolsList  ui.ListState
+	wsSymbolsItems []wsSymbolItem
+	wsSymbolsBusy  bool
+	wsSymbolsSeq   int
+
+	refsOpen  bool
+	refsQuery string
+	refsSel   int
+	refsList  ui.ListState
+	refsItems []refItem
+	refsBusy  bool
+	refsErr   string
+	refsSeq   int
+
+	problemsOpen  bool
+	problemsQuery string
+	problemsSel   int
+	problemsList  ui.ListState
+
+	symRenameOpen bool
+	symRenameText string
+	symRenameErr  string
+	symRenameBusy bool
+	symRenameSeq  int
+
 	rename      *tab
 	renameText  string
 	renameFocus bool

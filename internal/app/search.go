@@ -318,7 +318,10 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 	if chosen >= 0 && chosen < len(matches) {
 		m := matches[chosen]
 		a.closeSearch()
-		a.later(func() { a.openNoteAt(filepath.FromSlash(m.Rel), m.Line, m.Col, m.End) })
+		a.later(func() {
+			a.recordNav()
+			a.openNoteAt(filepath.FromSlash(m.Rel), m.Line, m.Col, m.End)
+		})
 	}
 	if was && !a.searchOpen {
 		a.cancelProjectSearch()

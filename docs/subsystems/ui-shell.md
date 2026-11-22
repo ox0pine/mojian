@@ -175,10 +175,18 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   editor key events through `editor.State.OnInput`, sets `NoInputMethod` in Normal/Visual/Command
   modes so CJK IMEs never hijack motions, switches `CursorShape` (`Block`/`Bar`/`Underline`) and
   uses relative line numbers in Normal/Visual modes.
-- Zero-config lightweight LSP (`internal/lsp/` + `internal/app/lsp.go`) auto-detects installed
-  language servers (`gopls`, `typescript-language-server`, `pyright-langserver`, `rust-analyzer`,
-  `clangd`) locally or on a remote SSH host via `mojian-server`'s `StartLSP` stream, wiring
-  `OnCompletion`, `OnHover`, `OnDefinition`, `SetDiagnostics` and `textDocument/didOpen`/`didChange`/`didSave`.
+- Zero-config lightweight LSP (`internal/lsp/` + `internal/app/lsp.go` + `internal/app/lsp_actions.go`)
+  auto-detects installed language servers (`gopls`, `typescript-language-server`, `pyright-langserver`,
+  `rust-analyzer`, `clangd`, `zls`, `lua-language-server`, `bash-language-server`, `yaml-language-server`,
+  `vscode-json/css/html-language-server`, `sourcekit-lsp`, `ruby-lsp`) locally or on a remote SSH host
+  via `mojian-server`'s `StartLSP` stream. It wires `OnCompletion`, `OnHover`, `OnDefinition`,
+  `SetDiagnostics`, `textDocument/didOpen`/`didChange`/`didSave`, plus `CommandDialog` pickers for
+  Find References (`⇧F12`), Workspace Symbols (`⌥⌘O` / `Alt+Shift+O`), Workspace Problems (`⇧⌘M`,
+  also reachable by clicking status-bar diagnostic counts, plus `F8`/`⇧F8` Next/Previous Problem),
+  in-memory Rename Symbol (`⇧F2`), Format Document (`⌥⇧F`) and Restart Language Server.
+- Per-workspace navigation history (`internal/app/nav.go`, `Go Back` `⌃-` / `Alt+Left` and `Go Forward`
+  `⌃⇧-` / `Alt+Right`) records jumps from Go to Definition, Go to Symbol, Workspace Symbols, Find
+  References, Problems, Search in Project and terminal file-link clicks.
 - `internal/app/bridges.go` is the only file in `internal/app` that names `internal/theme`
   (besides `settings.go`) and `internal/platform`; `archtest` enforces it.
 

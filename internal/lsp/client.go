@@ -292,10 +292,16 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 				"definition": map[string]any{
 					"linkSupport": true,
 				},
+				"references": map[string]any{},
+				"rename":     map[string]any{},
+				"formatting": map[string]any{},
 				"documentSymbol": map[string]any{
 					"hierarchicalDocumentSymbolSupport": true,
 				},
 				"publishDiagnostics": map[string]any{},
+			},
+			"workspace": map[string]any{
+				"symbol": map[string]any{},
 			},
 		},
 	}
@@ -497,4 +503,101 @@ func colInLine(text string, off int) int {
 		return off
 	}
 	return off - (nl + 1)
+}
+
+// References queries textDocument/references for the symbol at pos.
+func (c *Client) References(ctx context.Context, uri string, pos Position) ([]Location, error) {
+	raw, err := c.call(ctx, "textDocument/references", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     pos,
+		"context":      map[string]any{"includeDeclaration": true},
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var locs []Location
+	if err := json.Unmarshal(raw, &locs); err != nil {
+		return nil, nil
+	}
+	return locs, nil
+}
+
+// WorkspaceSymbols queries workspace/symbol across the project.
+func (c *Client) WorkspaceSymbols(ctx context.Context, query string) ([]WorkspaceSymbol, error) {
+	raw, err := c.call(ctx, "workspace/symbol", map[string]any{
+		"query": query,
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var infos []symbolInformation
+	if err := json.Unmarshal(raw, &infos); err != nil {
+		return nil, nil
+	}
+	out := make([]WorkspaceSymbol, 0, len(infos))
+	for _, info := range infos {
+		if info.Name == "" || info.Location.URI == "" {
+			continue
+		}
+		out = append(out, WorkspaceSymbol{
+			Name:   info.Name,
+			Detail: info.ContainerName,
+			Kind:   info.Kind,
+			URI:    info.Location.URI,
+			Line:   info.Location.Range.Start.Line,
+			Col:    info.Location.Range.Start.Character,
+		})
+	}
+	return out, nil
+}
+
+// Rename queries textDocument/rename and returns normalized per-URI text edits.
+func (c *Client) Rename(ctx context.Context, uri string, pos Position, newName string) (map[string][]TextEdit, error) {
+	raw, err := c.call(ctx, "textDocument/rename", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     pos,
+		"newName":      newName,
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var we WorkspaceEdit
+	if err := json.Unmarshal(raw, &we); err != nil {
+		return nil, err
+	}
+	out := map[string][]TextEdit{}
+	for u, edits := range we.Changes {
+		if len(edits) > 0 {
+			out[u] = append(out[u], edits...)
+		}
+	}
+	for _, dc := range we.DocumentChanges {
+		var tde textDocumentEdit
+		if json.Unmarshal(dc, &tde) == nil && tde.TextDocument.URI != "" && len(tde.Edits) > 0 {
+			out[tde.TextDocument.URI] = append(out[tde.TextDocument.URI], tde.Edits...)
+		}
+	}
+	return out, nil
+}
+
+// Formatting queries textDocument/formatting for the whole document.
+func (c *Client) Formatting(ctx context.Context, uri string, tabSize int, insertSpaces bool) ([]TextEdit, error) {
+	if tabSize <= 0 {
+		tabSize = 4
+	}
+	raw, err := c.call(ctx, "textDocument/formatting", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"options": map[string]any{
+			"tabSize":      tabSize,
+			"insertSpaces": insertSpaces,
+		},
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var edits []TextEdit
+	if err := json.Unmarshal(raw, &edits); err != nil {
+		return nil, nil
+	}
+	return edits, nil
 }

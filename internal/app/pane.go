@@ -157,6 +157,9 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 						a.changed()
 					}
 				}
+				if !overlay && p.Term.findOpen {
+					a.terminalSearchBar(c, k, p)
+				}
 				return
 			}
 			if p.Asset != nil {

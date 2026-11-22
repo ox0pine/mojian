@@ -29,6 +29,15 @@ var knownServers = []ServerSpec{
 	{Language: "rust", Name: "rust-analyzer", Commands: [][]string{{"rust-analyzer"}}},
 	{Language: "c", Name: "clangd", Commands: [][]string{{"clangd"}}},
 	{Language: "cpp", Name: "clangd", Commands: [][]string{{"clangd"}}},
+	{Language: "zig", Name: "zls", Commands: [][]string{{"zls"}}},
+	{Language: "lua", Name: "lua-language-server", Commands: [][]string{{"lua-language-server"}}},
+	{Language: "shellscript", Name: "bash-language-server", Commands: [][]string{{"bash-language-server", "start"}}},
+	{Language: "yaml", Name: "yaml-language-server", Commands: [][]string{{"yaml-language-server", "--stdio"}}},
+	{Language: "json", Name: "vscode-json-language-server", Commands: [][]string{{"vscode-json-language-server", "--stdio"}}},
+	{Language: "css", Name: "vscode-css-language-server", Commands: [][]string{{"vscode-css-language-server", "--stdio"}}},
+	{Language: "html", Name: "vscode-html-language-server", Commands: [][]string{{"vscode-html-language-server", "--stdio"}}},
+	{Language: "swift", Name: "sourcekit-lsp", Commands: [][]string{{"sourcekit-lsp"}}},
+	{Language: "ruby", Name: "ruby-lsp", Commands: [][]string{{"ruby-lsp"}}},
 }
 
 // LanguageForPath maps a file extension to an LSP language ID (or "" if unsupported).
@@ -48,6 +57,24 @@ func LanguageForPath(path string) string {
 		return "c"
 	case ".cc", ".cpp", ".cxx", ".hpp", ".hh":
 		return "cpp"
+	case ".zig":
+		return "zig"
+	case ".lua":
+		return "lua"
+	case ".sh", ".bash", ".zsh":
+		return "shellscript"
+	case ".yaml", ".yml":
+		return "yaml"
+	case ".json", ".jsonc":
+		return "json"
+	case ".css", ".scss", ".less":
+		return "css"
+	case ".html", ".htm":
+		return "html"
+	case ".swift":
+		return "swift"
+	case ".rb":
+		return "ruby"
 	default:
 		return ""
 	}

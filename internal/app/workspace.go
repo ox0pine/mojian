@@ -39,6 +39,7 @@ type workspace struct {
 	diffBases   map[string]*diffBaseEntry
 	diffBaseGen int
 	lsp         *lspManager
+	nav         navHistory
 	revealTab   bool
 }
 
@@ -167,6 +168,10 @@ func (a *app) closeModals() {
 	a.paletteOpen = false
 	a.quickOpen = false
 	a.symbolsOpen = false
+	a.wsSymbolsOpen = false
+	a.refsOpen = false
+	a.problemsOpen = false
+	a.symRenameOpen = false
 	a.closeSearch()
 	a.sessionPick = false
 	a.sshPick = false

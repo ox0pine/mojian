@@ -97,6 +97,30 @@ func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
 					ID:      msg.ID,
 					Result:  json.RawMessage(`[{"name":"main","kind":12,"range":{"start":{"line":2,"character":0},"end":{"line":4,"character":1}},"selectionRange":{"start":{"line":2,"character":5},"end":{"line":2,"character":9}}}]`),
 				})
+			case "textDocument/references":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"uri":"file:///proj/main.go","range":{"start":{"line":2,"character":5},"end":{"line":2,"character":9}}},{"uri":"file:///proj/util.go","range":{"start":{"line":1,"character":2},"end":{"line":1,"character":6}}}]`),
+				})
+			case "workspace/symbol":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"name":"Helper","kind":12,"containerName":"pkg","location":{"uri":"file:///proj/util.go","range":{"start":{"line":1,"character":0},"end":{"line":1,"character":10}}}}]`),
+				})
+			case "textDocument/rename":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"changes":{"file:///proj/main.go":[{"range":{"start":{"line":2,"character":5},"end":{"line":2,"character":9}},"newText":"run"}]}}`),
+				})
+			case "textDocument/formatting":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":7}},"newText":"package"}]`),
+				})
 			}
 		}
 	}()
@@ -145,6 +169,40 @@ func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
 	syms, err := cl.DocumentSymbols(ctx, uri, "package main\n\nfunc main() {}\n")
 	if err != nil || len(syms) != 1 || syms[0].Name != "main" || syms[0].Line != 2 {
 		t.Fatalf("DocumentSymbols = %+v err=%v", syms, err)
+	}
+	refs, err := cl.References(ctx, uri, Position{Line: 2, Character: 5})
+	if err != nil || len(refs) != 2 {
+		t.Fatalf("References = %+v err=%v", refs, err)
+	}
+	wsSyms, err := cl.WorkspaceSymbols(ctx, "Help")
+	if err != nil || len(wsSyms) != 1 || wsSyms[0].Name != "Helper" {
+		t.Fatalf("WorkspaceSymbols = %+v err=%v", wsSyms, err)
+	}
+	changes, err := cl.Rename(ctx, uri, Position{Line: 2, Character: 5}, "run")
+	if err != nil || len(changes[uri]) != 1 || changes[uri][0].NewText != "run" {
+		t.Fatalf("Rename = %+v err=%v", changes, err)
+	}
+	fmtEdits, err := cl.Formatting(ctx, uri, 4, false)
+	if err != nil || len(fmtEdits) != 1 {
+		t.Fatalf("Formatting = %+v err=%v", fmtEdits, err)
+	}
+}
+
+func TestApplyTextEditsAndLanguages(t *testing.T) {
+	src := "alpha beta gamma\n"
+	edits := []TextEdit{
+		{Range: Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 5}}, NewText: "ALPHA"},
+		{Range: Range{Start: Position{Line: 0, Character: 11}, End: Position{Line: 0, Character: 16}}, NewText: "GAMMA"},
+	}
+	if got := ApplyTextEdits(src, edits); got != "ALPHA beta GAMMA\n" {
+		t.Fatalf("ApplyTextEdits = %q", got)
+	}
+	for ext, want := range map[string]string{
+		"main.zig": "zig", "init.lua": "lua", "ci.yml": "yaml", "app.swift": "swift", "run.sh": "shellscript",
+	} {
+		if got := LanguageForPath(ext); got != want {
+			t.Fatalf("LanguageForPath(%q) = %q, want %q", ext, got, want)
+		}
 	}
 }
 

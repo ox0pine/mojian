@@ -133,6 +133,12 @@ its bundled `ssh.exe`.
   emits a desktop notification via OSC 9, OSC 99 (Kitty), or OSC 777 (`internal/app/term_osc.go`),
   it sets a quiet attention dot on both the pane header and its tab; View › Jump to Attention (`⌘J`
   / `Ctrl+J`) cycles unread attention terminals and clears the marker upon focus.
+- Terminal × Editor synergy (`internal/app/term_link.go`): Command+Click (Ctrl+Click elsewhere) on
+  printed file paths (`file.go:42:10`, `App.tsx(12,4)`, `README.md#L8`, `file://...`) resolves local
+  and remote project paths and opens/splits the file beside the terminal at the exact line;
+  `Send Reference to Terminal` (`⌥⌘L` / `Ctrl+Alt+L`) pastes `@rel/path:line[-end]` into the active
+  tab's terminal (opening one if needed); and `⌘F` (macOS) / `Ctrl+Shift+F` (Linux/Windows) inside a
+  terminal opens a floating scrollback find bar backed by MyGo's `Terminal.Search`.
 - Remote connections are pooled by host and kept while a loaded project uses them, and after
   `Set Up Server` until the last project on that host is removed (`closeRemoteProject`); `CloseAll`
   ends them at quit. Choosing a server that is not the one on screen resumes its most recently
