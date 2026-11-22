@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.4
+
+- Terminal × Editor synergy: Command+Click (Ctrl+Click on Linux/Windows) on file paths printed in a
+  terminal (`file.go:42:10`, `App.tsx(12,4)`, `README.md#L8`, `file://…`) opens or splits the file
+  beside the terminal at the exact line across local and SSH projects; `Send Reference to Terminal`
+  (`⌥⌘L` / `Ctrl+Alt+L`) pastes `@rel/path:line[-end]` into the active tab's terminal; and `⌘F`
+  (`Ctrl+Shift+F` elsewhere) opens a floating scrollback find bar inside terminals.
+- Complete LSP editing loop: adds `Find References` (`⇧F12`), `Go to Symbol in Workspace…`
+  (`⌥⌘O` / `Alt+Shift+O`, with instant loaded-file fallback), `Show Problems…` (`⇧⌘M`, also
+  clickable from the status bar), `Next`/`Previous Problem` (`F8` / `⇧F8`), in-memory
+  `Rename Symbol…` (`⇧F2`), `Format Document` (`⌥⇧F`), `Restart Language Server` (also clickable
+  from the status bar), and expanded auto-detection (`zls`, `lua-language-server`,
+  `bash-language-server`, `yaml-language-server`, JSON/HTML/CSS, `sourcekit-lsp`, `ruby-lsp`).
+- Per-workspace navigation history (`Go Back` `⌃-` / `Alt+Left` and `Go Forward` `⌃⇧-` / `Alt+Right`)
+  records jumps from definitions, symbols, references, problems, project search and terminal links.
+- Redesigned the marketing website (`site/`) with an ink-and-paper editorial aesthetic, interactive
+  multi-tab & 10-theme Mojian Workbench preview, OS-aware download cards and updated four-language
+  copy.
+
 ## 0.6.3
 
 - Terminals now parse native **OSC 9**, **OSC 99 (Kitty)** and **OSC 777** desktop notifications
