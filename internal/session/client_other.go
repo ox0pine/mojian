@@ -6,17 +6,11 @@ import (
 	"context"
 	"io"
 	"time"
-
-	"mojian/internal/acp"
 )
 
 // Client is unavailable on this platform.
 type Client struct{}
 type Stream struct{}
-type ACPSession struct{}
-
-func (s *ACPSession) Cancel() {}
-func (s *ACPSession) Close()  {}
 
 var closedChan = func() <-chan struct{} {
 	ch := make(chan struct{})
@@ -66,12 +60,6 @@ func (c *Client) Search(string, SearchOptions) (SearchResult, error) {
 func (c *Client) SearchContext(context.Context, string, SearchOptions) (SearchResult, error) {
 	return SearchResult{}, errUnsupported
 }
-func (c *Client) ACPAgentsContext(context.Context) ([]string, error) {
-	return nil, errUnsupported
-}
-func (c *Client) StartACP(context.Context, string, string, string, func(acp.Event)) (*ACPSession, error) {
-	return nil, errUnsupported
-}
 func (c *Client) ReadFile(string) ([]byte, error) { return nil, errUnsupported }
 func (c *Client) ReadFileContext(context.Context, string) ([]byte, error) {
 	return nil, errUnsupported
@@ -87,6 +75,15 @@ func (c *Client) Rename(string, string) error    { return errUnsupported }
 func (c *Client) Remove(string) error            { return errUnsupported }
 func (c *Client) Exec(string, []string, []string, time.Duration) (ExecResult, error) {
 	return ExecResult{}, errUnsupported
+}
+func (c *Client) ExecStdin(string, []string, []string, string, time.Duration) (ExecResult, error) {
+	return ExecResult{}, errUnsupported
+}
+func (c *Client) StartLSP(string, []string) (io.ReadWriteCloser, error) {
+	return nil, errUnsupported
+}
+func (c *Client) Watch(string) (io.ReadCloser, error) {
+	return nil, errUnsupported
 }
 
 func (s *Stream) Read([]byte) (int, error)  { return 0, io.EOF }

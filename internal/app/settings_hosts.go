@@ -678,6 +678,7 @@ func (a *app) removeHostNow(address string) {
 	a.hostService().RemoveProjects(address)
 	a.hostRemoveAddr = ""
 	a.hostStopAddr = ""
+	a.cancelRemoteReconnect(address)
 	delete(a.hostStates, address)
 	delete(a.remoteKeep, address)
 	delete(a.remoteHomes, address)
@@ -694,7 +695,6 @@ func (a *app) removeHostNow(address string) {
 		delete(a.workspaces, key)
 	}
 	if current {
-		a.stopAgentTask()
 		host := a.serverAlias
 		prevProject := a.project
 		a.dropPickerRemote()

@@ -76,9 +76,13 @@ func (a *app) GitRunner() gitpage.Runner {
 type serverGitRunner struct{ client *session.Client }
 
 func (r serverGitRunner) Run(dir string, args ...string) (string, error) {
+	return r.RunWithStdin(dir, "", args...)
+}
+
+func (r serverGitRunner) RunWithStdin(dir, stdin string, args ...string) (string, error) {
 	cmd := append([]string{"git", "-C", dir}, args...)
 	env := []string{"GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
-	res, err := r.client.Exec(dir, cmd, env, 10*time.Second)
+	res, err := r.client.ExecStdin(dir, cmd, env, stdin, 20*time.Second)
 	if err != nil {
 		return res.Stdout, err
 	}

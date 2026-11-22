@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"mojian/internal/acp"
 	"mojian/internal/session"
 
 	"github.com/egoist/mygo/ui"
@@ -76,7 +75,7 @@ func TestLastScreenLine(t *testing.T) {
 	}
 }
 
-func TestJumpToAttentionCyclesTerminalsAndPermissions(t *testing.T) {
+func TestJumpToAttentionCyclesTerminals(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)
 	a.focusFirstNote()
@@ -111,16 +110,61 @@ func TestJumpToAttentionCyclesTerminalsAndPermissions(t *testing.T) {
 	if a.active != 2 || a.focusPane() != p2 || p2.Term.attention {
 		t.Fatalf("after second jump: active=%d focus=%v attention=%v", a.active, a.focusPane(), p2.Term.attention)
 	}
+}
 
-	// Pending agent permission takes priority over terminals.
-	a.markTerminalAttention(p1.Term, "Bell")
-	a.agentTask = &agentTask{
-		prompt: "fix tests",
-		perm:   &acp.Permission{Title: "Run go test?"},
+func TestOSCNotifyScanner(t *testing.T) {
+	var got []oscNotification
+	s := newOSCNotifyScanner(func(n oscNotification) { got = append(got, n) })
+
+	// OSC 9 (BEL), ConEmu progress 9;4 (ignored), OSC 777 (ST), OSC 99 chunked + base64.
+	chunks := []string{
+		"hello \x1b]9;Build ",
+		"finished\x07",
+		"\x1b]9;4;1;50\x07", // ConEmu progress bar, must be ignored
+		"\x1b]777;notify;Claude Code;Waiting for approval\x1b\\",
+		"\x1b]99;i=job1:d=0:p=title;Tests\x1b\\",
+		"\x1b]99;i=job1:d=1:p=body:e=1;QWxsIHBhc3NlZA==\x07",
+		"\x1b]9;cancelled\x18", // CAN cancels
+	}
+	for _, ch := range chunks {
+		s.Feed([]byte(ch))
+	}
+
+	want := []oscNotification{
+		{Body: "Build finished"},
+		{Title: "Claude Code", Body: "Waiting for approval"},
+		{Title: "Tests", Body: "All passed"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d notifications %+v, want %+v", len(got), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("notification %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestOSCNotificationMarksTerminalAttention(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.harness = true
+	a.focusFirstNote()
+
+	t1 := &tab{ID: "t-osc"}
+	p1 := newTermPane(&termTab{SID: "s1", Spec: termSpec{Server: localServerID}})
+	t1.Root = &node{Pane: p1}
+	t1.Focus = p1
+	a.tabs = append(a.tabs, t1)
+	a.active = 0
+
+	a.handleTerminalOSCNotification(p1.Term, oscNotification{Title: "Codex", Body: "Done"})
+	if !p1.Term.attention || p1.Term.attentionNote != "Codex" {
+		t.Fatalf("expected attention dot from OSC notification, got attention=%v note=%q", p1.Term.attention, p1.Term.attentionNote)
 	}
 	a.jumpToAttention()
-	if !a.agentOpen {
-		t.Fatal("expected jumpToAttention to open pending agent permission sheet")
+	if a.focusPane() != p1 || p1.Term.attention {
+		t.Fatalf("expected jumpToAttention to focus OSC terminal and clear marker")
 	}
 }
 

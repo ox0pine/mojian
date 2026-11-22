@@ -30,6 +30,7 @@ func (a *app) view(c *ui.Context) {
 				}
 				a.workspaceView(c, k)
 			})
+			a.statusBar(c, k)
 			a.paneOverlaysView(c, k)
 		})
 	if a.err != "" {
@@ -41,8 +42,8 @@ func (a *app) view(c *ui.Context) {
 	a.sessionPickerModal(c, k)
 	a.palette(c, k)
 	a.quickOpenModal(c, k)
+	a.symbolsModal(c, k)
 	a.searchModal(c, k)
-	a.agentSheet(c, k)
 	a.remoteBusyView(c, k)
 	if !a.remoteBusy {
 		a.shortcuts(c)
@@ -147,7 +148,6 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// The title bar between the tabs and the buttons drags the
 		// window, and a double click on it zooms the window.
 		ui.Box(c).Grow(1).MinWidth(24)
-		a.agentStatusChip(c, k)
 		tools := ui.Toolbar(c, func() {
 			if iconButton(c, k, "command", "Command Palette", iconBtnLg, iconGlyphLg).
 				Tooltip(a.tip("Command Palette", cmdPalette)).Clicked() {

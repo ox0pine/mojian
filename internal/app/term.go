@@ -341,8 +341,13 @@ func (a *app) terminalOptions(conn *session.Stream, tt *termTab) terminal.Option
 	if a.TerminalCopySelect {
 		copySelect = terminal.CopyOnSelectClipboard
 	}
+	wrapped := newOSCNotifyConn(conn, func(n oscNotification) {
+		update(func() {
+			a.handleTerminalOSCNotification(tt, n)
+		})
+	})
 	return terminal.Options{
-		Conn: conn,
+		Conn: wrapped,
 		Font: terminal.Font{
 			Family:     a.TerminalFontFamily,
 			Size:       float32(a.termFontSize()),
@@ -404,6 +409,40 @@ func (a *app) notifyTerminal(title string, tt *termTab, state string) {
 	mygo.NewNotification(mygo.NotificationOptions{
 		Title: title, Subtitle: name, Body: body,
 	}).Show()
+}
+
+// handleTerminalOSCNotification handles an OSC 9 / 99 / 777 notification
+// from a program inside tt: marks the pane with an attention dot when it is
+// not focused, and shows an OS notification when enabled and not focused.
+func (a *app) handleTerminalOSCNotification(tt *termTab, n oscNotification) {
+	if tt == nil {
+		return
+	}
+	note := n.Title
+	if note == "" {
+		note = n.Body
+	}
+	a.markTerminalAttention(tt, note)
+	focused := a.win != nil && a.win.IsFocused() && !a.git.Open &&
+		a.tab() != nil && a.tab().Focus != nil && a.tab().Focus.Term == tt
+	if a.NotifyBell && !a.harness && !a.quitting && !focused {
+		title := n.Title
+		if title == "" {
+			title = tt.displayTitle()
+		}
+		body := n.Body
+		if body == "" {
+			body = n.Title
+		}
+		subtitle := tt.displayTitle()
+		if subtitle == title {
+			subtitle = ""
+		}
+		mygo.NewNotification(mygo.NotificationOptions{
+			Title: title, Subtitle: subtitle, Body: body,
+		}).Show()
+	}
+	a.invalidate()
 }
 
 // lastScreenLine is the last line of a terminal screen that has text,

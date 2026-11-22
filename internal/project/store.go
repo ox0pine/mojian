@@ -275,6 +275,9 @@ type SaveSnapshot struct {
 	mutationSeq uint64
 }
 
+// Rel is the project-relative path of the note captured by this snapshot.
+func (sn SaveSnapshot) Rel() string { return sn.rel }
+
 // SnapshotSave serializes n as it stands now. The boolean is false when
 // its bytes already match the last saved baseline.
 func (s *Store) SnapshotSave(n *Note) (SaveSnapshot, bool, error) {

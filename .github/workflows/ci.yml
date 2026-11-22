@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Ensure jq
+        if: runner.os == 'Windows'
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            choco install jq -y --no-progress
+            echo 'C:\ProgramData\chocolatey\bin' >> "$GITHUB_PATH"
+          fi
+      - name: Seed the native terminal library
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          go mod download github.com/egoist/mygo
+          manifest="$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)/plugins/terminal/mygo-plugin.json"
+          case "$(go env GOOS)" in
+            darwin) targets="darwin-arm64 darwin-amd64"; cache="$HOME/Library/Caches" ;;
+            windows)
+              targets="windows-amd64 windows-arm64"
+              cache="${LOCALAPPDATA:-$HOME/AppData/Local}"
+              cache="${cache//\\//}"
+              ;;
+            *) targets="linux-amd64 linux-arm64"; cache="${XDG_CACHE_HOME:-$HOME/.cache}" ;;
+          esac
+          pick() { jq -r --arg t "$1" '.libraries[] | select(.name=="libghostty-vt") | .files[$t].'"$2" "$manifest"; }
+          for target in $targets; do
+            url="$(pick "$target" url)"
+            name="$(pick "$target" name)"
+            sha="$(pick "$target" sha256)"
+            dir="$cache/mygo/natives/$sha"
+            mkdir -p "$dir"
+            if [ ! -f "$dir/$name" ]; then
+              curl -fsSL --retry 10 --retry-all-errors --retry-delay 10 --max-time 300 \
+                -o "$dir/$name" "$url" || {
+                tag="${url%/*}"; tag="${tag##*/}"
+                file="${url##*/}"
+                id="$(gh api "repos/egoist/mygo/releases/tags/$tag" \
+                  | jq -r --arg n "$file" '.assets[] | select(.name==$n) | .id')"
+                gh api -H 'Accept: application/octet-stream' \
+                  "repos/egoist/mygo/releases/assets/$id" > "$dir/$name"
+              }
+            fi
+            got="$(shasum -a 256 "$dir/$name" 2>/dev/null || sha256sum "$dir/$name")"
+            test "${got%% *}" = "$sha" || { echo "::error::$name is not the expected file"; exit 1; }
+          done
+      - name: Vet
+        run: go tool mygo vet .
+      - name: Test
+        run: CGO_ENABLED=0 go test ./...

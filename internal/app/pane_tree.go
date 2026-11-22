@@ -3,6 +3,8 @@ package app
 import (
 	"fmt"
 
+	"mojian/internal/app/vim"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/egoist/mygo/ui/markdown"
@@ -32,6 +34,11 @@ type pane struct {
 	enterY        float32
 	emptyQuery    string // the file search in an empty pane
 	emptySel      int
+	blameLine     int
+	blameVer      uint64
+	blameSeq      int
+	blameText     string
+	vim           *vim.State
 }
 
 // assetView is what a picture or PDF pane has loaded, and its headings.

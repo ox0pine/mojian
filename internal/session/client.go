@@ -616,15 +616,14 @@ type Stream struct {
 }
 
 // openRequest asks the server to attach a new stream to a session or start
-// an ACP task stream when Kind == "acp".
+// a specialized stream (such as LSP or project watch) when Kind is set.
 type openRequest struct {
-	SID    string `json:"sid,omitempty"`
-	Cols   int    `json:"cols,omitempty"`
-	Rows   int    `json:"rows,omitempty"`
-	Kind   string `json:"kind,omitempty"`
-	Dir    string `json:"dir,omitempty"`
-	Agent  string `json:"agent,omitempty"`
-	Prompt string `json:"prompt,omitempty"`
+	SID  string   `json:"sid,omitempty"`
+	Cols int      `json:"cols,omitempty"`
+	Rows int      `json:"rows,omitempty"`
+	Kind string   `json:"kind,omitempty"`
+	Dir  string   `json:"dir,omitempty"`
+	Args []string `json:"args,omitempty"`
 }
 
 // openReply answers an openRequest on the same stream.
@@ -706,8 +705,11 @@ func (c *Client) Copy(from, to string) error {
 	return c.call(Request{Op: "copy", Path: from, To: to}, nil)
 }
 func (c *Client) Exec(dir string, args, env []string, timeout time.Duration) (res ExecResult, err error) {
+	return c.ExecStdin(dir, args, env, "", timeout)
+}
+func (c *Client) ExecStdin(dir string, args, env []string, stdin string, timeout time.Duration) (res ExecResult, err error) {
 	err = c.call(Request{
-		Op: "exec", Dir: dir, Args: args, Env: env,
+		Op: "exec", Dir: dir, Args: args, Env: env, Stdin: stdin,
 		Timeout: int(timeout / time.Millisecond),
 	}, &res)
 	return

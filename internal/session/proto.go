@@ -22,7 +22,7 @@ import (
 // every message and multiplexed control requests and terminal streams
 // over one connection. Version 5 added chunked control responses. Version
 // 6 lists binary files, preserves not-exist errors across the wire, and
-// adds project search, session working directories, and remote ACP tasks.
+// adds project search and session working directories.
 const ProtocolVersion = 6
 
 // The frame types. A connection starts with a frameHello each way; after
@@ -162,6 +162,7 @@ type Request struct {
 	Dir   string   `json:"dir,omitempty"`
 	Args  []string `json:"args,omitempty"`
 	Env   []string `json:"env,omitempty"`
+	Stdin string   `json:"stdin,omitempty"`
 	// Timeout is how long a command may run, in milliseconds.
 	Timeout int            `json:"timeout,omitempty"`
 	Search  *SearchOptions `json:"search,omitempty"`
@@ -172,6 +173,8 @@ type SearchOptions struct {
 	Query         string `json:"query"`
 	CaseSensitive bool   `json:"caseSensitive,omitempty"`
 	Regex         bool   `json:"regex,omitempty"`
+	Include       string `json:"include,omitempty"`
+	Exclude       string `json:"exclude,omitempty"`
 	Limit         int    `json:"limit,omitempty"`
 }
 

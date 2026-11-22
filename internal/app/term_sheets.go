@@ -188,47 +188,36 @@ func (t *tab) hasAttention() bool {
 	return false
 }
 
-// jumpToAttention focuses the next item waiting for the user: first a
-// pending ACP permission request, then the next terminal pane with an
-// unread bell or exit marker, then a running agent task sheet.
+// jumpToAttention focuses the next terminal pane with an unread bell,
+// exit or OSC desktop notification marker.
 func (a *app) jumpToAttention() {
-	if a.agentTask != nil && a.agentTask.perm != nil {
-		a.closeModals()
-		a.agentOpen = true
-		a.invalidate()
+	if len(a.tabs) == 0 {
 		return
 	}
-	if len(a.tabs) > 0 {
-		start := max(a.active, 0)
-		for step := 0; step < len(a.tabs); step++ {
-			idx := (start + step) % len(a.tabs)
-			t := a.tabs[idx]
-			if t == nil {
+	start := max(a.active, 0)
+	for step := 0; step < len(a.tabs); step++ {
+		idx := (start + step) % len(a.tabs)
+		t := a.tabs[idx]
+		if t == nil {
+			continue
+		}
+		for _, p := range t.panes() {
+			if p.Term == nil || !p.Term.attention {
 				continue
 			}
-			for _, p := range t.panes() {
-				if p.Term == nil || !p.Term.attention {
-					continue
-				}
-				a.closeModals()
-				a.git.Open = false
-				a.selectTab(idx)
-				if t.Zoom != nil && t.Zoom != p {
-					a.unzoom(t)
-				}
-				t.Focus = p
-				clearPaneAttention(p)
-				a.focusReq = p
-				a.changed()
-				a.invalidate()
-				return
+			a.closeModals()
+			a.git.Open = false
+			a.selectTab(idx)
+			if t.Zoom != nil && t.Zoom != p {
+				a.unzoom(t)
 			}
+			t.Focus = p
+			clearPaneAttention(p)
+			a.focusReq = p
+			a.changed()
+			a.invalidate()
+			return
 		}
-	}
-	if a.agentTask != nil {
-		a.closeModals()
-		a.agentOpen = true
-		a.invalidate()
 	}
 }
 
@@ -518,4 +507,14 @@ func (a *app) sessionPickerModal(c *ui.Context, k *colors) {
 			}
 		}
 	}
+}
+
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
 }

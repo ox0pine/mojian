@@ -232,11 +232,18 @@ func untrackedDiff(r Runner, root, path, display string) (string, error) {
 
 // runGit runs Git in a folder, with a deadline and a cap on its output.
 func runGit(dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	return runGitStdin(dir, "", args...)
+}
+
+func runGitStdin(dir, stdin string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	platform.HideConsole(cmd)
 	cmd.Env = append(gitEnv(), "GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var out, errb cappedBuffer
 	out.limit = 2 << 20
 	errb.limit = 64 << 10

@@ -94,6 +94,9 @@ func (a *app) startRemoteSave(s *store) {
 			for i, ok := range written {
 				if ok {
 					s.CommitSnapshot(snapshots[i])
+					if a.store == s {
+						a.notifyLSPSaved(s.ByRelPath(snapshots[i].Rel()))
+					}
 				}
 			}
 			a.saveTask.active = false

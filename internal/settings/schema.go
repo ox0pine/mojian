@@ -134,6 +134,15 @@ var Rows = []Row{
 		Kind: Choice, Pref: "EditorScrollMargin",
 		Options: []string{"None", "1 line", "3 lines", "5 lines", "8 lines"},
 		Values:  []int{-1, 1, 3, 5, 8}},
+	{ID: "editor-git-blame", Cat: Editor, Section: "WRITING", Title: "Inline Git blame",
+		Detail: "Show the commit author and summary at the end of the active line.", Words: "git blame inline history commit author inlay",
+		Kind: Toggle, Pref: "EditorGitBlame"},
+	{ID: "editor-vim-mode", Cat: Editor, Section: "WRITING", Title: "Vim mode",
+		Detail: "Modal normal, insert and visual editing; suppresses input methods in normal mode.", Words: "vim modal normal insert visual keybindings relative line numbers",
+		Kind: Toggle, Pref: "EditorVimMode"},
+	{ID: "show-status-bar", Cat: Editor, Section: "WRITING", Title: "Status bar",
+		Detail: "Show a quiet bar with cursor position, indentation, diagnostics and Vim mode.", Words: "status bar footer cursor line column diagnostics lsp vim",
+		Kind: Toggle, Pref: "ShowStatusBar"},
 
 	// Terminal
 	{ID: "terminal-font", Cat: Terminal, Section: "TYPE", Title: "Terminal font",

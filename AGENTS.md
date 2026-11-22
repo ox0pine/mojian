@@ -2,8 +2,7 @@
 
 Mojian is a quiet text editor for plain files: Go and MyGo's native UI, no webview, no cgo, no
 JavaScript build. One binary draws its own window; a tab is a workspace, a pane edits a file,
-previews an image or PDF, or runs a terminal (background ACP agent tasks run from a modal sheet),
-and a project is just a folder. Version, bundle id and
+previews an image or PDF, or runs a terminal, and a project is just a folder. Version, bundle id and
 the macOS minimum live in `mygo.json`; nothing here repeats them.
 
 ## Where to read first
@@ -16,7 +15,6 @@ the authority, and it changes in the same commit as the behavior.
 | window, tabs, panes, frame conventions | [ui-shell.md](docs/subsystems/ui-shell.md) |
 | project store, `fs.Backend`, save path | [projects-and-storage.md](docs/subsystems/projects-and-storage.md) |
 | terminals, session server, SSH hosts | [session-and-remote.md](docs/subsystems/session-and-remote.md) |
-| background agent tasks, ACP notifications | [agent.md](docs/subsystems/agent.md) |
 | the Git page | [git-page.md](docs/subsystems/git-page.md) |
 | settings, layouts, workspace cache | [persistence-and-layout.md](docs/subsystems/persistence-and-layout.md) |
 | colors and themes | [theme.md](docs/subsystems/theme.md) |
@@ -33,13 +31,13 @@ Tests: [docs/testing.md](docs/testing.md). Driving the UI headlessly: [docs/harn
 | `cmd/harness/` | Dev-only MCP server that renders the real views headlessly over disposable projects. |
 | `docs/subsystems/` | Contract pages for the UI shell, storage, session/remote, Git, persistence and themes. |
 | `site/` | The marketing website: React 19, Vite 8 and Base UI. It is the repo's one Node/Bun build; the app and its `go test` path do not use it. Commands, layout and deployment are in `site/README.md`. |
-| `internal/app/` | The window in one package: `app.go` state and `Run`, `launch.go` CLI startup and single-instance handoff, `view.go` root, `window.go` lifecycle, `pane_tree.go` split tree/directions/divider, `layout.go`, `store.go` local and server openers, `menu.go`, `palette.go` palette and quick open, `search.go`, `pane.go` card and drag/drop, `pane_actions.go`, `term.go`, `term_restore.go`, `term_sheets.go` SSH and session pickers, `remote_pool.go`, `remote_project.go` and `remote_picker.go`, `settings.go` and `settings_hosts.go`, `commands_host.go`, `bridges.go` (aliases and bridges to lower packages), `headless.go`, `git_bridge.go` and `branch.go`. Its UI and preview layers are subpackages: `commands/`, `explorer/`, `preview/`, `settingsui/`, `widgets/`. |
+| `internal/app/` | The window in one package: `app.go` state and `Run`, `launch.go` CLI startup and single-instance handoff, `view.go` root, `window.go` lifecycle, `pane_tree.go` split tree/directions/divider, `layout.go`, `store.go` local and server openers, `menu.go`, `palette.go` palette and quick open, `search.go` project search & replace, `symbols.go` Go to Symbol, `lsp.go` LSP bridge, `statusbar.go` optional bottom status bar, `pane.go` card and drag/drop, `pane_actions.go`, `term.go`, `term_osc.go` OSC desktop notifications, `term_restore.go`, `term_sheets.go` SSH and session pickers, `remote_pool.go`, `remote_project.go`, `remote_reconnect.go` and `remote_picker.go`, `settings.go` and `settings_hosts.go`, `commands_host.go`, `bridges.go` (aliases and bridges to lower packages), `headless.go`, `git_bridge.go` and `branch.go`. Its UI and preview layers are subpackages: `commands/`, `explorer/`, `preview/`, `settingsui/`, `vim/`, `widgets/`. |
 | `internal/detach/` | A launch from a terminal re-runs the binary in its own session and leaves the shell; the detached copy appends its output to `app.log` under the data directory. |
 | `internal/project/` | `Store`, `Note`, `Asset` and `TreeNode`: listing, save, rename/copy/move, asset cache, editor buffers. |
 | `internal/fs/` | Project storage: `Backend`, `Direct`, `Memory`, `Server`, path guards, atomic writes and cached-file names. |
-| `internal/session/` | PTY server and client, wire protocol, remote file ops, spawn/lock, platform stubs. |
-| `internal/git/`, `internal/git/gitenv/` | Working-tree diff page and branches: status/diff reading, parsing, branch read and switch, view, and sanitized Git environment (`gitenv`). |
-| `internal/acp/` | One Agent Client Protocol session over stdio, and the known agent commands (omp, Claude Code, Codex and others, through ACP adapters) tried in order: process, initialize, session, prompt, cancel, events. |
+| `internal/session/` | PTY server and client, wire protocol, remote file ops, remote LSP & watch streams, spawn/lock, platform stubs. |
+| `internal/lsp/` | Zero-config lightweight Language Server Protocol client (local stdio or remote `mojian-server` stream), server detection and fallback symbol extraction. |
+| `internal/git/`, `internal/git/gitenv/` | Working-tree diff page, hunk operations, inline blame and branches: status/diff reading, parsing, staging/unstaging/discarding/committing/stashing/sync, branch read and switch, view, and sanitized Git environment (`gitenv`). |
 | `internal/theme/` | The ten color themes and their derivation, `Colors`, `Radius`, background painting, editor and terminal themes, font registration. |
 | `internal/motion/` | `ui.ElementTransition` values (`Page`, `Tab`, `Tree`, `Row`, `Pane`, `Colors`), springs for interruptible changes. |
 | `internal/icons/` | Lucide action icons and Material Icon Theme file icons, cached from embedded SVG. |
@@ -92,9 +90,7 @@ build. `go tool mygo migrate-ui .` previews UI API migrations for MyGo version b
   SHA-256 checked against the pinned MyGo's `plugins/terminal/mygo-plugin.json`.
 - MyGo is `v0.10.0`; check the pinned source at `$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)`
   before using an API, especially `ui/doc.go` and the widget's implementation comments.
-- There is no pull-request CI: `.github/workflows/release.yml` runs `go test ./...` on tag pushes, so
-  verification is local. Run before yielding: `go test ./...` and `go tool mygo vet .`; for a visible
-  change also `go tool mygo dev` with a screenshot or the running app, not just a green test.
+- `.github/workflows/ci.yml` runs `mygo vet` and `go test` on macOS, Linux and Windows for pushes and pull requests, and `.github/workflows/release.yml` builds and publishes tags. Still verify locally before yielding: `go test ./...` and `go tool mygo vet .`; for a visible change also `go tool mygo dev` with a screenshot or the running app, not just a green test.
 - Windows is a full client: its local server owns terminals, and it reaches SSH hosts through its
   own `ssh.exe`. Remote hosts are Linux, so there is no Windows server binary to upload.
 - A release is a tag: the steps, artifacts and update-key handling are in [RELEASING.md](RELEASING.md).

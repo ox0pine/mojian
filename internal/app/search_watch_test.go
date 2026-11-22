@@ -197,3 +197,119 @@ func TestProjectWatcherReloadsCleanAndKeepsDirty(t *testing.T) {
 		t.Fatal("newly created file was not picked up by watcher")
 	}
 }
+
+func TestProjectSearchGlobAndReplaceAllInMemory(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	if err := os.WriteFile(filepath.Join(a.store.Dir, "alpha.go"), []byte("package alpha\n\nfunc OldName() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a.store.Dir, "beta.md"), []byte("# Beta\n\nOldName in docs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+
+	tt := ui.NewTester(a.view, 1100, 700)
+	a.openSearch()
+	a.searchQuery = "OldName"
+	a.searchInclude = "*.go"
+	tt.Frame()
+	tt.Frame()
+
+	if len(a.searchResult.Matches) != 1 || a.searchResult.Matches[0].Rel != "alpha.go" {
+		t.Fatalf("expected 1 match in alpha.go with include=*.go, got %+v", a.searchResult.Matches)
+	}
+
+	// Replace All edits alpha.go in memory only (disk untouched until explicit save).
+	a.searchReplace = "NewName"
+	a.replaceAllMatches()
+	tt.Frame()
+
+	alpha := a.store.ByRelPath("alpha.go")
+	if alpha == nil || !alpha.Dirty() {
+		t.Fatalf("expected alpha.go dirty in memory after Replace All")
+	}
+	if got := alpha.Text(); got != "package alpha\n\nfunc NewName() {}\n" {
+		t.Fatalf("alpha.go buffer = %q", got)
+	}
+	disk, err := os.ReadFile(filepath.Join(a.store.Dir, "alpha.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(disk) != "package alpha\n\nfunc OldName() {}\n" {
+		t.Fatalf("Replace All unexpectedly wrote to disk before save: %q", string(disk))
+	}
+	// beta.md was excluded by *.go and must remain untouched.
+	beta := a.store.ByRelPath("beta.md")
+	if beta.Dirty() {
+		t.Fatalf("beta.md should not be modified when include=*.go")
+	}
+}
+
+func TestGoToSymbolModalJumpsToSymbol(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	src := "package demo\n\ntype Engine struct{}\n\nfunc (e *Engine) Start() {}\n"
+	if err := os.WriteFile(filepath.Join(a.store.Dir, "engine.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	a.openRel("engine.go")
+
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+
+	a.openSymbols()
+	tt.Frame()
+	if len(a.symbolsItems) < 2 {
+		t.Fatalf("expected fallback symbols for engine.go, got %+v", a.symbolsItems)
+	}
+	// Jump to the Start method symbol (line 4, 0-based).
+	for _, s := range a.symbolsItems {
+		if s.Name == "Start" {
+			a.jumpToSymbol(s)
+			break
+		}
+	}
+	tt.Frame()
+	p := a.focusPane()
+	if p == nil || p.state == nil {
+		t.Fatal("missing focused pane")
+	}
+	if got := p.state.CursorPos().Line; got != 4 {
+		t.Fatalf("cursor line = %d, want 4", got)
+	}
+}
+
+func TestStatusBarAndVimToggle(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	if err := os.WriteFile(filepath.Join(a.store.Dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	a.openRel("main.go")
+	a.Prefs.ShowStatusBar = true
+	a.Prefs.EditorVimMode = true
+
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	tt.Frame()
+
+	if !tt.HasText("NORMAL") {
+		t.Fatalf("expected Vim NORMAL badge in status bar, texts=%v", tt.Texts())
+	}
+	if !tt.HasText("Ln 1, Col 1") {
+		t.Fatalf("expected cursor position in status bar, texts=%v", tt.Texts())
+	}
+	p := a.focusPane()
+	if p == nil || p.state == nil || !p.state.NoInputMethod {
+		t.Fatalf("expected NoInputMethod=true in Vim Normal mode")
+	}
+}

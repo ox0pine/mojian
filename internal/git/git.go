@@ -46,6 +46,10 @@ type LocalRunner struct{}
 
 func (LocalRunner) Run(dir string, args ...string) (string, error) { return runGit(dir, args...) }
 
+func (LocalRunner) RunWithStdin(dir, stdin string, args ...string) (string, error) {
+	return runGitStdin(dir, stdin, args...)
+}
+
 func (LocalRunner) RealPath(path string) (string, error) { return filepath.EvalSymlinks(path) }
 
 func (LocalRunner) Readlink(dir, rel string) (string, error) {
@@ -143,12 +147,17 @@ type Page struct {
 	patchCut   bool
 	SplitDiff  bool
 
-	// Working-tree write state (stage, unstage, discard, commit).
+	// Working-tree write state (stage, unstage, discard, commit, hunk, sync).
 	CommitMsg     string
+	Amend         bool
+	HunkSel       int
+	SyncMenu      bool
 	ActionBusy    bool
 	ActionErr     string
+	ActionInfo    string
 	ActionSeq     int
 	discardPrompt string
+	hunkDiscard   int
 
 	// BranchMenu is the page's own popover under the branch chip; it
 	// reads the branches again each time it opens.

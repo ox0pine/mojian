@@ -152,7 +152,6 @@ func (a *app) openProjectSaved(abs string) bool {
 		a.fail(err)
 		return false
 	}
-	a.stopAgentTask()
 	a.stashActiveWorkspace()
 	ws := &workspace{
 		key:        workspaceKeyLocal(abs),
@@ -369,7 +368,6 @@ func (a *app) closeLocalProjectAfterSave(dir string) {
 		a.project = ""
 	}
 	if active {
-		a.stopAgentTask()
 		a.abandonActiveWorkspace()
 		for _, p := range a.projects {
 			p = filepath.Clean(p)

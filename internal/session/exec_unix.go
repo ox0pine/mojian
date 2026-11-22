@@ -33,6 +33,9 @@ func execCommand(req Request) (ExecResult, error) {
 	cmd := exec.CommandContext(ctx, req.Args[0], req.Args[1:]...)
 	cmd.Dir = req.Dir
 	cmd.Env = execEnv(req.Env)
+	if req.Stdin != "" {
+		cmd.Stdin = bytes.NewBufferString(req.Stdin)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {

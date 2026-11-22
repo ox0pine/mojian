@@ -1,0 +1,162 @@
+package lsp
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"testing"
+	"time"
+)
+
+type pipePair struct {
+	r *io.PipeReader
+	w *io.PipeWriter
+}
+
+func (p *pipePair) Read(b []byte) (int, error)  { return p.r.Read(b) }
+func (p *pipePair) Write(b []byte) (int, error) { return p.w.Write(b) }
+func (p *pipePair) Close() error {
+	_ = p.r.Close()
+	return p.w.Close()
+}
+
+func TestUTF16PositionConversions(t *testing.T) {
+	// 😀 is 4 UTF-8 bytes and 2 UTF-16 code units.
+	text := "a😀b\n你好x"
+	pos := OffsetToPosition(text, len("a😀"))
+	if pos != (Position{Line: 0, Character: 3}) {
+		t.Fatalf("OffsetToPosition = %+v, want {0 3}", pos)
+	}
+	if off := PositionToOffset(text, pos); off != len("a😀") {
+		t.Fatalf("PositionToOffset = %d, want %d", off, len("a😀"))
+	}
+	pos2 := OffsetToPosition(text, len("a😀b\n你"))
+	if pos2 != (Position{Line: 1, Character: 1}) {
+		t.Fatalf("OffsetToPosition line 1 = %+v, want {1 1}", pos2)
+	}
+	if off := PositionToOffset(text, pos2); off != len("a😀b\n你") {
+		t.Fatalf("PositionToOffset line 1 = %d, want %d", off, len("a😀b\n你"))
+	}
+}
+
+func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
+	c2sR, c2sW := io.Pipe()
+	s2cR, s2cW := io.Pipe()
+	clientSide := &pipePair{r: s2cR, w: c2sW}
+	serverSide := &pipePair{r: c2sR, w: s2cW}
+	defer serverSide.Close()
+
+	writeServer := func(v any) {
+		b, _ := json.Marshal(v)
+		fmt.Fprintf(serverSide, "Content-Length: %d\r\n\r\n%s", len(b), b)
+	}
+
+	go func() {
+		br := bufio.NewReader(serverSide)
+		for {
+			body, err := readFrame(br)
+			if err != nil {
+				return
+			}
+			var msg rpcMessage
+			if json.Unmarshal(body, &msg) != nil {
+				continue
+			}
+			switch msg.Method {
+			case "initialize":
+				writeServer(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(`{"capabilities":{}}`)})
+			case "textDocument/didOpen":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					Method:  "textDocument/publishDiagnostics",
+					Params:  json.RawMessage(`{"uri":"file:///proj/main.go","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":3}},"severity":1,"source":"gopls","message":"undeclared name"}]}`),
+				})
+			case "textDocument/completion":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"items":[{"label":"Println","kind":3,"detail":"func(a ...any)"}]}`),
+				})
+			case "textDocument/hover":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"contents":{"kind":"markdown","value":"func Println(a ...any)"}}`),
+				})
+			case "textDocument/definition":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"uri":"file:///proj/util.go","range":{"start":{"line":4,"character":5},"end":{"line":4,"character":12}}}]`),
+				})
+			case "textDocument/documentSymbol":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"name":"main","kind":12,"range":{"start":{"line":2,"character":0},"end":{"line":4,"character":1}},"selectionRange":{"start":{"line":2,"character":5},"end":{"line":2,"character":9}}}]`),
+				})
+			}
+		}
+	}()
+
+	diagsCh := make(chan PublishDiagnosticsParams, 1)
+	cl := NewClient(clientSide, func(p PublishDiagnosticsParams) {
+		diagsCh <- p
+	})
+	defer cl.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := cl.Initialize(ctx, FileURI("/proj")); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if !cl.Ready() {
+		t.Fatal("expected Ready after Initialize")
+	}
+	uri := FileURI("/proj/main.go")
+	if err := cl.DidOpen(uri, "go", 1, "package main\n\nfunc main() {}\n"); err != nil {
+		t.Fatalf("DidOpen: %v", err)
+	}
+
+	select {
+	case d := <-diagsCh:
+		if len(d.Diagnostics) != 1 || d.Diagnostics[0].Message != "undeclared name" {
+			t.Fatalf("unexpected diagnostics: %+v", d)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for publishDiagnostics")
+	}
+
+	comps, err := cl.Completion(ctx, uri, Position{Line: 2, Character: 4})
+	if err != nil || len(comps) != 1 || comps[0].Label != "Println" {
+		t.Fatalf("Completion = %+v, err=%v", comps, err)
+	}
+	hover, _, err := cl.Hover(ctx, uri, Position{Line: 2, Character: 4})
+	if err != nil || hover != "func Println(a ...any)" {
+		t.Fatalf("Hover = %q, err=%v", hover, err)
+	}
+	loc, ok, err := cl.Definition(ctx, uri, Position{Line: 2, Character: 4})
+	if err != nil || !ok || loc.Range.Start.Line != 4 {
+		t.Fatalf("Definition = %+v ok=%v err=%v", loc, ok, err)
+	}
+	syms, err := cl.DocumentSymbols(ctx, uri, "package main\n\nfunc main() {}\n")
+	if err != nil || len(syms) != 1 || syms[0].Name != "main" || syms[0].Line != 2 {
+		t.Fatalf("DocumentSymbols = %+v err=%v", syms, err)
+	}
+}
+
+func TestFallbackSymbols(t *testing.T) {
+	goSrc := "package p\n\ntype Store struct{}\nfunc (s *Store) Open() {}\nfunc Helper() {}\n"
+	syms := FallbackSymbols("store.go", goSrc)
+	if len(syms) != 3 || syms[0].Name != "Store" || syms[1].Name != "Open" || syms[2].Name != "Helper" {
+		t.Fatalf("go symbols = %+v", syms)
+	}
+	mdSrc := "# Title\n## Section\nBody\n"
+	mdSyms := FallbackSymbols("README.md", mdSrc)
+	if len(mdSyms) != 2 || mdSyms[0].Name != "Title" || mdSyms[1].Name != "Section" {
+		t.Fatalf("md symbols = %+v", mdSyms)
+	}
+}

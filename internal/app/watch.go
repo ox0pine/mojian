@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"path"
 	"strings"
@@ -19,11 +20,15 @@ type fileWatcher interface {
 }
 
 // syncProjectWatcher keeps one live filesystem watcher on the active
-// local project and stops it when switching away, opening a remote
-// project, or closing the window.
+// project (local via mygo.WatchFiles, or remote via mojian-server's Watch
+// stream) and stops it when switching away or closing the window.
 func (a *app) syncProjectWatcher() {
-	if a.harness || a.store == nil || a.store.IsMemory() || a.store.IsRemote() {
+	if a.harness || a.store == nil || a.store.IsMemory() {
 		a.stopProjectWatcher()
+		return
+	}
+	if a.store.IsRemote() {
+		a.syncRemoteProjectWatcher()
 		return
 	}
 	if a.win == nil && a.watchStarter == nil {
@@ -100,6 +105,58 @@ func (a *app) syncProjectWatcher() {
 	}()
 }
 
+// syncRemoteProjectWatcher subscribes to debounced change notifications from
+// the remote mojian-server so external edits in a remote terminal refresh
+// clean open files, the Explorer tree, and Git state automatically.
+func (a *app) syncRemoteProjectWatcher() {
+	s := a.store
+	if s == nil || !s.IsRemote() || s.Dir == "" || s.Client() == nil {
+		a.stopProjectWatcher()
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		a.stopProjectWatcher()
+		return
+	}
+	key := "remote:" + a.serverAlias + ":" + s.Dir
+	if a.watchCancel != nil && a.watchDir == key {
+		return
+	}
+	a.stopProjectWatcher()
+	ctx, cancel := context.WithCancel(context.Background())
+	a.watchSeq++
+	seq := a.watchSeq
+	winSeq := a.windowSeq
+	a.watchCancel = cancel
+	a.watchDir = key
+	client := s.Client()
+	dir := s.Dir
+
+	go func() {
+		rc, err := client.Watch(dir)
+		if err != nil {
+			return
+		}
+		go func() {
+			<-ctx.Done()
+			_ = rc.Close()
+		}()
+		sc := bufio.NewScanner(rc)
+		for sc.Scan() {
+			if ctx.Err() != nil {
+				return
+			}
+			post(func() {
+				if a.windowSeq != winSeq || a.watchSeq != seq || a.store != s {
+					return
+				}
+				a.handleRemoteWatchEvents()
+			})
+		}
+	}()
+}
+
 // stopProjectWatcher cancels the active project's filesystem watch.
 func (a *app) stopProjectWatcher() {
 	a.watchSeq++
@@ -120,9 +177,24 @@ func (a *app) handleWatchEvents() {
 	}
 	if err := s.Reload(); err == nil {
 		a.explorerUI().RefreshApplied()
+		a.invalidateDiffBases()
 		if a.git.Open && !a.NoGitAutoRefresh {
 			a.refreshGit()
 		}
 		a.invalidate()
+	}
+}
+
+// handleRemoteWatchEvents refreshes the remote project listing and reloads
+// clean open notes off the UI thread after a remote server watch signal.
+func (a *app) handleRemoteWatchEvents() {
+	s := a.store
+	if s == nil || !s.IsRemote() {
+		return
+	}
+	a.reloadProject(true)
+	a.invalidateDiffBases()
+	if a.git.Open && !a.NoGitAutoRefresh {
+		a.refreshGit()
 	}
 }

@@ -146,24 +146,39 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   exact look; a menu adds its own rows only, and a new menu takes the same pieces rather than a
   fourth set of metrics.
 - A pane's body is one of three kinds, chosen by `paneCardMode`: a note, an asset, or a terminal.
-  Background agent tasks have no pane; their sheet is part of the window's modal stack.
 - Every list row in a window is one row: `internal/app/widgets` holds `RowH` (34), `RowPadX`
   (10), `RowGap` (10), `RowTitle` (13), `RowDetail` (12), aliased into `app` in
   `internal/app/bridges.go`, and draws the one file row the pickers use. Quick open, a blank pane's
   picker, the Explorer's search results, the Welcome page's recents, the folder pickers and the Git
   change list take those numbers; `SectionLabel`, `EmptyLine` and `EmptyState` draw their captions,
   empty lines and empty pages. Settings keeps its own denser scale inside its own window.
-- The palette, quick open, project search and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
+- The palette, quick open, project search, go to symbol and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
   below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
   close button). Project search (`find-in-files`, `⇧⌘F` / `Ctrl+Shift+F`, `internal/app/search.go`)
-  adds Match Case (`Aa`) and Regular Expression (`.*`) toggles, runs `project.Search` off the UI
-  thread with dirty-buffer overrides, and jumps the focused pane directly to the matched line and
-  span. The panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
+  adds Match Case (`Aa`), Regular Expression (`.*`), Include/Exclude glob filters and Project Replace All
+  (which edits buffers in memory so changes stay undoable and respect explicit `⌘S` save), runs
+  `project.Search` off the UI thread with dirty-buffer overrides, and jumps the focused pane directly
+  to the matched line and span. Go to Symbol (`go-to-symbol`, `⇧⌘O` / `Ctrl+Shift+O`,
+  `internal/app/symbols.go`) shows instant regex fallback symbols (`internal/lsp/fallback.go`) and
+  upgrades asynchronously to LSP `textDocument/documentSymbol` when a language server is active. The
+  panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
   the remaining height instead. `CommandListHeight` subtracts the 56-pixel sheet chrome, up to the
   original 384 list maximum, so the last row stays inside the window. Empty results use `emptyLine`.
   `theme.Colors.ShadowDialog` is the dialog shadow; `k.ShadowFocused` stays for popovers and floating
   overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through `iconBtnLg` (30), rather than
   a pair per call site.
+- An optional quiet 24-pixel bottom status bar (`internal/app/statusbar.go`, controlled by
+  `prefs.ShowStatusBar`, off by default) shows the active Vim mode badge, active LSP server and
+  diagnostic counts, SSH reconnect status, cursor `Ln/Col` (and selection length), indentation,
+  line ending (`LF`/`CRLF`) and language name.
+- Optional Vim modal editing (`internal/app/vim/`, controlled by `prefs.EditorVimMode`) intercepts
+  editor key events through `editor.State.OnInput`, sets `NoInputMethod` in Normal/Visual/Command
+  modes so CJK IMEs never hijack motions, switches `CursorShape` (`Block`/`Bar`/`Underline`) and
+  uses relative line numbers in Normal/Visual modes.
+- Zero-config lightweight LSP (`internal/lsp/` + `internal/app/lsp.go`) auto-detects installed
+  language servers (`gopls`, `typescript-language-server`, `pyright-langserver`, `rust-analyzer`,
+  `clangd`) locally or on a remote SSH host via `mojian-server`'s `StartLSP` stream, wiring
+  `OnCompletion`, `OnHover`, `OnDefinition`, `SetDiagnostics` and `textDocument/didOpen`/`didChange`/`didSave`.
 - `internal/app/bridges.go` is the only file in `internal/app` that names `internal/theme`
   (besides `settings.go`) and `internal/platform`; `archtest` enforces it.
 

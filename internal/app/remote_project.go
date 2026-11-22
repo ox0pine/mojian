@@ -37,6 +37,7 @@ func (a *app) installRemoteConn(rc *remote.Conn) {
 		return
 	}
 	a.initWorkspaces()
+	a.cancelRemoteReconnect(rc.Host)
 	same := a.setRemoteConn(rc)
 	patch := func(w *workspace) {
 		if w == nil || w.serverAlias != rc.Host {
@@ -54,6 +55,9 @@ func (a *app) installRemoteConn(rc *remote.Conn) {
 		if w != a.workspace {
 			patch(w)
 		}
+	}
+	if !same {
+		a.watchRemoteConn(rc)
 	}
 }
 
@@ -218,7 +222,6 @@ func (a *app) closeRemoteProjectAfterSave(host, path string) {
 		a.remotePickHost = ""
 	}
 	if active {
-		a.stopAgentTask()
 		prevProject := a.project
 		a.serverAlias, a.remotePath = "", ""
 		a.abandonActiveWorkspace()
@@ -363,7 +366,6 @@ func (a *app) openRemoteProjectAsync(host, remotePath string) {
 				if rc != nil {
 					a.installRemoteConn(rc)
 				}
-				a.stopAgentTask()
 				a.stashActiveWorkspace()
 				ws := &workspace{
 					key:         key,

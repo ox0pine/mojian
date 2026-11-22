@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"mojian/internal/app/vim"
 	"mojian/internal/icons"
 	"mojian/internal/motion"
 
@@ -191,8 +192,35 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			} else {
 				st.LineNumbers = lineNumbersFor(p.Note.Path)
 			}
-			st.OnInput = func(ui.InputEvent) bool {
-				return false
+			a.syncEditorLSP(p, st)
+			a.syncEditorBlame(p, st, focused && !overlay)
+			if a.EditorVimMode {
+				if p.vim == nil {
+					p.vim = &vim.State{}
+				}
+				p.vim.Configure(st, a.HideLineNumbers)
+				st.OnInput = func(ev ui.InputEvent) bool {
+					return p.vim.Handle(st, ev, vim.Actions{
+						Save: func() {
+							a.later(func() {
+								a.saveNowAsync(func(err error) {
+									if err != nil {
+										a.fail(err)
+									}
+								})
+							})
+						},
+						Close: func() {
+							a.later(func() { a.closePane(p) })
+						},
+					})
+				}
+			} else {
+				st.NoInputMethod = false
+				st.CursorShape = editor.CursorBar
+				st.OnInput = func(ui.InputEvent) bool {
+					return false
+				}
 			}
 			tv := editor.View(c, st).Fill()
 			if !overlay && a.focusReq == p {

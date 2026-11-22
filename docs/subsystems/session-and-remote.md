@@ -23,8 +23,16 @@ its bundled `ssh.exe`.
 - [`internal/session/server.go`](../../internal/session/server.go) — `Serve`, `serveConn` and
   `dispatch`, `session` and `attached` streams, `listTree`.
 - [`internal/session/client.go`](../../internal/session/client.go) — `NewClient`, `Connect`,
-  `ConnectAt`, `Ready`, `Client`, `Stream`, `Stop`, and the file operations (`ListTree`,
-  `Search`, `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`, `Stat`).
+  `ConnectAt`, `Ready`, `Client`, `Stream`, `StartLSP`, `Watch`, `Stop`, and the file operations
+  (`ListTree`, `Search`, `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`,
+  `ExecStdin`, `Stat`).
+- [`internal/session/lsp_unix.go`](../../internal/session/lsp_unix.go) and
+  [`internal/session/watch.go`](../../internal/session/watch.go) — multiplexed streams on
+  `mojian-server` for running remote LSP servers over stdio and pushing remote project file-change
+  signals (`"changed\n"`) from a bounded directory stat fingerprint.
+- [`internal/app/remote_reconnect.go`](../../internal/app/remote_reconnect.go) — automatic
+  exponential-backoff SSH reconnect watching `<-rc.Client.Closed()` to restore loaded remote
+  workspaces and detached terminals after network drops or wake-from-sleep.
 - [`internal/session/pty.go`](../../internal/session/pty.go), `pty_unix.go` and `pty_windows.go` —
   the process seam: `creack/pty` on macOS/Linux, a ConPTY implementation with a job object on
   Windows.
@@ -121,10 +129,10 @@ its bundled `ssh.exe`.
   directory `SessionInfo.Dir` and age), attaches a chosen session into a pane (or focuses it if
   already open), and can kill orphan sessions.
 - Terminal panes show the running program's live OSC title (`Term.Title()`) in the pane header when
-  present, falling back to `Spec.title()`. When a non-focused terminal rings its bell or exits, it
-  sets a quiet attention dot on both the pane header and its tab; View › Jump to Attention (`⌘J` /
-  `Ctrl+J`) focuses a pending agent permission first, then cycles unread attention terminals and
-  clears the marker upon focus.
+  present, falling back to `Spec.title()`. When a non-focused terminal rings its bell, exits, or
+  emits a desktop notification via OSC 9, OSC 99 (Kitty), or OSC 777 (`internal/app/term_osc.go`),
+  it sets a quiet attention dot on both the pane header and its tab; View › Jump to Attention (`⌘J`
+  / `Ctrl+J`) cycles unread attention terminals and clears the marker upon focus.
 - Remote connections are pooled by host and kept while a loaded project uses them, and after
   `Set Up Server` until the last project on that host is removed (`closeRemoteProject`); `CloseAll`
   ends them at quit. Choosing a server that is not the one on screen resumes its most recently

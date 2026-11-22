@@ -38,6 +38,7 @@ type workspace struct {
 	branch      branchState
 	diffBases   map[string]*diffBaseEntry
 	diffBaseGen int
+	lsp         *lspManager
 	revealTab   bool
 }
 
@@ -151,6 +152,7 @@ func (a *app) abandonActiveWorkspace() {
 	if a.workspace == nil {
 		return
 	}
+	a.closeWorkspaceLSP(a.workspace)
 	closeWorkspaceTerminals(a.workspace)
 	a.workspace = &workspace{}
 }
@@ -163,8 +165,8 @@ func (a *app) closeModals() {
 	a.serverOpen = false
 	a.projectPicker = false
 	a.paletteOpen = false
-	a.agentOpen = false
 	a.quickOpen = false
+	a.symbolsOpen = false
 	a.closeSearch()
 	a.sessionPick = false
 	a.sshPick = false
@@ -207,7 +209,6 @@ func (a *app) switchWorkspaceAndThen(ws *workspace, done func()) {
 			a.fail(err)
 			return
 		}
-		a.stopAgentTask()
 		if err := a.saveLayout(); err != nil {
 			a.fail(err)
 			return
@@ -239,6 +240,7 @@ func (a *app) registerActiveWorkspace() {
 // connection, as quitting the app does. The servers keep running.
 func (a *app) closeWorkspaces() {
 	a.stopProjectWatcher()
+	a.cancelRemoteReconnect("")
 	a.initWorkspaces()
 	a.remoteClosing = true
 	// A closing pane has already left its tab's split tree. Finish those
@@ -250,6 +252,7 @@ func (a *app) closeWorkspaces() {
 		a.workspaces[key] = a.workspace
 	}
 	for _, ws := range a.workspaces {
+		a.closeWorkspaceLSP(ws)
 		closeWorkspaceTerminals(ws)
 	}
 	for host, rc := range a.hostService().Conns() {

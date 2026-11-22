@@ -39,12 +39,15 @@ var (
 	cmdPrevTab       = commands.ByID("prev-tab")
 	cmdPalette       = commands.ByID("palette")
 	cmdSearch        = commands.ByID("find-in-files")
+	cmdSymbols       = commands.ByID("goto-symbol")
+	cmdNextHunk      = commands.ByID("next-hunk")
+	cmdPrevHunk      = commands.ByID("prev-hunk")
+	cmdRevertHunk    = commands.ByID("revert-hunk")
 	cmdNotes         = commands.ByID("open-file")
 	cmdTree          = commands.ByID("toggle-tree")
 	cmdTerminal      = commands.ByID("toggle-terminal")
 	cmdAttachSession = commands.ByID("attach-terminal")
 	cmdJumpAttention = commands.ByID("jump-attention")
-	cmdAgentTask     = commands.ByID("run-agent-task")
 	cmdGit           = commands.ByID("git")
 	cmdBranch        = commands.ByID("switch-branch")
 	cmdSettings      = commands.ByID("settings")
@@ -256,7 +259,7 @@ func (a *app) filteredFiles() ([]*note, []*assetFile) {
 // the same commands in the view.
 func (a *app) shortcuts(c *ui.Context) {
 	if (runtime.GOOS != "js" && !a.harness) ||
-		a.paletteOpen || a.quickOpen || a.searchOpen || a.sessionPick || a.sshPick || a.projectPicker || a.remotePicker || a.agentOpen {
+		a.paletteOpen || a.quickOpen || a.symbolsOpen || a.searchOpen || a.sessionPick || a.sshPick || a.projectPicker || a.remotePicker {
 		return
 	}
 	// Fixed tab switching takes precedence when a custom command has the

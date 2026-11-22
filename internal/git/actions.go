@@ -80,6 +80,11 @@ func Discard(r Runner, root string, c Change) error {
 
 // CreateCommit creates a commit from the staged index with message.
 func CreateCommit(r Runner, root, message string) error {
+	return CreateCommitAmend(r, root, message, false)
+}
+
+// CreateCommitAmend creates a commit (or amends HEAD when amend is true).
+func CreateCommitAmend(r Runner, root, message string, amend bool) error {
 	if r == nil {
 		r = LocalRunner{}
 	}
@@ -90,8 +95,87 @@ func CreateCommit(r Runner, root, message string) error {
 	if msg == "" {
 		return errors.New("enter a commit message")
 	}
-	_, err := r.Run(root, "commit", "-m", msg)
+	args := []string{"commit", "-m", msg}
+	if amend {
+		args = []string{"commit", "--amend", "-m", msg}
+	}
+	_, err := r.Run(root, args...)
 	return err
+}
+
+// Fetch fetches updates from configured remotes.
+func Fetch(r Runner, root string) error {
+	if r == nil {
+		r = LocalRunner{}
+	}
+	if root == "" {
+		return errors.New("not a Git repository")
+	}
+	_, err := r.Run(root, "fetch", "--prune")
+	return err
+}
+
+// Pull fast-forwards or merges updates from the tracking branch.
+func Pull(r Runner, root string) error {
+	if r == nil {
+		r = LocalRunner{}
+	}
+	if root == "" {
+		return errors.New("not a Git repository")
+	}
+	_, err := r.Run(root, "pull")
+	return err
+}
+
+// Push pushes the current branch to its upstream remote.
+func Push(r Runner, root string) error {
+	if r == nil {
+		r = LocalRunner{}
+	}
+	if root == "" {
+		return errors.New("not a Git repository")
+	}
+	_, err := r.Run(root, "push")
+	return err
+}
+
+// Stash stashes tracked working-tree and index changes.
+func Stash(r Runner, root string) error {
+	if r == nil {
+		r = LocalRunner{}
+	}
+	if root == "" {
+		return errors.New("not a Git repository")
+	}
+	_, err := r.Run(root, "stash", "push")
+	return err
+}
+
+// StashPop applies and removes the top stash entry.
+func StashPop(r Runner, root string) error {
+	if r == nil {
+		r = LocalRunner{}
+	}
+	if root == "" {
+		return errors.New("not a Git repository")
+	}
+	_, err := r.Run(root, "stash", "pop")
+	return err
+}
+
+// LastCommitMessage returns the HEAD commit's full message for Amend prefill.
+func LastCommitMessage(r Runner, root string) string {
+	if r == nil {
+		r = LocalRunner{}
+	}
+	if root == "" {
+		return ""
+	}
+	out, err := r.Run(root, "log", "-1", "--pretty=%B")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 func changePaths(c Change) []string {
@@ -138,7 +222,9 @@ func (p *Page) runAction(reloadFiles bool, fn func(r Runner, root string) error,
 	p.runner = h.GitRunner()
 	p.ActionBusy = true
 	p.ActionErr = ""
+	p.ActionInfo = ""
 	p.discardPrompt = ""
+	p.hunkDiscard = -1
 	p.ActionSeq++
 	seq := p.ActionSeq
 	root := p.Root
@@ -231,15 +317,79 @@ func (p *Page) DiscardSelected() {
 	}, nil)
 }
 
-// CommitStaged commits staged changes with p.CommitMsg.
+// CommitStaged commits staged changes (or amends HEAD) with p.CommitMsg.
 func (p *Page) CommitStaged() {
 	msg := strings.TrimSpace(p.CommitMsg)
-	if msg == "" || p.StagedCount() == 0 {
+	if msg == "" || (!p.Amend && p.StagedCount() == 0) {
+		return
+	}
+	amend := p.Amend
+	p.runAction(false, func(r Runner, root string) error {
+		return CreateCommitAmend(r, root, msg, amend)
+	}, func() {
+		p.CommitMsg = ""
+		p.Amend = false
+		p.ActionInfo = "Committed"
+		if amend {
+			p.ActionInfo = "Amended commit"
+		}
+	})
+}
+
+// StageHunkSelected stages hunk idx of the selected file.
+func (p *Page) StageHunkSelected(idx int) {
+	ch, ok := p.selectedChange()
+	if !ok {
 		return
 	}
 	p.runAction(false, func(r Runner, root string) error {
-		return CreateCommit(r, root, msg)
-	}, func() {
-		p.CommitMsg = ""
-	})
+		return StageHunk(r, root, ch, idx)
+	}, nil)
+}
+
+// UnstageHunkSelected unstages hunk idx of the selected file.
+func (p *Page) UnstageHunkSelected(idx int) {
+	ch, ok := p.selectedChange()
+	if !ok {
+		return
+	}
+	p.runAction(false, func(r Runner, root string) error {
+		return UnstageHunk(r, root, ch, idx)
+	}, nil)
+}
+
+// DiscardHunkSelected reverts hunk idx of the selected file in the working tree.
+func (p *Page) DiscardHunkSelected(idx int) {
+	ch, ok := p.selectedChange()
+	if !ok {
+		return
+	}
+	p.runAction(true, func(r Runner, root string) error {
+		return DiscardHunk(r, root, ch, idx)
+	}, nil)
+}
+
+// FetchRemote fetches from the repository's remotes.
+func (p *Page) FetchRemote() {
+	p.runAction(false, Fetch, func() { p.ActionInfo = "Fetched" })
+}
+
+// PullRemote pulls from upstream and reloads clean notes.
+func (p *Page) PullRemote() {
+	p.runAction(true, Pull, func() { p.ActionInfo = "Pulled" })
+}
+
+// PushRemote pushes the current branch to upstream.
+func (p *Page) PushRemote() {
+	p.runAction(false, Push, func() { p.ActionInfo = "Pushed" })
+}
+
+// StashChanges stashes working-tree edits and reloads clean notes.
+func (p *Page) StashChanges() {
+	p.runAction(true, Stash, func() { p.ActionInfo = "Stashed changes" })
+}
+
+// StashPopChanges pops the top stash entry and reloads clean notes.
+func (p *Page) StashPopChanges() {
+	p.runAction(true, StashPop, func() { p.ActionInfo = "Popped stash" })
 }

@@ -81,8 +81,18 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 				}
 			})
 		ui.Spacer(c)
-		if p.Loading || p.DiffLoad || p.HistoryLoad || p.ActionBusy {
+		switch {
+		case p.Loading || p.DiffLoad || p.HistoryLoad || p.ActionBusy:
 			ui.Text(c, "Reading…").FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint)
+		case p.ActionErr != "":
+			ui.Text(c, p.ActionErr).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.Danger).
+				SingleLine().Ellipsis("…").MaxWidth(260)
+		case p.ActionInfo != "":
+			ui.Text(c, p.ActionInfo).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextMuted).
+				SingleLine().Ellipsis("…")
+		}
+		if p.Root != "" {
+			p.syncMenuButton(c, k)
 		}
 		splitLabel, splitGlyph := "Split Diff", "columns-2"
 		if p.SplitDiff {
@@ -180,6 +190,46 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 	})
 }
 
+func (p *Page) syncMenuButton(c *ui.Context, k *theme.Colors) {
+	m := ui.MenuBase(c, &p.SyncMenu)
+	b := m.Trigger.Height(26).Padding(0, 8).Radius(theme.Radius).Gap(4).
+		Cursor(ui.CursorPointer).Label("Git Actions").Tooltip("Fetch, Pull, Push & Stash").
+		Disabled(p.ActionBusy).Transition(motion.Colors)
+	if p.SyncMenu || b.Hovered() {
+		b.Background(k.Hover)
+	}
+	b.Children(func() {
+		ui.Text(c, "Sync").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(500).TextColor(k.TextMuted)
+		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
+	})
+	m.Popup(func(panel ui.Element) {
+		panel.Width(180).Padding(6).Radius(theme.Radius).
+			Background(k.Panel).Border(1, k.PanelBorder).
+			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2)
+		panel.Margin(4, 0, 0, 0)
+		item := func(key, label string, run func()) {
+			row := m.Item().Key(key).Height(30).Padding(0, 8).Radius(theme.Radius).
+				Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
+			if row.Highlighted() {
+				row.Background(k.Hover)
+			}
+			row.Children(func() {
+				ui.Text(c, label).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.Text)
+			})
+			if row.Clicked() {
+				p.SyncMenu = false
+				run()
+			}
+		}
+		item("git-fetch", "Fetch", p.FetchRemote)
+		item("git-pull", "Pull", p.PullRemote)
+		item("git-push", "Push", p.PushRemote)
+		ui.Divider(c).Margin(2, 4)
+		item("git-stash", "Stash Changes", p.StashChanges)
+		item("git-stash-pop", "Pop Latest Stash", p.StashPopChanges)
+	})
+}
+
 func (p *Page) files(c *ui.Context, k *theme.Colors) {
 	width := float32(248)
 	if w := c.Root().Bounds().W; w > 0 && w < 900 {
@@ -273,7 +323,7 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 
 func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
 	staged := p.StagedCount()
-	canCommit := staged > 0 && strings.TrimSpace(p.CommitMsg) != "" && !p.ActionBusy
+	canCommit := (staged > 0 || p.Amend) && strings.TrimSpace(p.CommitMsg) != "" && !p.ActionBusy
 	ui.Divider(c)
 	ui.Column(c).Padding(8, 10).Gap(6).Children(func() {
 		if p.ActionErr != "" {
@@ -288,14 +338,41 @@ func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
 			p.CommitStaged()
 		}
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-			note := "Stage changes to commit"
+			note := "Stage changes"
 			if staged == 1 {
 				note = "1 staged"
 			} else if staged > 1 {
 				note = fmt.Sprintf("%d staged", staged)
+			} else if p.Amend {
+				note = "Amend HEAD"
 			}
 			ui.Text(c, note).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			amendBtn := ui.ButtonBase(c.Key("git-amend")).Height(24).Padding(0, 7).Radius(theme.Radius - 2).
+				Cursor(ui.CursorPointer).Label("Amend").Tooltip("Amend the last commit").
+				Transition(motion.Colors)
+			amendFg := k.TextMuted
+			if p.Amend {
+				amendBtn.Background(k.PanelSel)
+				amendFg = k.Text
+			} else if amendBtn.Hovered() {
+				amendBtn.Background(k.Hover)
+				amendFg = k.Text
+			}
+			if amendBtn.Clicked() {
+				p.Amend = !p.Amend
+				if p.Amend && strings.TrimSpace(p.CommitMsg) == "" && p.Root != "" {
+					p.CommitMsg = LastCommitMessage(p.h.GitRunner(), p.Root)
+				}
+				p.h.Invalidate()
+			}
+			amendBtn.Children(func() {
+				ui.Text(c, "Amend").FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(amendFg)
+			})
+			commitLabel := "Commit"
+			if p.Amend {
+				commitLabel = "Amend"
+			}
 			btn := ui.ButtonBase(c).Height(26).Padding(0, 10).Radius(theme.Radius).
 				Cursor(ui.CursorPointer).Label("Commit").Disabled(!canCommit).
 				Transition(motion.Colors)
@@ -312,7 +389,7 @@ func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
 				fg = c.Theme().AccentText
 			}
 			btn.Children(func() {
-				ui.Text(c, "Commit").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(600).TextColor(fg)
+				ui.Text(c, commitLabel).FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(600).TextColor(fg)
 			})
 		})
 	})
@@ -411,8 +488,77 @@ func (p *Page) statusBadge(c *ui.Context, k *theme.Colors, status string, select
 func (p *Page) diffPane(c *ui.Context, k *theme.Colors) {
 	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
 		p.diffHeader(c, k)
+		if p.Mode == ModeChanges {
+			p.hunkBar(c, k)
+		}
 		ui.Divider(c)
 		p.diffBody(c, k)
+	})
+}
+
+func (p *Page) hunkBar(c *ui.Context, k *theme.Colors) {
+	ch, ok := p.selectedChange()
+	if !ok || ch.Status == "U" {
+		return
+	}
+	hunks := SplitHunks(p.Diff)
+	if len(hunks) == 0 {
+		return
+	}
+	if p.HunkSel < 0 {
+		p.HunkSel = 0
+	}
+	if p.HunkSel >= len(hunks) {
+		p.HunkSel = len(hunks) - 1
+	}
+	idx := p.HunkSel
+	ui.Divider(c)
+	ui.Row(c).Height(28).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+		if iconButton(c, k, "chevron-left", "Previous Hunk", 22, 13).
+			Disabled(idx <= 0).Clicked() {
+			p.HunkSel--
+			p.hunkDiscard = -1
+			if p.diffView != nil {
+				p.diffView.Run(editor.PreviousHunk)
+			}
+			p.h.Invalidate()
+		}
+		ui.Text(c, fmt.Sprintf("Hunk %d/%d", idx+1, len(hunks))).
+			FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(k.TextMuted).Shrink(0)
+		if iconButton(c, k, "chevron-right", "Next Hunk", 22, 13).
+			Disabled(idx >= len(hunks)-1).Clicked() {
+			p.HunkSel++
+			p.hunkDiscard = -1
+			if p.diffView != nil {
+				p.diffView.Run(editor.NextHunk)
+			}
+			p.h.Invalidate()
+		}
+		ui.Text(c, hunks[idx].Header).Font(theme.NoteFont.Family).
+			FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
+			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if ch.Unstaged {
+			if headerActionButton(c, k, "Stage Hunk", false, p.ActionBusy).Clicked() {
+				p.StageHunkSelected(idx)
+			}
+			if p.hunkDiscard == idx {
+				if headerActionButton(c, k, "Confirm Discard", true, p.ActionBusy).Clicked() {
+					p.DiscardHunkSelected(idx)
+				}
+				if headerActionButton(c, k, "Cancel", false, p.ActionBusy).Clicked() {
+					p.hunkDiscard = -1
+				}
+			} else {
+				if headerActionButton(c, k, "Discard Hunk", false, p.ActionBusy).Clicked() {
+					p.hunkDiscard = idx
+				}
+			}
+		}
+		if ch.Staged {
+			if headerActionButton(c, k, "Unstage Hunk", false, p.ActionBusy).Clicked() {
+				p.UnstageHunkSelected(idx)
+			}
+		}
 	})
 }
 

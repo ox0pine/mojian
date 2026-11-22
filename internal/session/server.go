@@ -23,7 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"mojian/internal/acp"
 	"mojian/internal/filekind"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -231,11 +230,18 @@ func (s *Server) dispatch(m *mux, f frame) {
 		if json.Unmarshal(f.payload, &o) != nil {
 			return
 		}
-		if o.Kind == "acp" {
+		if o.Kind == "lsp" {
 			ms := m.openStream(f.stream)
 			b, _ := json.Marshal(openReply{OK: true})
 			_ = m.writeFrame(frame{typ: frameOpen, stream: f.stream, payload: b})
-			go s.serveACP(ms, o)
+			go s.serveLSP(ms, o)
+			return
+		}
+		if o.Kind == "watch" {
+			ms := m.openStream(f.stream)
+			b, _ := json.Marshal(openReply{OK: true})
+			_ = m.writeFrame(frame{typ: frameOpen, stream: f.stream, payload: b})
+			go s.serveWatch(ms, o)
 			return
 		}
 		ss, err := s.session(o.SID)
@@ -316,13 +322,6 @@ func (s *Server) do(req Request) (any, error) {
 			opts = *req.Search
 		}
 		return SearchDir(context.Background(), req.Path, opts)
-	case "acpAgents":
-		avail := acp.Available()
-		names := make([]string, 0, len(avail))
-		for _, a := range avail {
-			names = append(names, a.Name)
-		}
-		return names, nil
 	case "readFile":
 		info, err := os.Stat(req.Path)
 		if err != nil {

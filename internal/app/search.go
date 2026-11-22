@@ -13,15 +13,17 @@ import (
 	"mojian/internal/session"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
-// openSearch shows the project-wide full-text search sheet over the window.
+// openSearch shows the project-wide full-text search & replace sheet over the window.
 func (a *app) openSearch() {
 	a.closeModals()
 	a.searchOpen = true
 	a.searchSel = 0
 	a.searchList = ui.ListState{}
 	a.searchLastKey = ""
+	a.searchNotice = ""
 	if strings.TrimSpace(a.searchQuery) != "" {
 		a.startProjectSearch()
 	}
@@ -43,24 +45,31 @@ func (a *app) cancelProjectSearch() {
 	a.searchBusy = false
 }
 
+func (a *app) searchOptions() session.SearchOptions {
+	return session.SearchOptions{
+		Query:         a.searchQuery,
+		CaseSensitive: a.searchCase,
+		Regex:         a.searchRegex,
+		Include:       a.searchInclude,
+		Exclude:       a.searchExclude,
+	}
+}
+
 func (a *app) searchKey() string {
-	return fmt.Sprintf("%t|%t|%s", a.searchCase, a.searchRegex, a.searchQuery)
+	return fmt.Sprintf("%t|%t|%s|%s|%s", a.searchCase, a.searchRegex, a.searchInclude, a.searchExclude, a.searchQuery)
 }
 
 func (a *app) startProjectSearch() {
 	a.cancelProjectSearch()
 	a.searchLastKey = a.searchKey()
 	a.searchErr = ""
+	a.searchNotice = ""
 	a.searchSel = 0
 	if a.searchQuery == "" || a.store == nil {
 		a.searchResult = session.SearchResult{}
 		return
 	}
-	opts := session.SearchOptions{
-		Query:         a.searchQuery,
-		CaseSensitive: a.searchCase,
-		Regex:         a.searchRegex,
-	}
+	opts := a.searchOptions()
 	overrides := a.store.SearchOverrides()
 	backend := a.store.FS
 	post := a.uiPoster()
@@ -104,7 +113,64 @@ func (a *app) startProjectSearch() {
 	}()
 }
 
-// searchModal draws the project-wide text search sheet over the window.
+// replaceAllMatches applies searchReplace across every matched file in memory,
+// keeping Mojian's explicit ⌘S save and undo semantics intact.
+func (a *app) replaceAllMatches() {
+	if a.store == nil || a.searchQuery == "" || len(a.searchResult.Matches) == 0 {
+		return
+	}
+	opts := a.searchOptions()
+	seen := map[string]bool{}
+	var rels []string
+	for _, m := range a.searchResult.Matches {
+		if !seen[m.Rel] {
+			seen[m.Rel] = true
+			rels = append(rels, m.Rel)
+		}
+	}
+	totalCount := 0
+	totalFiles := 0
+	for _, rel := range rels {
+		n := a.store.ByRelPath(filepath.FromSlash(rel))
+		if n == nil {
+			continue
+		}
+		if !a.loadNote(n) {
+			continue
+		}
+		cur := n.Text()
+		updated, count, err := session.ReplaceAllText(cur, a.searchReplace, opts)
+		if err != nil {
+			a.searchErr = err.Error()
+			a.invalidate()
+			return
+		}
+		if count == 0 || updated == cur {
+			continue
+		}
+		buf := n.Buffer()
+		buf.Edit(editor.Edit{Start: 0, End: len(cur), Text: updated})
+		totalCount += count
+		totalFiles++
+	}
+	a.startProjectSearch()
+	if totalCount > 0 {
+		a.searchNotice = fmt.Sprintf("Replaced %d in %d %s · %s to save",
+			totalCount, totalFiles, pluralWord(totalFiles, "file", "files"), a.commandKeys(cmdSave))
+	} else {
+		a.searchNotice = "No replacements applied"
+	}
+	a.invalidate()
+}
+
+func pluralWord(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// searchModal draws the project-wide text search & replace sheet over the window.
 func (a *app) searchModal(c *ui.Context, k *colors) {
 	if !a.searchOpen {
 		return
@@ -119,7 +185,7 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 	chosen := -1
 	commandDialog(c, k, &a.searchOpen, func() {
 		var in ui.Element
-		ui.Row(c).Height(48).Padding(0, 16).Gap(8).AlignItems(ui.Center).
+		ui.Row(c).Height(48).Padding(0, 16).Gap(6).AlignItems(ui.Center).
 			BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
 			ui.Icon(c, icons.Icon("search")).Size(17, 17).TextColor(k.TextFaint)
 			in = ui.TextInputBase(c, &a.searchQuery).Grow(1).FontSize(c.Theme().Rem(15.0 / 13)).
@@ -132,14 +198,57 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 				a.searchRegex = !a.searchRegex
 				a.startProjectSearch()
 			}
+			if searchToggleChip(c, k, "Files", "Filter files by glob", a.searchFilterOpen || a.searchInclude != "" || a.searchExclude != "").Clicked() {
+				a.searchFilterOpen = !a.searchFilterOpen
+			}
+			if searchToggleChip(c, k, "Replace", "Toggle Replace", a.searchReplaceOpen).Clicked() {
+				a.searchReplaceOpen = !a.searchReplaceOpen
+			}
 			if iconButton(c, k, "x", "Close", iconBtnSm, iconGlyphSm).Clicked() {
 				a.searchOpen = false
 			}
 		})
+		extraChrome := float32(28)
+		if a.searchFilterOpen {
+			extraChrome += 36
+			ui.Row(c).Height(36).Padding(0, 16).Gap(8).AlignItems(ui.Center).
+				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
+				ui.TextInputBase(c.Key("search-inc"), &a.searchInclude).Grow(1).MinWidth(0).
+					FontSize(c.Theme().Rem(12.0 / 13)).Placeholder("Include (e.g. *.go, internal/**)").
+					Label("Files to include")
+				ui.Box(c).Width(1).Height(16).Background(k.PanelBorder)
+				ui.TextInputBase(c.Key("search-exc"), &a.searchExclude).Grow(1).MinWidth(0).
+					FontSize(c.Theme().Rem(12.0 / 13)).Placeholder("Exclude (e.g. *_test.go)").
+					Label("Files to exclude")
+			})
+		}
+		if a.searchReplaceOpen {
+			extraChrome += 38
+			ui.Row(c).Height(38).Padding(0, 16).Gap(8).AlignItems(ui.Center).
+				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
+				ui.TextInputBase(c.Key("search-replace"), &a.searchReplace).Grow(1).MinWidth(0).
+					FontSize(c.Theme().Rem(13.0 / 13)).Placeholder("Replace with…").
+					Label("Replace with")
+				btn := ui.ButtonBase(c.Key("replace-all")).Height(24).Padding(0, 10).Radius(radius - 2).
+					Cursor(ui.CursorPointer).Label("Replace All").
+					Disabled(a.searchBusy || len(matches) == 0).Transition(motion.Colors)
+				if btn.Hovered() {
+					btn.Background(k.Pressed)
+				} else {
+					btn.Background(k.Hover)
+				}
+				btn.Children(func() {
+					ui.Text(c, "Replace All").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(550).TextColor(k.Text)
+				})
+				if btn.Clicked() {
+					a.later(func() { a.replaceAllMatches() })
+				}
+			})
+		}
 		if listNav(in, &a.searchSel, len(matches), &reveal) {
 			chosen = a.searchSel
 		}
-		if a.searchQuery != "" {
+		if a.searchQuery != "" || a.searchNotice != "" {
 			ui.Row(c).Height(28).Padding(0, 16).Gap(8).AlignItems(ui.Center).
 				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
 				switch {
@@ -148,6 +257,9 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 					ui.Text(c, "Searching…").FontSize(rowDetail).TextColor(k.TextFaint)
 				case a.searchErr != "":
 					ui.Text(c, a.searchErr).FontSize(rowDetail).TextColor(k.Danger).
+						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+				case a.searchNotice != "":
+					ui.Text(c, a.searchNotice).FontSize(rowDetail).TextColor(k.TextMuted).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				default:
 					ui.Text(c, searchSummary(a.searchResult)).FontSize(rowDetail).TextColor(k.TextFaint)
@@ -159,7 +271,7 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 			m := matches[i]
 			return m.Rel + ":" + strconv.Itoa(m.Line) + ":" + strconv.Itoa(m.Col)
 		}
-		listH := max(sheetListHeight(c)-28, 120)
+		listH := max(sheetListHeight(c)-extraChrome, 100)
 		list := ui.List(c, &a.searchList, len(matches), func(i int) {
 			m := matches[i]
 			selected := i == a.searchSel
@@ -246,14 +358,8 @@ func searchSummary(r session.SearchResult) string {
 	if n == 0 {
 		return "No matches"
 	}
-	matchWord := "matches"
-	if n == 1 {
-		matchWord = "match"
-	}
-	fileWord := "files"
-	if r.Files == 1 {
-		fileWord = "file"
-	}
+	matchWord := pluralWord(n, "match", "matches")
+	fileWord := pluralWord(r.Files, "file", "files")
 	if r.Truncated {
 		return fmt.Sprintf("First %d %s in %d %s", n, matchWord, r.Files, fileWord)
 	}

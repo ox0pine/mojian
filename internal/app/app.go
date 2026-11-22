@@ -22,6 +22,7 @@ import (
 	"mojian/internal/app/explorer"
 	"mojian/internal/app/settingsui"
 	"mojian/internal/fs"
+	"mojian/internal/lsp"
 	"mojian/internal/prefs"
 	"mojian/internal/remote/remotehost"
 	"mojian/internal/session"
@@ -77,29 +78,32 @@ type app struct {
 	// fileClip is the app's own clipboard: absolute local paths, or paths
 	// relative to a remote project (fileClipRemote). A cut is a one-shot
 	// intent and is cleared when the project changes.
-	fileClip            []string
-	fileCut             bool
-	fileClipRemote      bool
-	fileClipHost        string
-	fileClipRoot        string
-	hostDraftName       string
-	hostDraftAddr       string
-	sshImportOpen       bool
-	sshImportCandidates []hostConfig
-	serverOpen          bool
-	remotePicker        bool
-	remoteHost          string
-	remoteQuery         string
-	remoteDirs          []session.FileEntry
-	remoteList          ui.ListState
-	remoteErr           string
-	pickerPath          string
-	pickerInput         string
-	pickerEntries       []pickerEntry
-	pickerList          ui.ListState
-	pickerSel           int
-	pickerErr           string
-	pickerHidden        bool
+	fileClip              []string
+	fileCut               bool
+	fileClipRemote        bool
+	fileClipHost          string
+	fileClipRoot          string
+	hostDraftName         string
+	hostDraftAddr         string
+	sshImportOpen         bool
+	sshImportCandidates   []hostConfig
+	serverOpen            bool
+	remotePicker          bool
+	remoteHost            string
+	remoteQuery           string
+	remoteDirs            []session.FileEntry
+	remoteList            ui.ListState
+	remoteErr             string
+	remoteReconnecting    map[string]bool
+	remoteReconnectSeq    map[string]int
+	remoteReconnectCancel map[string]context.CancelFunc
+	pickerPath            string
+	pickerInput           string
+	pickerEntries         []pickerEntry
+	pickerList            ui.ListState
+	pickerSel             int
+	pickerErr             string
+	pickerHidden          bool
 
 	paneOverlays []*paneOverlay
 
@@ -148,19 +152,6 @@ type app struct {
 	// the work for its next render.
 	uiPost func(func())
 
-	// agentTask is the one background ACP task this window runs; it has
-	// no pane, so its sheet is the only place to ask for a prompt or a
-	// permission.
-	agentTask         *agentTask
-	agentOpen         bool
-	agentInput        string
-	agentChoices      []string
-	agentChoiceSeq    int
-	agentSelected     string
-	agentLastAgent    string
-	agentLastSummary  string
-	agentLastDuration string
-
 	paletteOpen  bool
 	paletteQuery string
 	paletteSel   int
@@ -171,18 +162,31 @@ type app struct {
 	quickSel   int
 	quickList  ui.ListState
 
-	searchOpen    bool
-	searchQuery   string
-	searchCase    bool
-	searchRegex   bool
-	searchLastKey string
-	searchBusy    bool
-	searchErr     string
-	searchResult  session.SearchResult
-	searchSel     int
-	searchList    ui.ListState
-	searchSeq     int
-	searchCancel  func()
+	searchOpen        bool
+	searchQuery       string
+	searchCase        bool
+	searchRegex       bool
+	searchInclude     string
+	searchExclude     string
+	searchFilterOpen  bool
+	searchReplace     string
+	searchReplaceOpen bool
+	searchNotice      string
+	searchLastKey     string
+	searchBusy        bool
+	searchErr         string
+	searchResult      session.SearchResult
+	searchSel         int
+	searchList        ui.ListState
+	searchSeq         int
+	searchCancel      func()
+
+	symbolsOpen  bool
+	symbolsQuery string
+	symbolsSel   int
+	symbolsList  ui.ListState
+	symbolsItems []lsp.Symbol
+	symbolsSeq   int
 
 	rename      *tab
 	renameText  string
@@ -623,4 +627,15 @@ func (a *app) persistLayout(c *ui.Context) {
 	if err := a.saveLayout(); err == nil {
 		a.layoutDirty = false
 	}
+}
+
+func (a *app) uiPoster() func(func()) {
+	if a.uiPost != nil {
+		return a.uiPost
+	}
+	if a.win != nil {
+		win := a.win
+		return func(fn func()) { win.Update(fn) }
+	}
+	return nil
 }

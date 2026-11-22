@@ -128,11 +128,13 @@ branches and reloads open notes after a checkout.
   theme and font are known, and kept for that diff's generation (`diffGen`/`viewsGen`); a new diff
   clears them and starts at the top. `Host.EditorTheme` is the editor theme with the pane's card as
   its background, because the viewer mixes change tints against the background it is given.
-- Working-tree mutations (`Stage`, `Unstage`, `Discard`, `CreateCommit` in `internal/git/actions.go`) run
-  through the active `Runner` (local or remote server) off the UI thread, guarded by `ActionBusy`
-  and `ActionSeq`. `Discard` requires a second confirmation click (`Confirm Discard`) and calls
-  `Host.ReloadFiles` so open clean notes reflect the restored file; every completed mutation calls
-  `Host.AfterGitMutation` and refreshes the page.
+- Working-tree mutations (`Stage`, `Unstage`, `Discard`, `CreateCommit`, `AmendCommit`, `Fetch`,
+  `Pull`, `Push`, `Stash`, `StashPop` in `internal/git/actions.go`) and hunk-level patch operations
+  (`StageHunk`, `UnstageHunk`, `DiscardHunk` in `internal/git/hunk.go`, using `StdinRunner` over
+  `git apply` on both local and remote `session.Client.ExecStdin`) run through the active `Runner`
+  off the UI thread, guarded by `ActionBusy` and `ActionSeq`. `Discard` requires a second
+  confirmation click (`Confirm Discard`) and calls `Host.ReloadFiles` so open clean notes reflect
+  the restored file; every completed mutation calls `Host.AfterGitMutation` and refreshes the page.
 - `toFilePatch` turns a parsed `FileDiff` into the viewer's `editor.FilePatch`: hunk headers keep
   their counts and section text, a blank context line regains its space prefix, and a `\ No newline`
   line stays as it is. Every other line is cut at `diffLineRunes` (2000) with `…` after its prefix,
@@ -148,8 +150,11 @@ branches and reloads open notes after a checkout.
   scrollbar, and draws its gutter, so the page no longer draws rows, numbers or per-line colors.
 - Editor panes in a Git repository asynchronously read each open file's `HEAD` text through
   `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/git_bridge.go`)
-  and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation. Switching
-  branches or mutating Git from the page invalidates the cache.
+  and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation (`NextHunk`,
+  `PreviousHunk`, `RevertHunk` commands in the palette and menu). When `prefs.EditorGitBlame` is
+  enabled, moving the cursor asynchronously queries `git.ReadLineBlame` and renders a trailing
+  inlay (`editor.State.SetInlays`) for the current line. Switching branches or mutating Git from
+  the page invalidates the cache.
 - `BranchData.Current` is the checked-out branch, or the short hash of a detached HEAD with
   `Detached` set; no branch is marked `Current` in that case. `Root` is empty outside a repository,
   which hides the chip; the command reports "This folder is not a Git repository." in the banner.

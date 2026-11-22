@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -177,6 +178,143 @@ func SearchDir(ctx context.Context, root string, opts SearchOptions) (SearchResu
 	return SearchDirWithOverrides(ctx, root, nil, opts)
 }
 
+// ReplaceAllText replaces every occurrence matching opts in text with
+// replacement, returning the new text and replacement count.
+func ReplaceAllText(text, replacement string, opts SearchOptions) (string, int, error) {
+	m, err := compileSearch(opts)
+	if err != nil || m == nil {
+		return text, 0, err
+	}
+	if m.re != nil {
+		count := len(m.re.FindAllStringIndex(text, -1))
+		if count == 0 {
+			return text, 0, nil
+		}
+		return m.re.ReplaceAllString(text, replacement), count, nil
+	}
+	if m.caseSensitive {
+		count := strings.Count(text, m.query)
+		if count == 0 {
+			return text, 0, nil
+		}
+		return strings.ReplaceAll(text, m.query, replacement), count, nil
+	}
+	// Case-insensitive literal replacement line by line so byte spans stay valid.
+	var b strings.Builder
+	b.Grow(len(text))
+	count := 0
+	rem := text
+	for len(rem) > 0 {
+		start, end, ok := m.find(rem)
+		if !ok || end <= start {
+			b.WriteString(rem)
+			break
+		}
+		b.WriteString(rem[:start])
+		b.WriteString(replacement)
+		rem = rem[end:]
+		count++
+	}
+	return b.String(), count, nil
+}
+
+// searchPathFilter filters slash-separated relative paths using comma-separated
+// include/exclude glob patterns (supporting *, ?, **, and basename matching).
+type searchPathFilter struct {
+	include []string
+	exclude []string
+}
+
+func newSearchPathFilter(include, exclude string) searchPathFilter {
+	split := func(s string) []string {
+		var out []string
+		for _, part := range strings.Split(s, ",") {
+			p := strings.TrimSpace(filepath.ToSlash(part))
+			if p != "" {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	var inc, exc []string
+	for _, p := range split(include) {
+		if strings.HasPrefix(p, "!") {
+			if rest := strings.TrimSpace(p[1:]); rest != "" {
+				exc = append(exc, rest)
+			}
+		} else {
+			inc = append(inc, p)
+		}
+	}
+	exc = append(exc, split(exclude)...)
+	return searchPathFilter{include: inc, exclude: exc}
+}
+
+func (f searchPathFilter) allow(rel string) bool {
+	rel = strings.TrimPrefix(filepath.ToSlash(rel), "./")
+	if len(f.include) > 0 {
+		matched := false
+		for _, pat := range f.include {
+			if globMatch(pat, rel) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, pat := range f.exclude {
+		if globMatch(pat, rel) {
+			return false
+		}
+	}
+	return true
+}
+
+func globMatch(pat, rel string) bool {
+	pat = strings.TrimPrefix(pat, "./")
+	if !strings.Contains(pat, "/") {
+		if ok, _ := path.Match(pat, path.Base(rel)); ok {
+			return true
+		}
+		return false
+	}
+	if !strings.Contains(pat, "**") {
+		ok, _ := path.Match(pat, rel)
+		return ok
+	}
+	// Convert ** glob to regex safely.
+	var re strings.Builder
+	re.WriteString("^")
+	for i := 0; i < len(pat); i++ {
+		if i+1 < len(pat) && pat[i] == '*' && pat[i+1] == '*' {
+			if i+2 < len(pat) && pat[i+2] == '/' {
+				re.WriteString("(?:.*/)?")
+				i += 2
+			} else {
+				re.WriteString(".*")
+				i++
+			}
+			continue
+		}
+		switch pat[i] {
+		case '*':
+			re.WriteString("[^/]*")
+		case '?':
+			re.WriteString("[^/]")
+		default:
+			re.WriteString(regexp.QuoteMeta(pat[i : i+1]))
+		}
+	}
+	re.WriteString("$")
+	r, err := regexp.Compile(re.String())
+	if err != nil {
+		return false
+	}
+	return r.MatchString(rel)
+}
+
 // SearchDirWithOverrides is SearchDir with in-memory overrides keyed by
 // slash-separated relative path: overridden files are searched from the
 // map instead of disk, so unsaved edits are reflected accurately.
@@ -189,6 +327,7 @@ func SearchDirWithOverrides(ctx context.Context, root string, overrides map[stri
 		return SearchResult{}, nil
 	}
 	limit := normalizeSearchLimit(opts.Limit)
+	filter := newSearchPathFilter(opts.Include, opts.Exclude)
 	var out SearchResult
 	seenFiles := map[string]bool{}
 
@@ -220,6 +359,9 @@ func SearchDirWithOverrides(ctx context.Context, root string, overrides map[stri
 		for _, rel := range keys {
 			if err := ctx.Err(); err != nil {
 				return SearchResult{}, err
+			}
+			if !filter.allow(rel) {
+				continue
 			}
 			rem := limit - len(out.Matches)
 			if rem <= 0 {
@@ -276,6 +418,9 @@ func SearchDirWithOverrides(ctx context.Context, root string, overrides map[stri
 			return nil
 		}
 		slashRel := filepath.ToSlash(rel)
+		if !filter.allow(slashRel) {
+			return nil
+		}
 		if _, overridden := overrides[slashRel]; overridden {
 			return nil
 		}
