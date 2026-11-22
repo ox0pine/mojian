@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.3
+
+- Terminals now parse native **OSC 9**, **OSC 99 (Kitty)** and **OSC 777** desktop notifications
+  for CLI tools running locally or over SSH, raising OS notifications and quiet pane/tab attention
+  markers (`⌘J` / `Ctrl+J`). The unused embedded ACP agent loop has been removed.
+- Zero-config lightweight LSP (`internal/lsp`) auto-detects installed language servers (`gopls`,
+  `typescript-language-server`, `pyright-langserver`, `rust-analyzer`, `clangd`) locally or on a
+  remote SSH host over `mojian-server`, providing completion, hover, go-to-definition and
+  diagnostics.
+- Go to Symbol (`⇧⌘O` / `Ctrl+Shift+O`) opens immediately with built-in symbol extraction and
+  upgrades asynchronously to LSP `documentSymbol`; Search in Project (`⇧⌘F`) adds Include/Exclude
+  glob filters and in-memory Replace All (undoable with `⌘Z` and respecting explicit `⌘S` save);
+  and editors add `Next Hunk`, `Previous Hunk`, `Revert Hunk` and optional inline Git Blame.
+- The Git page gains hunk-level `Stage`, `Unstage` and `Discard` over both local and remote
+  projects, plus `Fetch`, `Pull`, `Push`, `Stash`, `Stash Pop` and `Amend`.
+- Settings › Editor adds an optional quiet bottom Status Bar (`Show Status Bar`) and optional Vim
+  modal editing (`Vim Mode`) with IME suppression (`NoInputMethod`) in Normal/Visual modes, cursor
+  shape switching, relative line numbers, operators, text objects and `:w`/`:q`.
+- Remote SSH workspaces automatically reconnect with exponential backoff after unexpected
+  disconnects and stream file-change notifications from `mojian-server` to keep Explorer and Git in
+  sync; three-OS CI (`.github/workflows/ci.yml`) now runs `mygo vet` and `go test` on pushes and
+  pull requests.
+
 ## 0.6.2
 
 - Project-wide Search in Project (`⇧⌘F` / `Ctrl+Shift+F`) searches local and remote projects off

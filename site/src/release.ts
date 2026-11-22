@@ -19,7 +19,7 @@ export type Release = {
   assets: Partial<Record<AssetKey, string>>
 }
 
-const VERSION = "0.6.2"
+const VERSION = "0.6.3"
 const ASSET = (name: string) => `${REPO}/releases/download/v${VERSION}/${name}`
 
 const FALLBACK: Release = {
