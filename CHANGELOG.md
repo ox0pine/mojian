@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.5
+
+- Git status and history refresh when the window regains focus, while editor gutters re-read HEAD;
+  cached workspaces keep slow Git actions, file reloads and follow-up refreshes with the project
+  that started them instead of leaking them into the project currently on screen.
+- Hunk review is safer and more consistent: mixed files offer explicit Unstaged/Staged patch views,
+  navigation maps Git hunks to viewer change runs correctly, scrolling and caret movement stay in
+  sync, status refreshes preserve the selected file, and compact Actions menus keep every operation
+  reachable at the minimum window width. The Amend workflow has been removed, and untracked files
+  without a final newline now render an accurate patch.
+
 ## 0.6.4
 
 - Terminal × Editor synergy: Command+Click (Ctrl+Click on Linux/Windows) on file paths printed in a
