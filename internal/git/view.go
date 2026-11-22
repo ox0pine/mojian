@@ -323,7 +323,7 @@ func (p *Page) files(c *ui.Context, k *theme.Colors) {
 
 func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
 	staged := p.StagedCount()
-	canCommit := (staged > 0 || p.Amend) && strings.TrimSpace(p.CommitMsg) != "" && !p.ActionBusy
+	canCommit := staged > 0 && strings.TrimSpace(p.CommitMsg) != "" && !p.ActionBusy
 	ui.Divider(c)
 	ui.Column(c).Padding(8, 10).Gap(6).Children(func() {
 		if p.ActionErr != "" {
@@ -343,36 +343,9 @@ func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
 				note = "1 staged"
 			} else if staged > 1 {
 				note = fmt.Sprintf("%d staged", staged)
-			} else if p.Amend {
-				note = "Amend HEAD"
 			}
 			ui.Text(c, note).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
 				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-			amendBtn := ui.ButtonBase(c.Key("git-amend")).Height(24).Padding(0, 7).Radius(theme.Radius - 2).
-				Cursor(ui.CursorPointer).Label("Amend").Tooltip("Amend the last commit").
-				Transition(motion.Colors)
-			amendFg := k.TextMuted
-			if p.Amend {
-				amendBtn.Background(k.PanelSel)
-				amendFg = k.Text
-			} else if amendBtn.Hovered() {
-				amendBtn.Background(k.Hover)
-				amendFg = k.Text
-			}
-			if amendBtn.Clicked() {
-				p.Amend = !p.Amend
-				if p.Amend && strings.TrimSpace(p.CommitMsg) == "" && p.Root != "" {
-					p.CommitMsg = LastCommitMessage(p.h.GitRunner(), p.Root)
-				}
-				p.h.Invalidate()
-			}
-			amendBtn.Children(func() {
-				ui.Text(c, "Amend").FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(amendFg)
-			})
-			commitLabel := "Commit"
-			if p.Amend {
-				commitLabel = "Amend"
-			}
 			btn := ui.ButtonBase(c).Height(26).Padding(0, 10).Radius(theme.Radius).
 				Cursor(ui.CursorPointer).Label("Commit").Disabled(!canCommit).
 				Transition(motion.Colors)
@@ -389,7 +362,7 @@ func (p *Page) commitBox(c *ui.Context, k *theme.Colors) {
 				fg = c.Theme().AccentText
 			}
 			btn.Children(func() {
-				ui.Text(c, commitLabel).FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(600).TextColor(fg)
+				ui.Text(c, "Commit").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(600).TextColor(fg)
 			})
 		})
 	})
@@ -505,6 +478,7 @@ func (p *Page) hunkBar(c *ui.Context, k *theme.Colors) {
 	if len(hunks) == 0 {
 		return
 	}
+	p.syncHunkSelection(len(hunks))
 	if p.HunkSel < 0 {
 		p.HunkSel = 0
 	}
@@ -512,27 +486,18 @@ func (p *Page) hunkBar(c *ui.Context, k *theme.Colors) {
 		p.HunkSel = len(hunks) - 1
 	}
 	idx := p.HunkSel
+	navDisabled := p.diffView == nil || p.diffView.Comparing()
 	ui.Divider(c)
 	ui.Row(c).Height(28).Padding(0, 10, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
 		if iconButton(c, k, "chevron-left", "Previous Hunk", 22, 13).
-			Disabled(idx <= 0).Clicked() {
-			p.HunkSel--
-			p.hunkDiscard = -1
-			if p.diffView != nil {
-				p.diffView.Run(editor.PreviousHunk)
-			}
-			p.h.Invalidate()
+			Disabled(navDisabled || idx <= 0).Clicked() {
+			p.goToHunk(idx - 1)
 		}
 		ui.Text(c, fmt.Sprintf("Hunk %d/%d", idx+1, len(hunks))).
 			FontSize(c.Theme().Rem(11.0 / 13)).FontWeight(500).TextColor(k.TextMuted).Shrink(0)
 		if iconButton(c, k, "chevron-right", "Next Hunk", 22, 13).
-			Disabled(idx >= len(hunks)-1).Clicked() {
-			p.HunkSel++
-			p.hunkDiscard = -1
-			if p.diffView != nil {
-				p.diffView.Run(editor.NextHunk)
-			}
-			p.h.Invalidate()
+			Disabled(navDisabled || idx >= len(hunks)-1).Clicked() {
+			p.goToHunk(idx + 1)
 		}
 		ui.Text(c, hunks[idx].Header).Font(theme.NoteFont.Family).
 			FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
@@ -560,6 +525,60 @@ func (p *Page) hunkBar(c *ui.Context, k *theme.Colors) {
 			}
 		}
 	})
+}
+
+// goToHunk moves both the toolbar selection and the viewer to one absolute
+// hunk. Relative NextHunk/PreviousHunk commands would start from the caret,
+// which is before the first hunk until the user clicks in the diff.
+func (p *Page) goToHunk(idx int) {
+	d := p.diffView
+	if d == nil || d.Comparing() || idx < 0 || idx >= len(d.Hunks()) {
+		return
+	}
+	p.HunkSel = idx
+	p.hunkDiscard = -1
+	p.hunkJump = true
+	d.GoToHunk(idx)
+	p.h.Invalidate()
+}
+
+// syncHunkSelection keeps the toolbar with the diff after wheel, scrollbar
+// and keyboard navigation. Only a changed layout needs the Hunks allocation;
+// caret movement without scrolling is enough to update the selection too.
+func (p *Page) syncHunkSelection(count int) {
+	d := p.diffView
+	if d == nil || count == 0 {
+		return
+	}
+	y, viewH := d.ScrollY(), d.ViewportHeight()
+	comparing := d.Comparing()
+	moved := p.hunkSyncGen != p.diffGen || y != p.hunkScrollY ||
+		viewH != p.hunkViewH || comparing != p.hunkComparing
+	switch {
+	case p.hunkJump && p.hunkSyncGen == p.diffGen:
+		// GoToHunk applied its scroll in the preceding diff body. Keep the
+		// button's target even when the last hunk cannot be centered.
+		p.hunkJump = false
+	case moved:
+		p.hunkJump = false
+		center := y + viewH/2
+		selected := 0
+		for i, hunk := range d.Hunks() {
+			if i >= count || d.LineTop(editor.DiffNew, hunk.NewStart) > center {
+				break
+			}
+			selected = i
+		}
+		p.HunkSel = selected
+	default:
+		if current, inside := d.CurrentHunk(); inside && current < count {
+			p.HunkSel = current
+		}
+	}
+	p.hunkSyncGen = p.diffGen
+	p.hunkScrollY = y
+	p.hunkViewH = viewH
+	p.hunkComparing = comparing
 }
 
 func (p *Page) diffHeader(c *ui.Context, k *theme.Colors) {

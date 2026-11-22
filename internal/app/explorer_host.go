@@ -104,8 +104,14 @@ const focusReloadAfter = 15 * time.Second
 func (a *app) refreshProject() { a.reloadProject(true) }
 
 // refreshProjectOnFocus runs when the window gains focus; a project
-// listed moments ago is reused, since a remote listing can be slow.
-func (a *app) refreshProjectOnFocus() { a.reloadProject(false) }
+// listed moments ago is reused, since a remote listing can be slow. Git
+// still rereads HEAD: a commit may have changed only ignored .git files.
+func (a *app) refreshProjectOnFocus() {
+	a.reloadProject(false)
+	if a.git.Open && !a.NoGitAutoRefresh {
+		a.refreshGit()
+	}
+}
 
 // reloadProject reads the project's listing. A server project is listed
 // away from the UI thread and applied when the listing arrives; a direct

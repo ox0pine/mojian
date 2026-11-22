@@ -33,7 +33,7 @@
   glob filters and in-memory Replace All (undoable with `⌘Z` and respecting explicit `⌘S` save);
   and editors add `Next Hunk`, `Previous Hunk`, `Revert Hunk` and optional inline Git Blame.
 - The Git page gains hunk-level `Stage`, `Unstage` and `Discard` over both local and remote
-  projects, plus `Fetch`, `Pull`, `Push`, `Stash`, `Stash Pop` and `Amend`.
+  projects, plus `Fetch`, `Pull`, `Push`, `Stash` and `Stash Pop`.
 - Settings › Editor adds an optional quiet bottom Status Bar (`Show Status Bar`) and optional Vim
   modal editing (`Vim Mode`) with IME suppression (`NoInputMethod`) in Normal/Visual modes, cursor
   shape switching, relative line numbers, operators, text objects and `:w`/`:q`.

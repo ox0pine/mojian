@@ -80,11 +80,6 @@ func Discard(r Runner, root string, c Change) error {
 
 // CreateCommit creates a commit from the staged index with message.
 func CreateCommit(r Runner, root, message string) error {
-	return CreateCommitAmend(r, root, message, false)
-}
-
-// CreateCommitAmend creates a commit (or amends HEAD when amend is true).
-func CreateCommitAmend(r Runner, root, message string, amend bool) error {
 	if r == nil {
 		r = LocalRunner{}
 	}
@@ -95,11 +90,7 @@ func CreateCommitAmend(r Runner, root, message string, amend bool) error {
 	if msg == "" {
 		return errors.New("enter a commit message")
 	}
-	args := []string{"commit", "-m", msg}
-	if amend {
-		args = []string{"commit", "--amend", "-m", msg}
-	}
-	_, err := r.Run(root, args...)
+	_, err := r.Run(root, "commit", "-m", msg)
 	return err
 }
 
@@ -161,21 +152,6 @@ func StashPop(r Runner, root string) error {
 	}
 	_, err := r.Run(root, "stash", "pop")
 	return err
-}
-
-// LastCommitMessage returns the HEAD commit's full message for Amend prefill.
-func LastCommitMessage(r Runner, root string) string {
-	if r == nil {
-		r = LocalRunner{}
-	}
-	if root == "" {
-		return ""
-	}
-	out, err := r.Run(root, "log", "-1", "--pretty=%B")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(out)
 }
 
 func changePaths(c Change) []string {
@@ -317,22 +293,17 @@ func (p *Page) DiscardSelected() {
 	}, nil)
 }
 
-// CommitStaged commits staged changes (or amends HEAD) with p.CommitMsg.
+// CommitStaged commits staged changes with p.CommitMsg.
 func (p *Page) CommitStaged() {
 	msg := strings.TrimSpace(p.CommitMsg)
-	if msg == "" || (!p.Amend && p.StagedCount() == 0) {
+	if msg == "" || p.StagedCount() == 0 {
 		return
 	}
-	amend := p.Amend
 	p.runAction(false, func(r Runner, root string) error {
-		return CreateCommitAmend(r, root, msg, amend)
+		return CreateCommit(r, root, msg)
 	}, func() {
 		p.CommitMsg = ""
-		p.Amend = false
 		p.ActionInfo = "Committed"
-		if amend {
-			p.ActionInfo = "Amended commit"
-		}
 	})
 }
 

@@ -133,6 +133,46 @@ func TestGitOutsideRepo(t *testing.T) {
 	}
 }
 
+func TestGitHistoryRefreshesOnWindowFocus(t *testing.T) {
+	registerFonts()
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "old\n"})
+	testutil.InitRepo(t, dir)
+	a := &app{workspace: &workspace{}}
+	s, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.store = s
+	tt := ui.NewTester(a.view, 1100, 700)
+	a.toggleGit()
+	a.git.ShowHistory()
+	for range 3 {
+		tt.Frame()
+	}
+	if len(a.git.Commits) != 1 {
+		t.Fatalf("initial commits: %+v", a.git.Commits)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "-C", dir, "commit", "-qam", "external commit")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("external commit: %v\n%s", err, out)
+	}
+	a.refreshProjectOnFocus()
+	for range 3 {
+		tt.Frame()
+	}
+	if len(a.git.Commits) != 2 || a.git.Commits[0].Subject != "external commit" {
+		t.Fatalf("commits after focus: %+v", a.git.Commits)
+	}
+	if !tt.HasText("external commit") {
+		t.Fatalf("history after focus: %q", tt.Texts())
+	}
+}
+
 func TestGitHistoryPage(t *testing.T) {
 	registerFonts()
 	dir := t.TempDir()
@@ -284,6 +324,9 @@ func TestGitPageStageCommitAndSplitDiff(t *testing.T) {
 	}
 	if !tt.HasText("Stage") || !tt.HasText("Discard") || !tt.HasText("Commit") {
 		t.Fatalf("expected git actions in view: %q", tt.Texts())
+	}
+	if tt.HasText("Amend") {
+		t.Fatalf("Amend is still visible: %q", tt.Texts())
 	}
 	a.git.SplitDiff = true
 	tt.Frame()

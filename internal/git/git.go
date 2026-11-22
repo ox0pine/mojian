@@ -148,9 +148,15 @@ type Page struct {
 	SplitDiff  bool
 
 	// Working-tree write state (stage, unstage, discard, commit, hunk, sync).
-	CommitMsg     string
-	Amend         bool
-	HunkSel       int
+	CommitMsg string
+	HunkSel   int
+	// The last diff layout used to derive HunkSel from scrolling. A
+	// button jump keeps its explicit selection for the following layout.
+	hunkScrollY   float64
+	hunkViewH     float64
+	hunkSyncGen   int
+	hunkComparing bool
+	hunkJump      bool
 	SyncMenu      bool
 	ActionBusy    bool
 	ActionErr     string

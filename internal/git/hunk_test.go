@@ -65,7 +65,7 @@ func TestSplitAndStageUnstageDiscardHunk(t *testing.T) {
 	}
 }
 
-func TestStashAmendAndLineBlame(t *testing.T) {
+func TestStashAndLineBlame(t *testing.T) {
 	dir := t.TempDir()
 	testutil.WriteVault(t, dir, map[string]string{
 		"hello.txt": "alpha\nbeta\n",
@@ -96,16 +96,5 @@ func TestStashAmendAndLineBlame(t *testing.T) {
 	}
 	if st := ReadStatus(LocalRunner{}, dir); len(st.Changes) != 1 {
 		t.Fatalf("expected restored change after StashPop, got %+v", st.Changes)
-	}
-
-	// Amend commit.
-	if err := Stage(LocalRunner{}, dir, "hello.txt"); err != nil {
-		t.Fatal(err)
-	}
-	if err := CreateCommitAmend(LocalRunner{}, dir, "amended message", true); err != nil {
-		t.Fatalf("CreateCommitAmend: %v", err)
-	}
-	if msg := LastCommitMessage(LocalRunner{}, dir); msg != "amended message" {
-		t.Fatalf("LastCommitMessage = %q, want %q", msg, "amended message")
 	}
 }

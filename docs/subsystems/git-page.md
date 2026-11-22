@@ -128,7 +128,7 @@ branches and reloads open notes after a checkout.
   theme and font are known, and kept for that diff's generation (`diffGen`/`viewsGen`); a new diff
   clears them and starts at the top. `Host.EditorTheme` is the editor theme with the pane's card as
   its background, because the viewer mixes change tints against the background it is given.
-- Working-tree mutations (`Stage`, `Unstage`, `Discard`, `CreateCommit`, `AmendCommit`, `Fetch`,
+- Working-tree mutations (`Stage`, `Unstage`, `Discard`, `CreateCommit`, `Fetch`,
   `Pull`, `Push`, `Stash`, `StashPop` in `internal/git/actions.go`) and hunk-level patch operations
   (`StageHunk`, `UnstageHunk`, `DiscardHunk` in `internal/git/hunk.go`, using `StdinRunner` over
   `git apply` on both local and remote `session.Client.ExecStdin`) run through the active `Runner`
@@ -148,6 +148,10 @@ branches and reloads open notes after a checkout.
   its heading; the 2500-line budget cuts whole hunks (`cutFileDiff`) and still ends with the
   "… diff truncated" note. The viewer brings selection, copy, find, go-to-line and its own
   scrollbar, and draws its gutter, so the page no longer draws rows, numbers or per-line colors.
+- Previous/Next Hunk uses `DiffState.GoToHunk` with the toolbar's absolute index, rather than a
+  relative command from a caret that may still be before the first hunk. `HunkSel` then follows the
+  viewport after wheel, scrollbar and keyboard navigation, so the counter and hunk actions stay on
+  the change the person sees.
 - Editor panes in a Git repository asynchronously read each open file's `HEAD` text through
   `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/git_bridge.go`)
   and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation (`NextHunk`,
@@ -170,6 +174,9 @@ branches and reloads open notes after a checkout.
 - A status refresh that lands while the page shows history updates `Changes` but never replaces the
   commit's patch: the selected commit is what the pane shows until the list is read again or another
   commit is picked.
+- With automatic Git refresh enabled, window focus calls `Page.Refresh` even when the project
+  listing is still fresh enough to reuse. This catches commits that changed only `.git` metadata,
+  which the project watcher excludes; in History mode the same refresh reads the commit list again.
 - The page's branch menu reads the branches again when it opens, so a branch added in a terminal
   appears without a refresh. It never opens the title bar's menu: its popover anchors to the page's
   chip and its state is the page's. A checkout is refused while a note holds unsaved edits, and the

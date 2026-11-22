@@ -1,12 +1,14 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"mojian/internal/testutil"
 	"mojian/internal/theme"
 
 	"github.com/egoist/mygo"
@@ -307,6 +309,84 @@ func TestShowChangesDropsLateHistory(t *testing.T) {
 	})
 	if p.DiffPath != "a.md" || p.Diff != working || p.DiffLoad {
 		t.Fatalf("late history replaced working diff: path %q diff %q loading %v", p.DiffPath, p.Diff, p.DiffLoad)
+	}
+}
+
+func newTwoHunkPage(t *testing.T) (*Page, *ui.Tester) {
+	t.Helper()
+	theme.RegisterFonts()
+	dir := t.TempDir()
+	before := make([]string, 220)
+	after := make([]string, 220)
+	for i := range before {
+		before[i] = fmt.Sprintf("line %03d", i)
+		after[i] = before[i]
+	}
+	testutil.WriteVault(t, dir, map[string]string{"a.md": strings.Join(before, "\n") + "\n"})
+	testutil.InitRepo(t, dir)
+	for i := 10; i < 45; i++ {
+		after[i] = "first " + after[i]
+	}
+	for i := 160; i < 195; i++ {
+		after[i] = "second " + after[i]
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte(strings.Join(after, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := &pageHost{dir: dir, runner: LocalRunner{}}
+	p := &Page{h: h, runner: h.runner}
+	p.Refresh()
+	k := theme.Window(theme.DefaultID, false)
+	tt := ui.NewTester(func(c *ui.Context) { p.View(c, k, h) }, 900, 600)
+	for range 2 {
+		tt.Frame()
+	}
+	if p.diffView == nil || len(p.diffView.Hunks()) != 2 {
+		t.Fatalf("diff hunks: %+v", p.diffView)
+	}
+	return p, tt
+}
+
+func TestHunkButtonsJumpToTheirSelection(t *testing.T) {
+	p, tt := newTwoHunkPage(t)
+	if err := tt.Click("Next Hunk"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		tt.Frame()
+	}
+	current, inside := p.diffView.CurrentHunk()
+	if p.HunkSel != 1 || current != 1 || !inside || !tt.HasText("Hunk 2/2") {
+		t.Fatalf("after Next: selected=%d current=%d inside=%v texts=%q", p.HunkSel, current, inside, tt.Texts())
+	}
+	if err := tt.Click("Previous Hunk"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		tt.Frame()
+	}
+	current, inside = p.diffView.CurrentHunk()
+	if p.HunkSel != 0 || current != 0 || !inside || !tt.HasText("Hunk 1/2") {
+		t.Fatalf("after Previous: selected=%d current=%d inside=%v texts=%q", p.HunkSel, current, inside, tt.Texts())
+	}
+}
+
+func TestHunkSelectionFollowsScrolling(t *testing.T) {
+	p, tt := newTwoHunkPage(t)
+	tt.Scroll(600, 350, 0, 50000)
+	for range 2 {
+		tt.Frame()
+	}
+	if p.diffView.ScrollY() <= 0 {
+		t.Fatal("the diff did not scroll")
+	}
+	if p.HunkSel != 1 || !tt.HasText("Hunk 2/2") {
+		hunks := p.diffView.Hunks()
+		current, inside := p.diffView.CurrentHunk()
+		t.Fatalf("after scrolling: selected=%d current=%d/%v y=%v viewH=%v tops=%v/%v",
+			p.HunkSel, current, inside, p.diffView.ScrollY(), p.diffView.ViewportHeight(),
+			p.diffView.LineTop(editor.DiffNew, hunks[0].NewStart),
+			p.diffView.LineTop(editor.DiffNew, hunks[1].NewStart))
 	}
 }
 
