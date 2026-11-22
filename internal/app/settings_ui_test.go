@@ -265,21 +265,31 @@ func TestShowTabMenuAcceleratorsYieldToShortcutRecording(t *testing.T) {
 }
 
 func TestShortcutDefaultsParseAndDoNotCollide(t *testing.T) {
-	seen := map[string]string{}
-	for _, c := range paletteCommands {
-		accel := c.Default()
-		if accel == "" {
-			continue
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		seen := map[string]string{}
+		for _, c := range paletteCommands {
+			accel := c.AccelFor(goos)
+			if accel == "" {
+				continue
+			}
+			// Normalize CmdOrCtrl to the target platform's primary modifier
+			// so non-macOS collisions are caught even when tests run on macOS.
+			norm := accel
+			if goos == "darwin" {
+				norm = strings.ReplaceAll(norm, "CmdOrCtrl+", "Super+")
+			} else {
+				norm = strings.ReplaceAll(norm, "CmdOrCtrl+", "Ctrl+")
+			}
+			mods, key, ok := parseAccel(norm)
+			if !ok {
+				t.Fatalf("%s (%s): %q does not parse", c.ID, goos, accel)
+			}
+			sig := fmt.Sprintf("%d/%d", mods, key)
+			if other, ok := seen[sig]; ok {
+				t.Fatalf("%s: %s and %s both use %s", goos, other, c.ID, accel)
+			}
+			seen[sig] = c.ID
 		}
-		mods, key, ok := parseAccel(accel)
-		if !ok {
-			t.Fatalf("%s: %q does not parse", c.ID, accel)
-		}
-		sig := fmt.Sprintf("%d/%d", mods, key)
-		if other, ok := seen[sig]; ok {
-			t.Fatalf("%s and %s both use %s", other, c.ID, accel)
-		}
-		seen[sig] = c.ID
 	}
 }
 

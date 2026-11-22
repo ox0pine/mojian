@@ -9,7 +9,7 @@
   `typescript-language-server`, `pyright-langserver`, `rust-analyzer`, `clangd`) locally or on a
   remote SSH host over `mojian-server`, providing completion, hover, go-to-definition and
   diagnostics.
-- Go to Symbol (`⇧⌘O` / `Ctrl+Shift+O`) opens immediately with built-in symbol extraction and
+- Go to Symbol (`⇧⌘O` / `Ctrl+Alt+O`) opens immediately with built-in symbol extraction and
   upgrades asynchronously to LSP `documentSymbol`; Search in Project (`⇧⌘F`) adds Include/Exclude
   glob filters and in-memory Replace All (undoable with `⌘Z` and respecting explicit `⌘S` save);
   and editors add `Next Hunk`, `Previous Hunk`, `Revert Hunk` and optional inline Git Blame.

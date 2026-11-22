@@ -244,7 +244,7 @@ esac
 
 func TestConnectReapsSSHAfterNaturalExit(t *testing.T) {
 	installFakeSSH(t, `case "$command" in
-*stdio*) `+framedHello(session.ProtocolVersion)+` ;;
+*stdio*) dd bs=1 count=1 >/dev/null 2>&1; `+framedHello(session.ProtocolVersion)+` ;;
 esac
 `)
 	i := &Install{dir: "/tmp/mojian", binPath: "/tmp/mojian/current/mojian-server", runtimeDir: "/tmp/runtime"}

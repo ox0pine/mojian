@@ -72,7 +72,7 @@ var Palette = []*Command{
 	// Views and tools.
 	{ID: "palette", Title: "Command Palette…", Accel: "CmdOrCtrl+Shift+P", Glyph: "command"},
 	{ID: "find-in-files", Title: "Search in Project…", Accel: "CmdOrCtrl+Shift+F", Glyph: "search"},
-	{ID: "goto-symbol", Title: "Go to Symbol…", Accel: "CmdOrCtrl+Shift+O", Glyph: "file-text"},
+	{ID: "goto-symbol", Title: "Go to Symbol…", Accel: "CmdOrCtrl+Shift+O", Other: "Ctrl+Alt+O", Glyph: "file-text"},
 	{ID: "next-hunk", Title: "Next Git Change", Accel: "Alt+F5", Glyph: "chevron-down"},
 	{ID: "prev-hunk", Title: "Previous Git Change", Accel: "Alt+Shift+F5", Glyph: "arrow-up"},
 	{ID: "revert-hunk", Title: "Revert Git Change", Glyph: "refresh-cw"},

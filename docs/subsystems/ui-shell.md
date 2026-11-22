@@ -158,7 +158,7 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   adds Match Case (`Aa`), Regular Expression (`.*`), Include/Exclude glob filters and Project Replace All
   (which edits buffers in memory so changes stay undoable and respect explicit `⌘S` save), runs
   `project.Search` off the UI thread with dirty-buffer overrides, and jumps the focused pane directly
-  to the matched line and span. Go to Symbol (`go-to-symbol`, `⇧⌘O` / `Ctrl+Shift+O`,
+  to the matched line and span. Go to Symbol (`go-to-symbol`, `⇧⌘O` / `Ctrl+Alt+O`,
   `internal/app/symbols.go`) shows instant regex fallback symbols (`internal/lsp/fallback.go`) and
   upgrades asynchronously to LSP `textDocument/documentSymbol` when a language server is active. The
   panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
