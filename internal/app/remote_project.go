@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mojian/internal/motion"
 	"mojian/internal/remote"
 	"mojian/internal/session"
 
@@ -533,13 +534,13 @@ func (a *app) remoteBusyView(c *ui.Context, k *colors) {
 		return
 	}
 	ui.Overlay(c, func() {
-		back := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-			Center().Background(k.Backdrop).Modal()
+		back := ui.Box(c.Key("remote-busy-backdrop")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			Center().Background(k.Backdrop).Modal().Transition(motion.Backdrop)
 		back.Children(func() {
-			panel := ui.Row(c).Width(390).Padding(18, 20).Gap(14).Radius(radius).
-				Background(k.Panel).Border(1, k.PanelBorder).
+			panel := a.surface(ui.Row(c.Key("remote-busy-card")).Width(390).Padding(18, 20).Gap(14).Radius(radius), k.Panel).
+				Border(1, k.PanelBorder).
 				Shadow(0, 18, 44, -8, k.ShadowDialog).AlignItems(ui.Center).
-				Focusable()
+				Focusable().Transition(motion.Dialog)
 			c.OnShortcut(0, ui.KeyEscape, func() { a.cancelRemoteTask() })
 			panel.Children(func() {
 				ui.Spinner(c).Size(18, 18).Label("Working")

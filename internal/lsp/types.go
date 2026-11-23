@@ -86,6 +86,46 @@ type WorkspaceEdit struct {
 	DocumentChanges []json.RawMessage     `json:"documentChanges,omitempty"`
 }
 
+// Command is an LSP command attached to a CodeAction.
+type Command struct {
+	Title     string            `json:"title"`
+	Command   string            `json:"command"`
+	Arguments []json.RawMessage `json:"arguments,omitempty"`
+}
+
+// CodeAction is a quick fix or refactoring returned by textDocument/codeAction.
+type CodeAction struct {
+	Title       string         `json:"title"`
+	Kind        string         `json:"kind,omitempty"`
+	IsPreferred bool           `json:"isPreferred,omitempty"`
+	Edit        *WorkspaceEdit `json:"edit,omitempty"`
+	Command     *Command       `json:"command,omitempty"`
+}
+
+// DocumentHighlight is a same-symbol range returned by textDocument/documentHighlight.
+type DocumentHighlight struct {
+	Range Range `json:"range"`
+	Kind  int   `json:"kind,omitempty"`
+}
+
+// NormalizeWorkspaceEdit extracts all per-URI text edits from changes and
+// documentChanges into a single map.
+func NormalizeWorkspaceEdit(we WorkspaceEdit) map[string][]TextEdit {
+	out := map[string][]TextEdit{}
+	for u, edits := range we.Changes {
+		if len(edits) > 0 {
+			out[u] = append(out[u], edits...)
+		}
+	}
+	for _, dc := range we.DocumentChanges {
+		var tde textDocumentEdit
+		if json.Unmarshal(dc, &tde) == nil && tde.TextDocument.URI != "" && len(tde.Edits) > 0 {
+			out[tde.TextDocument.URI] = append(out[tde.TextDocument.URI], tde.Edits...)
+		}
+	}
+	return out
+}
+
 type textDocumentEdit struct {
 	TextDocument struct {
 		URI string `json:"uri"`

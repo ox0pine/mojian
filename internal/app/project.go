@@ -210,7 +210,7 @@ func (a *app) projectChip(c *ui.Context, k *colors) {
 		return
 	}
 	m.Popup(func(panel ui.Element) {
-		menuSurface(panel, k, drop)
+		a.menuSurface(panel, k, drop)
 		panel.Margin(4, 0, 0, 0)
 		if a.remotePath != "" {
 			a.remoteProjectRows(c, k, m)

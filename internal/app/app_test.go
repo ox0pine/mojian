@@ -435,7 +435,6 @@ func TestSettingsPageAndPersistence(t *testing.T) {
 	}
 	a.EditorFontSize = 15
 	a.HideLineNumbers = true
-	a.MarkdownPreview = true
 	a.TerminalFontSize = 14
 	a.saveSettings()
 	var saved settingsFile
@@ -446,33 +445,31 @@ func TestSettingsPageAndPersistence(t *testing.T) {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
-	if saved.EditorFontSize != 15 || !saved.HideLineNumbers || !saved.MarkdownPreview || saved.TerminalFontSize != 14 {
+	if saved.EditorFontSize != 15 || !saved.HideLineNumbers || saved.TerminalFontSize != 14 {
 		t.Fatalf("saved settings: %+v", saved)
 	}
 }
 
-func TestMarkdownPreviewToggle(t *testing.T) {
+func TestMarkdownPreviewRendersWithoutToggleButton(t *testing.T) {
 	a := newProjectApp(t)
 	a.openNote(a.store.ByRelPath("Welcome.md"))
 	tt := ui.NewTester(a.view, 1100, 700)
 	tt.Frame()
-	if err := tt.Click("Preview"); err != nil {
-		t.Fatal(err)
+	for _, txt := range tt.Texts() {
+		if txt == "Preview" || txt == "Edit" {
+			t.Fatalf("did not expect Edit/Preview toggle button in pane header: %q", tt.Texts())
+		}
 	}
-	tt.Frame()
 	p := a.tab().Focus
-	if !p.Preview {
-		t.Fatal("Preview did not turn on")
-	}
+	p.Preview = true
+	tt.Frame()
 	if !tt.HasText("Welcome to Mojian") {
 		t.Fatalf("rendered Markdown texts: %q", tt.Texts())
 	}
-	if err := tt.Click("Edit"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if p.Preview {
-		t.Fatal("Edit did not return to the source")
+	for _, txt := range tt.Texts() {
+		if txt == "Preview" || txt == "Edit" {
+			t.Fatalf("did not expect Edit/Preview button in preview pane header: %q", tt.Texts())
+		}
 	}
 }
 

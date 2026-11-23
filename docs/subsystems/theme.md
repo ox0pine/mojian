@@ -4,10 +4,13 @@
 
 **Typography.** Custom view text uses `c.Theme().Rem(size/13)`, where 13 is the default UI font size, so it follows the same system text scale as native MyGo widgets. This includes tab measurement spans and text inputs as well as labels; fixed numeric `FontSize` values bypass that scale. Settings keeps its content scrollbar visible whenever the page overflows, including without hover.
 
+**Surface material (Liquid Glass).** Floating dialogs (`CommandDialog`, folder pickers, conflict diff resolver, remote loading card, font picker), popover menus (`MenuSurface`, Git menus), floating overlays (error banner, terminal find bar) and title-bar / Git segmented tracks render with MyGo's `plugins/glass` Liquid Glass material (`theme.Surface`, `theme.TrackSurface` in `internal/theme/glass.go`), tinted with each theme's surface color so all ten palettes remain recognizable and legible. Under OS Reduce Transparency, MyGo automatically falls back to opaque surfaces.
+
 ## Source of truth
 
 - [`internal/theme/theme.go`](../../internal/theme/theme.go) — `Colors`, `Radius`, the light and dark base palettes, `PaintBackground`, `RegisterFonts`.
 - [`internal/theme/themes.go`](../../internal/theme/themes.go) — the ten themes: `DefaultID`, `Choices`, `Resolve`, `Dark`, `Window`, `Terminal`, `UI`, `EditorTheme`, `PaintPreview`.
+- [`internal/theme/glass.go`](../../internal/theme/glass.go) — `Surface` and `TrackSurface`, applying MyGo's `plugins/glass` Liquid Glass material by default with opaque fallback.
 - [`internal/theme/tone.go`](../../internal/theme/tone.go) — the OKLCH `tone` and `toneTheme` that derive a theme's surfaces and program colors from one hue.
 
 ## Verification

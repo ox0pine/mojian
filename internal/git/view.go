@@ -71,8 +71,8 @@ func (p *Page) header(c *ui.Context, k *theme.Colors) {
 	ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(10).AlignItems(ui.Center).Children(func() {
 		// One track holds the lists and the branch, as the title bar's
 		// track holds the machine, project and branch chips.
-		ui.Row(c).Height(28).Padding(2).Gap(4).Radius(theme.Radius).
-			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).
+		theme.TrackSurface(ui.Row(c).Height(28).Padding(2).Gap(4).Radius(theme.Radius), k.Track).
+			Border(0.5, k.TrackBorder).AlignItems(ui.Center).
 			Children(func() {
 				p.modeTab(c, k, "Changes", ModeChanges)
 				p.modeTab(c, k, "History", ModeHistory)
@@ -181,10 +181,13 @@ func (p *Page) branchChip(c *ui.Context, k *theme.Colors) {
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	m.Popup(func(panel ui.Element) {
-		panel.Width(branchMenuW).Padding(6).Radius(theme.Radius).
-			Background(k.Panel).Border(1, k.PanelBorder).
-			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
-			Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
+		theme.Surface(panel.Width(branchMenuW).Padding(6).Radius(theme.Radius), k.Panel).
+			Border(1, k.PanelBorder).
+			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).TransformOrigin(0.5, 0)
+		if drop < 0.999 {
+			s := 0.965 + 0.035*drop
+			panel.Translate(0, -6*(1-drop)).Scale(s, s).Opacity(0.15 + 0.85*drop)
+		}
 		panel.Margin(4, 0, 0, 0)
 		p.branchMenuBody(c, k, m)
 	})
@@ -198,14 +201,23 @@ func (p *Page) syncMenuButton(c *ui.Context, k *theme.Colors) {
 	if p.SyncMenu || b.Hovered() {
 		b.Background(k.Hover)
 	}
+	drop := float32(0)
+	if p.SyncMenu {
+		drop = 1
+	}
+	drop = b.AnimateTo("git-sync-menu", drop, motion.PopoverIn)
 	b.Children(func() {
 		ui.Text(c, "Sync").FontSize(c.Theme().Rem(11.5 / 13)).FontWeight(500).TextColor(k.TextMuted)
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	m.Popup(func(panel ui.Element) {
-		panel.Width(180).Padding(6).Radius(theme.Radius).
-			Background(k.Panel).Border(1, k.PanelBorder).
-			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2)
+		theme.Surface(panel.Width(180).Padding(6).Radius(theme.Radius), k.Panel).
+			Border(1, k.PanelBorder).
+			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2).TransformOrigin(0.5, 0)
+		if drop < 0.999 {
+			s := 0.965 + 0.035*drop
+			panel.Translate(0, -6*(1-drop)).Scale(s, s).Opacity(0.15 + 0.85*drop)
+		}
 		panel.Margin(4, 0, 0, 0)
 		item := func(key, label string, run func()) {
 			row := m.Item().Key(key).Height(30).Padding(0, 8).Radius(theme.Radius).
@@ -672,8 +684,8 @@ func actionMenuItem(c *ui.Context, k *theme.Colors, m ui.MenuParts, key, label s
 func (p *Page) fileActionsMenu(c *ui.Context, k *theme.Colors, path string, ch Change) {
 	m := compactActionMenu(c, k, "File Actions", &p.FileActionsMenu, p.ActionBusy)
 	m.Popup(func(panel ui.Element) {
-		panel.Width(200).Padding(6).Radius(theme.Radius).
-			Background(k.Panel).Border(1, k.PanelBorder).
+		theme.Surface(panel.Width(200).Padding(6).Radius(theme.Radius), k.Panel).
+			Border(1, k.PanelBorder).
 			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2)
 		panel.Margin(4, 0, 0, 0)
 		if !ch.Staged || ch.Unstaged {
@@ -718,8 +730,8 @@ func (p *Page) fileActionsMenu(c *ui.Context, k *theme.Colors, path string, ch C
 func (p *Page) hunkActionsMenu(c *ui.Context, k *theme.Colors, ch Change, idx int) {
 	m := compactActionMenu(c, k, "Hunk Actions", &p.HunkMenu, p.ActionBusy)
 	m.Popup(func(panel ui.Element) {
-		panel.Width(190).Padding(6).Radius(theme.Radius).
-			Background(k.Panel).Border(1, k.PanelBorder).
+		theme.Surface(panel.Width(190).Padding(6).Radius(theme.Radius), k.Panel).
+			Border(1, k.PanelBorder).
 			Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(2)
 		panel.Margin(4, 0, 0, 0)
 		if ch.Unstaged && !p.DiffStaged {

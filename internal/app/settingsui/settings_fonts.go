@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"mojian/internal/icons"
+	"mojian/internal/motion"
+	"mojian/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -61,10 +63,10 @@ func (u *UI) fontPicker(c *ui.Context, k *colors) {
 		return
 	}
 	ui.DialogBase(c, &u.FontPick, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.Backdrop)
-		panel.Width(500).MaxHeight(480).Radius(radius).Background(k.Panel).
+		backdrop.Background(k.Backdrop).Transition(motion.Backdrop)
+		theme.Surface(panel.Width(500).MaxHeight(480).Radius(radius), k.Panel).
 			Border(1, k.PanelBorder).
-			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip()
+			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip().Transition(motion.Dialog)
 		ui.Column(c).Children(func() {
 			title := "Editor font"
 			if u.FontPickFor == 1 {

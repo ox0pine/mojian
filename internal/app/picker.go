@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mojian/internal/icons"
+	"mojian/internal/motion"
 )
 
 type pickerEntry struct {
@@ -137,11 +138,11 @@ func (a *app) projectPickerModal(c *ui.Context, k *colors) {
 		return
 	}
 	ui.DialogBase(c, &a.projectPicker, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.Backdrop)
-		panel.WidthPercent(58).HeightPercent(66).
+		backdrop.Background(k.Backdrop).Transition(motion.Backdrop)
+		a.surface(panel.WidthPercent(58).HeightPercent(66).
 			MinWidth(520).MinHeight(360).MaxWidth(680).MaxHeight(480).
-			Radius(radius).Background(k.Sheet).Border(1, k.PanelBorder).
-			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip()
+			Radius(radius), k.Sheet).Border(1, k.PanelBorder).
+			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip().Transition(motion.Dialog)
 		ui.Column(c).Fill().Children(func() {
 			a.pickerHeader(c, k)
 			ui.Divider(c)

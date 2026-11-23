@@ -56,6 +56,34 @@ func (u *UI) Duplicate(rel string) {
 	u.SelectRel(newRel)
 }
 
+// MoveEntry moves a dragged file or folder into destDirRel ("" for project root).
+func (u *UI) MoveEntry(srcRel, destDirRel string) {
+	if srcRel == "" || u.store() == nil || u.store().IsMemory() {
+		return
+	}
+	isDir := u.store().Dirs[srcRel]
+	affected := u.store().NotesUnder(srcRel, isDir)
+	before := make(map[*note]string, len(affected))
+	for _, n := range affected {
+		before[n] = editorShape(n.Path)
+	}
+	newRel, err := u.store().MoveRel(srcRel, destDirRel)
+	if err != nil {
+		u.fail(err)
+		return
+	}
+	if newRel == srcRel {
+		return
+	}
+	u.resetRenamedStates(affected, before)
+	u.SelectRel(newRel)
+	if u.gitOpen() && u.autoRefreshGit() {
+		u.refreshGit()
+	}
+	u.changed()
+	u.invalidate()
+}
+
 func (u *UI) reveal(rel string) {
 	if u.store() == nil || runtime.GOOS == "js" {
 		return

@@ -176,8 +176,10 @@ func (a *app) handleWatchEvents() {
 		return
 	}
 	if err := s.Reload(); err == nil {
+		a.invalidateEditorConfig()
 		a.explorerUI().RefreshApplied()
 		a.invalidateDiffBases()
+		a.refreshGitStatus()
 		if a.git.Open && !a.NoGitAutoRefresh {
 			a.refreshGit()
 		}
@@ -192,8 +194,10 @@ func (a *app) handleRemoteWatchEvents() {
 	if s == nil || !s.IsRemote() {
 		return
 	}
+	a.invalidateEditorConfig()
 	a.reloadProject(true)
 	a.invalidateDiffBases()
+	a.refreshGitStatus()
 	if a.git.Open && !a.NoGitAutoRefresh {
 		a.refreshGit()
 	}

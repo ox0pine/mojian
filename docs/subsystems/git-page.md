@@ -167,8 +167,10 @@ branches and reloads open notes after a checkout.
   and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation (`NextHunk`,
   `PreviousHunk`, `RevertHunk` commands in the palette and menu). When `prefs.EditorGitBlame` is
   enabled, moving the cursor asynchronously queries `git.ReadLineBlame` and renders a trailing
-  inlay (`editor.State.SetInlays`) for the current line. Switching branches or mutating Git from
-  the page invalidates the cache.
+  inlay (`editor.State.SetInlays`) for the current line. The Explorer also mirrors working-tree
+  statuses asynchronously (`internal/app/git_status.go`) with compact single-letter badges on
+  changed files and quiet dirty markers on ancestor directories. Switching branches, saving, or
+  mutating Git invalidates and refreshes these caches.
 - `BranchData.Current` is the checked-out branch, or the short hash of a detached HEAD with
   `Detached` set; no branch is marked `Current` in that case. `Root` is empty outside a repository,
   which hides the chip; the command reports "This folder is not a Git repository." in the banner.

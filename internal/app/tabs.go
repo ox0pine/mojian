@@ -34,8 +34,8 @@ func (a *app) tabStrip(c *ui.Context, k *colors) {
 	// The strip scrolls rather than shrinking tabs into unreadable
 	// slivers: every tab keeps its name, and the active one is revealed
 	// when it changes.
-	track := ui.ScrollHorizontal(c).Basis(total).Shrink(1).MinWidth(min(total, tabMinW)).Height(tabH+4).
-		Radius(radius).Background(k.Track).Border(0.5, k.TrackBorder).
+	track := a.trackSurface(ui.ScrollHorizontal(c).Basis(total).Shrink(1).MinWidth(min(total, tabMinW)).Height(tabH+4).
+		Radius(radius), k.Track).Border(0.5, k.TrackBorder).
 		ClipX().DragWindow().Role(ui.RoleTabList).Label("Tabs").Scrollbars(false).
 		TrackScroll(&a.tabScroll)
 	tabs := append([]*tab(nil), a.tabs...)
@@ -135,6 +135,20 @@ func (a *app) tabItem(c *ui.Context, k *colors, i int, t *tab, width float32, wh
 		e.Background(k.TabInactive)
 	}
 	e.Transition(motion.Tab)
+	if a.rename != t {
+		e.Drag(t)
+	}
+	tabDropOver := false
+	if over, ok := ui.DragOver[*tab](e); ok && over != nil && over != t {
+		tabDropOver = true
+	}
+	if from, ok := ui.Drop[*tab](e); ok && from != nil && from != t {
+		targetIdx := i
+		a.later(func() { a.moveTab(from, targetIdx) })
+	}
+	if tabDropOver {
+		e.Border(1.5, c.Theme().Accent)
+	}
 	if e.Clicked() {
 		if a.git.Open {
 			a.CloseGit()

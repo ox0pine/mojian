@@ -74,7 +74,7 @@ func (a *app) symbolsModal(c *ui.Context, k *colors) {
 	was := a.symbolsOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.symbolsOpen, func() {
+	a.commandDialog(c, k, &a.symbolsOpen, func() {
 		in := sheetHeader(c, k, &a.symbolsQuery, "Go to symbol…", "Go to symbol", &a.symbolsOpen)
 		if listNav(in, &a.symbolsSel, len(filtered), &reveal) && len(filtered) > 0 {
 			chosen = a.symbolsSel

@@ -30,9 +30,24 @@ func (a *app) saveNowAsync(done func(error)) {
 	if done == nil {
 		done = func(error) {}
 	}
+	if a.EditorFormatOnSave && !a.quitting && a.store != nil {
+		a.formatDirtyNotesBeforeSave(func() {
+			a.saveNowAsyncInner(done)
+		})
+		return
+	}
+	a.saveNowAsyncInner(done)
+}
+
+func (a *app) saveNowAsyncInner(done func(error)) {
 	if a.store == nil || !a.store.IsRemote() || (a.win == nil && a.uiPost == nil) {
 		done(a.saveNow())
 		return
+	}
+	for _, n := range a.store.Notes {
+		if n.Dirty() {
+			a.applyEditorConfigSaveTransforms(n)
+		}
 	}
 	if a.layoutDirty {
 		if err := a.saveLayout(); err != nil {
@@ -95,9 +110,15 @@ func (a *app) startRemoteSave(s *store) {
 				if ok {
 					s.CommitSnapshot(snapshots[i])
 					if a.store == s {
+						if isEditorConfigPath(snapshots[i].Rel()) {
+							a.invalidateEditorConfig()
+						}
 						a.notifyLSPSaved(s.ByRelPath(snapshots[i].Rel()))
 					}
 				}
+			}
+			if a.store == s {
+				a.refreshGitStatus()
 			}
 			a.saveTask.active = false
 			a.saveTask.cancel = nil

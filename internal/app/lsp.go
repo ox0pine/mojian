@@ -26,6 +26,7 @@ type lspServerState struct {
 type lspDocDiag struct {
 	version uint64
 	diags   []editor.Diagnostic
+	raw     []lsp.Diagnostic
 }
 
 // lspManager owns lazy per-workspace language servers (local or remote over
@@ -247,7 +248,7 @@ func (a *app) applyLSPDiagnostics(ws *workspace, params lsp.PublishDiagnosticsPa
 	buf := n.Buffer()
 	edDiags := lsp.ToEditorDiagnostics(n.Text(), params.Diagnostics)
 	ws.lsp.diagGen++
-	ws.lsp.diags[rel] = lspDocDiag{version: buf.Version(), diags: edDiags}
+	ws.lsp.diags[rel] = lspDocDiag{version: buf.Version(), diags: edDiags, raw: append([]lsp.Diagnostic(nil), params.Diagnostics...)}
 	if a.workspace == ws {
 		a.invalidate()
 	}
@@ -452,6 +453,84 @@ func (a *app) lspServerName(rel string) string {
 		return ""
 	}
 	return st.name
+}
+
+// syncEditorHighlights queries LSP textDocument/documentHighlight for the
+// symbol at the focused editor's caret and renders subtle tinted spans via
+// st.TextBackgrounds.
+func (a *app) syncEditorHighlights(p *pane, st *editor.State, focused bool, k *colors) {
+	if p == nil || p.Note == nil || st == nil {
+		return
+	}
+	ver := p.Note.Buffer().Version()
+	if !focused || a.workspace == nil || a.store == nil || a.store.IsMemory() {
+		if len(p.hlRanges) > 0 {
+			p.hlRanges = nil
+			st.TextBackgrounds = nil
+		}
+		return
+	}
+	if p.hlVer != ver {
+		p.hlRanges = nil
+		st.TextBackgrounds = nil
+	}
+	cl := a.lspClientForNote(a.workspace, p.Note)
+	if cl == nil {
+		if len(p.hlRanges) > 0 {
+			p.hlRanges = nil
+			st.TextBackgrounds = nil
+		}
+		return
+	}
+	off := st.Cursor()
+	if p.hlOffset == off && p.hlVer == ver {
+		st.TextBackgrounds = p.hlRanges
+		return
+	}
+	p.hlOffset = off
+	p.hlVer = ver
+	p.hlSeq++
+	seq := p.hlSeq
+	text := p.Note.Text()
+	if wordAtOffset(text, off) == "" {
+		p.hlRanges = nil
+		st.TextBackgrounds = nil
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	uri := a.lspURIForRel(ws, filepath.ToSlash(n.Rel))
+	pos := lsp.OffsetToPosition(text, off)
+	winSeq := a.windowSeq
+	hlColor := k.Attention.Alpha(0.14)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		hls, err := cl.DocumentHighlight(ctx, uri, pos)
+		cancel()
+		if err != nil {
+			return
+		}
+		var bgs []editor.TextBackground
+		for _, h := range hls {
+			s := lsp.PositionToOffset(text, h.Range.Start)
+			e := lsp.PositionToOffset(text, h.Range.End)
+			if e > s {
+				bgs = append(bgs, editor.TextBackground{Start: s, End: e, Color: hlColor})
+			}
+		}
+		post(func() {
+			if a.windowSeq != winSeq || p.hlSeq != seq || p.Note != n || p.state != st || n.Buffer().Version() != ver {
+				return
+			}
+			p.hlRanges = bgs
+			st.TextBackgrounds = bgs
+			a.invalidate()
+		})
+	}()
 }
 
 // Editor Git hunk navigation and revert.

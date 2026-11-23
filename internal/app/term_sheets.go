@@ -61,7 +61,7 @@ func (a *app) sshPicker(c *ui.Context, k *colors) {
 	a.sshSel = min(max(a.sshSel, 0), max(len(filtered)-1, 0))
 	was := a.sshPick
 	connected := ""
-	commandDialog(c, k, &a.sshPick, func() {
+	a.commandDialog(c, k, &a.sshPick, func() {
 		reveal := false
 		in := sheetHeader(c, k, &a.sshQuery, "Search hosts…", "Connect to Server", &a.sshPick)
 		if listNav(in, &a.sshSel, len(filtered), &reveal) {
@@ -389,7 +389,7 @@ func (a *app) sessionPickerModal(c *ui.Context, k *colors) {
 	if server == "" {
 		server = localServerID
 	}
-	commandDialog(c, k, &a.sessionPick, func() {
+	a.commandDialog(c, k, &a.sessionPick, func() {
 		reveal := false
 		placeholder := "Filter terminal sessions…"
 		if server != localServerID {

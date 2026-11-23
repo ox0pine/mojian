@@ -33,6 +33,13 @@ type ClipState struct {
 	Root   string
 }
 
+// DragItem is the payload carried while dragging a file or folder row in the
+// Explorer tree, accepted by folders (to move) and by pane cards (to open/split).
+type DragItem struct {
+	Rel string
+	Dir bool
+}
+
 // Host is what the Explorer asks of the window.
 type Host interface {
 	Store() *project.Store
@@ -54,6 +61,8 @@ type Host interface {
 	RefreshGit()
 	GitOpen() bool
 	AutoRefreshGit() bool
+	GitStatus(rel string) string
+	GitDirDirty(rel string) bool
 
 	Tip(label, commandID string) string
 	FilteredFiles() ([]*project.Note, []*project.Asset)

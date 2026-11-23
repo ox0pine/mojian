@@ -47,9 +47,6 @@ func (a *app) focusFirstNote() {
 		return
 	}
 	a.tabs = []*tab{newTab(n)}
-	if a.tabs[0].Focus != nil {
-		a.tabs[0].Focus.Preview = a.MarkdownPreview && isMarkdownPath(n.Path)
-	}
 	a.active = 0
 	a.focusReq = a.tabs[0].Focus
 	a.revealTab = true
@@ -107,9 +104,6 @@ func (a *app) openNoteInTab(n *note) {
 	}
 	a.git.Open = false
 	t := newTab(n)
-	if t.Focus != nil {
-		t.Focus.Preview = a.MarkdownPreview && isMarkdownPath(n.Path)
-	}
 	a.tabs = append(a.tabs, t)
 	a.active = len(a.tabs) - 1
 	a.focusReq = t.Focus
@@ -136,7 +130,6 @@ func (a *app) openNote(n *note) {
 		a.tabs = append(a.tabs, t)
 		a.active = len(a.tabs) - 1
 		a.focusReq = t.Focus
-		t.Focus.Preview = a.MarkdownPreview && isMarkdownPath(n.Path)
 		a.revealTab = true
 		a.revealRel(n.Rel)
 		a.changed()
@@ -172,7 +165,7 @@ func (a *app) openNote(n *note) {
 	if p.Note != n {
 		p.state = nil
 		p.md = nil
-		p.Preview = a.MarkdownPreview && isMarkdownPath(n.Path)
+		p.Preview = false
 	}
 	if t.Zoom != nil && t.Zoom != p {
 		a.unzoom(t)
@@ -331,6 +324,7 @@ func (a *app) closeTab(t *tab) {
 		return
 	}
 	for _, p := range t.panes() {
+		a.recordClosedPane(t, p, true)
 		a.endTerminalPane(p, true)
 		releaseAsset(p)
 	}
@@ -384,6 +378,7 @@ func (a *app) closePane(p *pane) {
 		a.closePaneNow(t, p)
 		return
 	}
+	a.recordClosedPane(t, p, false)
 	// Take the pane out of the layout now, so the survivor expands at
 	// once, and keep a copy of the card over its old place while it fades
 	// and slides back the way it entered. The engine cannot keep an Exit
@@ -471,6 +466,9 @@ func (a *app) closePaneNow(t *tab, p *pane) {
 	if p.closing {
 		a.finishPaneOverlay(p, paneCopyClosing)
 		return
+	}
+	if len(t.panes()) > 1 {
+		a.recordClosedPane(t, p, false)
 	}
 	a.unzoom(t)
 	a.endTerminalPane(p, true)

@@ -121,6 +121,24 @@ func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
 					ID:      msg.ID,
 					Result:  json.RawMessage(`[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":7}},"newText":"package"}]`),
 				})
+			case "textDocument/codeAction":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"title":"Organize Imports","kind":"source.organizeImports","edit":{"changes":{"file:///proj/main.go":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"// ok\n"}]}}},{"title":"Run fix","command":"gopls.fix","arguments":["arg1"]}]`),
+				})
+			case "workspace/executeCommand":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`null`),
+				})
+			case "textDocument/documentHighlight":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"range":{"start":{"line":2,"character":5},"end":{"line":2,"character":9}},"kind":1}]`),
+				})
 			}
 		}
 	}()
@@ -185,6 +203,17 @@ func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
 	fmtEdits, err := cl.Formatting(ctx, uri, 4, false)
 	if err != nil || len(fmtEdits) != 1 {
 		t.Fatalf("Formatting = %+v err=%v", fmtEdits, err)
+	}
+	actions, err := cl.CodeActions(ctx, uri, Range{}, nil)
+	if err != nil || len(actions) != 2 || actions[0].Title != "Organize Imports" || actions[1].Command == nil || actions[1].Command.Command != "gopls.fix" {
+		t.Fatalf("CodeActions = %+v err=%v", actions, err)
+	}
+	if err := cl.ExecuteCommand(ctx, actions[1].Command.Command, actions[1].Command.Arguments); err != nil {
+		t.Fatalf("ExecuteCommand: %v", err)
+	}
+	hls, err := cl.DocumentHighlight(ctx, uri, Position{Line: 2, Character: 5})
+	if err != nil || len(hls) != 1 || hls[0].Range.Start.Line != 2 {
+		t.Fatalf("DocumentHighlight = %+v err=%v", hls, err)
 	}
 }
 

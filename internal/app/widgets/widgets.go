@@ -4,6 +4,7 @@ package widgets
 
 import (
 	"mojian/internal/icons"
+	"mojian/internal/motion"
 	"mojian/internal/theme"
 
 	"github.com/egoist/mygo/ui"
@@ -57,10 +58,12 @@ func CommandListHeight(c *ui.Context) float32 {
 // picker share: one width, one top edge and one shadow.
 func CommandDialog(c *ui.Context, k *theme.Colors, open *bool, body func()) {
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.Backdrop).Justify(ui.Start).Padding(commandDialogTop, 0, 0, 0)
-		panel.Width(560).MaxHeight(commandDialogHeight(c)).Radius(theme.Radius).Background(k.Panel).
+		backdrop.Background(k.Backdrop).Justify(ui.Start).Padding(commandDialogTop, 0, 0, 0).
+			Transition(motion.Backdrop)
+		theme.Surface(panel.Width(560).MaxHeight(commandDialogHeight(c)).Radius(theme.Radius), k.Panel).
 			Border(1, k.PanelBorder).
-			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip()
+			Shadow(0, 24, 60, -8, k.ShadowDialog).Clip().
+			Transition(motion.Sheet)
 		body()
 	})
 }

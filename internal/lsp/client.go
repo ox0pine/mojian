@@ -295,6 +295,17 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 				"references": map[string]any{},
 				"rename":     map[string]any{},
 				"formatting": map[string]any{},
+				"codeAction": map[string]any{
+					"codeActionLiteralSupport": map[string]any{
+						"codeActionKind": map[string]any{
+							"valueSet": []string{
+								"", "quickfix", "refactor", "refactor.extract",
+								"refactor.inline", "refactor.rewrite", "source", "source.organizeImports",
+							},
+						},
+					},
+				},
+				"documentHighlight": map[string]any{},
 				"documentSymbol": map[string]any{
 					"hierarchicalDocumentSymbolSupport": true,
 				},
@@ -565,19 +576,7 @@ func (c *Client) Rename(ctx context.Context, uri string, pos Position, newName s
 	if err := json.Unmarshal(raw, &we); err != nil {
 		return nil, err
 	}
-	out := map[string][]TextEdit{}
-	for u, edits := range we.Changes {
-		if len(edits) > 0 {
-			out[u] = append(out[u], edits...)
-		}
-	}
-	for _, dc := range we.DocumentChanges {
-		var tde textDocumentEdit
-		if json.Unmarshal(dc, &tde) == nil && tde.TextDocument.URI != "" && len(tde.Edits) > 0 {
-			out[tde.TextDocument.URI] = append(out[tde.TextDocument.URI], tde.Edits...)
-		}
-	}
-	return out, nil
+	return NormalizeWorkspaceEdit(we), nil
 }
 
 // Formatting queries textDocument/formatting for the whole document.
@@ -600,4 +599,64 @@ func (c *Client) Formatting(ctx context.Context, uri string, tabSize int, insert
 		return nil, nil
 	}
 	return edits, nil
+}
+
+// CodeActions queries textDocument/codeAction for rng and the overlapping diagnostics.
+func (c *Client) CodeActions(ctx context.Context, uri string, rng Range, diags []Diagnostic) ([]CodeAction, error) {
+	if diags == nil {
+		diags = []Diagnostic{}
+	}
+	raw, err := c.call(ctx, "textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        rng,
+		"context": map[string]any{
+			"diagnostics": diags,
+		},
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, nil
+	}
+	out := make([]CodeAction, 0, len(items))
+	for _, item := range items {
+		var ca CodeAction
+		if json.Unmarshal(item, &ca) == nil && ca.Title != "" && (ca.Edit != nil || ca.Command != nil || ca.Kind != "") {
+			out = append(out, ca)
+			continue
+		}
+		var cmd Command
+		if json.Unmarshal(item, &cmd) == nil && cmd.Title != "" && cmd.Command != "" {
+			out = append(out, CodeAction{Title: cmd.Title, Command: &cmd})
+		}
+	}
+	return out, nil
+}
+
+// ExecuteCommand runs workspace/executeCommand for a command-backed CodeAction.
+func (c *Client) ExecuteCommand(ctx context.Context, command string, args []json.RawMessage) error {
+	params := map[string]any{"command": command}
+	if len(args) > 0 {
+		params["arguments"] = args
+	}
+	_, err := c.call(ctx, "workspace/executeCommand", params)
+	return err
+}
+
+// DocumentHighlight queries textDocument/documentHighlight at pos.
+func (c *Client) DocumentHighlight(ctx context.Context, uri string, pos Position) ([]DocumentHighlight, error) {
+	raw, err := c.call(ctx, "textDocument/documentHighlight", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     pos,
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var out []DocumentHighlight
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, nil
+	}
+	return out, nil
 }

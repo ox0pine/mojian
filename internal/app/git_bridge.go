@@ -80,6 +80,9 @@ func (r serverGitRunner) Run(dir string, args ...string) (string, error) {
 }
 
 func (r serverGitRunner) RunWithStdin(dir, stdin string, args ...string) (string, error) {
+	if r.client == nil {
+		return "", errors.New("remote server disconnected")
+	}
 	cmd := append([]string{"git", "-C", dir}, args...)
 	env := []string{"GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
 	res, err := r.client.ExecStdin(dir, cmd, env, stdin, 20*time.Second)
@@ -97,6 +100,9 @@ func (r serverGitRunner) RunWithStdin(dir, stdin string, args ...string) (string
 }
 
 func (r serverGitRunner) RealPath(path string) (string, error) {
+	if r.client == nil {
+		return "", errors.New("remote server disconnected")
+	}
 	res, err := r.client.Exec("", []string{"sh", "-c", `cd "$1" && pwd -P`, "sh", path}, nil, 5*time.Second)
 	if err != nil {
 		return "", err
@@ -114,6 +120,9 @@ func (r serverGitRunner) RealPath(path string) (string, error) {
 }
 
 func (r serverGitRunner) Readlink(dir, rel string) (string, error) {
+	if r.client == nil {
+		return "", errors.New("remote server disconnected")
+	}
 	res, err := r.client.Exec(dir, []string{"readlink", "--", rel}, nil, 5*time.Second)
 	if err != nil {
 		return "", err
@@ -125,6 +134,9 @@ func (r serverGitRunner) Readlink(dir, rel string) (string, error) {
 }
 
 func (r serverGitRunner) ReadFile(dir, rel string, limit int) ([]byte, error) {
+	if r.client == nil {
+		return nil, errors.New("remote server disconnected")
+	}
 	data, err := r.client.ReadFile(path.Join(dir, rel))
 	if err != nil {
 		return nil, err
@@ -165,6 +177,7 @@ func (a *app) ReloadFiles() {
 func (a *app) AfterGitMutation() {
 	a.invalidateDiffBases()
 	a.refreshBranch()
+	a.refreshGitStatus()
 }
 
 // SwitchBranch checks out a branch chosen in the Git page's own menu, then

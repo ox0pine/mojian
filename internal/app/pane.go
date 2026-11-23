@@ -1,9 +1,11 @@
 package app
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"mojian/internal/app/explorer"
 	"mojian/internal/app/vim"
 	"mojian/internal/icons"
 	"mojian/internal/motion"
@@ -70,7 +72,8 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		ey += card.AnimateTo("close-y", p.enterY, motion.Close)
 		o := card.AnimateTo("close-alpha", 0, motion.Close)
 		if o < 1 {
-			card.Opacity(o)
+			s := 0.985 + 0.015*o
+			card.Scale(s, s).Opacity(o)
 		}
 		if card.Settled("close-alpha") && card.Settled("close-x") && card.Settled("close-y") {
 			a.later(func() { a.finishPaneOverlay(p, paneCopyClosing) })
@@ -107,9 +110,16 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 	width, height := card.Bounds().W, card.Bounds().H
 	overZone := dropNone
 	overTarget := false
+	overExplorerFile := false
 	if !overlay {
 		if over, ok := ui.DragOver[*pane](card); ok && over != nil && over != p && t.contains(over) {
 			overTarget = true
+			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
+				overZone = dropZoneAt(x, y, width, height)
+			}
+		} else if item, ok := ui.DragOver[explorer.DragItem](card); ok && item.Rel != "" && !item.Dir {
+			overTarget = true
+			overExplorerFile = true
 			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
 				overZone = dropZoneAt(x, y, width, height)
 			}
@@ -181,7 +191,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			st.Theme = a.editorTheme(c)
 			st.Font = a.editorFont()
 			st.LineHeight = float32(a.lineHeight())
-			st.TabSize = a.tabSize()
+			st.Indent, st.TabSize = a.effectiveIndent(p, p.Note)
 			st.SoftWrap = a.EditorSoftWrap || wrapFor(p.Note.Path)
 			st.NoActiveLine = a.NoActiveLine
 			st.NoIndentGuides = a.NoIndentGuides
@@ -197,6 +207,10 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			}
 			a.syncEditorLSP(p, st)
 			a.syncEditorBlame(p, st, focused && !overlay)
+			a.syncEditorHighlights(p, st, focused && !overlay, k)
+			st.ContextMenu = func(m *ui.Menu) {
+				a.editorContextMenu(m, p)
+			}
 			if a.EditorVimMode {
 				if p.vim == nil {
 					p.vim = &vim.State{}
@@ -226,6 +240,9 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				}
 			}
 			tv := editor.View(c, st).Fill()
+			if !overlay {
+				a.syncMarkdownPreviewScroll(t, p)
+			}
 			if !overlay && a.focusReq == p {
 				tv.Focus()
 				a.focusReq = nil
@@ -247,9 +264,16 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 					a.later(func() { a.movePaneTo(t, from, p, zone) })
 				}
 			}
+		} else if item, ok := ui.Drop[explorer.DragItem](card); ok && item.Rel != "" && !item.Dir {
+			zone := dropCenter
+			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
+				zone = dropZoneAt(x, y, width, height)
+			}
+			rel := item.Rel
+			a.later(func() { a.openDroppedExplorerFile(t, p, rel, zone) })
 		}
 	}
-	if p.dragging || (overTarget && overZone != dropNone && overZone != dropCenter) {
+	if p.dragging || (overTarget && (overExplorerFile || (overZone != dropNone && overZone != dropCenter))) {
 		card.Border(2, k.Text)
 	}
 	if !overlay && card.Pressed() {
@@ -435,14 +459,22 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 	compact := width > 0 && width < 360
 	ultra := width > 0 && width < 160
 	name := "New Pane"
+	tooltip := "New Pane"
 	ic := icons.Icon("file-plus")
 	switch {
 	case p.Note != nil:
 		name, ic = p.Note.Title, icons.FileIcon(p.Note.Path)
+		tooltip = filepath.ToSlash(p.Note.Rel)
 	case p.Asset != nil:
 		name, ic = p.Asset.Name, icons.FileIcon(p.Asset.Path)
+		tooltip = filepath.ToSlash(p.Asset.Rel)
 	case p.Term != nil:
 		name, ic = p.Term.displayTitle(), icons.Icon("square-terminal")
+		tooltip = name
+	}
+	subtitle := ""
+	if !compact {
+		subtitle = paneSubtitle(t, p)
 	}
 	hpad, hgap := float32(12), float32(7)
 	btn, isize := float32(iconBtnMd), float32(iconGlyphMd)
@@ -490,11 +522,15 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 			ui.Icon(c, icons.Icon("grip-vertical")).Size(gripSize, gripSize).TextColor(k.TextFaint)
 		})
 		if !ultra {
-			ui.Icon(c, ic).Size(iconSize, iconSize).TextColor(k.Text).Tooltip(name)
+			ui.Icon(c, ic).Size(iconSize, iconSize).TextColor(k.Text).Tooltip(tooltip)
 		}
 		ui.Row(c).Grow(1).MinWidth(0).Gap(5).AlignItems(ui.Center).ClipX().Children(func() {
 			ui.Text(c, name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
-				Label("Pane title " + name).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+				Label("Pane title " + name).Tooltip(tooltip).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+			if subtitle != "" {
+				ui.Text(c, subtitle).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
+					SingleLine().TruncateStart().Shrink(2).MinWidth(0)
+			}
 			if p.Note != nil && p.Note.Dirty() {
 				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
 					Tooltip("Unsaved edits")
@@ -507,27 +543,21 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 					Tooltip(tip)
 			}
 		})
-		previewAction := func() {
-			if p.Note == nil || !isMarkdownPath(p.Note.Path) {
+		previewSideAction := func() {
+			if p.Note == nil || !isMarkdownPath(p.Note.Path) || p.Preview {
 				return
 			}
-			glyph, label := "file-text", "Preview"
-			if p.Preview {
-				glyph, label = "pencil", "Edit"
-			}
-			previewBtn := iconButton(c, k, glyph, label+suffix, btn, isize).Tooltip(label).Disabled(overlay)
-			if !overlay && previewBtn.Clicked() {
-				p.Preview = !p.Preview
-				if p.Preview {
-					a.focusReq = nil
-				} else {
-					a.focusReq = p
-				}
-				a.changed()
+			sideBtn := iconButton(c, k, "layout-grid", "Preview to the Side"+suffix, btn, isize).
+				Tooltip(a.tip("Open Markdown Preview to the Side", cmdMarkdownPreviewSide)).Disabled(overlay)
+			if !overlay && sideBtn.Clicked() {
+				a.later(func() {
+					t.Focus = p
+					a.openMarkdownPreviewSide()
+				})
 			}
 		}
 		if !compact {
-			previewAction()
+			previewSideAction()
 		}
 		splitRightAction := func() {
 			if iconButton(c, k, "columns-2", "Split Right"+suffix, btn, isize).
@@ -568,7 +598,7 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 		actions := ui.Toolbar(c, func() {
 			if compact {
 				closeAction()
-				previewAction()
+				previewSideAction()
 				splitRightAction()
 				splitDownAction()
 				zoomAction()
@@ -593,6 +623,104 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 			actions.Disabled(true)
 		}
 	})
+}
+
+// editorContextMenu appends Mojian's LSP, Git and Terminal actions to the
+// editor's built-in right-click menu.
+func (a *app) editorContextMenu(m *ui.Menu, p *pane) {
+	if p == nil || p.Note == nil || p.state == nil {
+		return
+	}
+	m.Separator()
+	if m.Item("Find References").Chosen() {
+		a.later(func() { a.openReferences() })
+	}
+	if m.Item("Quick Fix / Code Actions…").Chosen() {
+		a.later(func() { a.openCodeActions() })
+	}
+	if m.Item("Rename Symbol…").Chosen() {
+		a.later(func() { a.openRenameSymbol() })
+	}
+	if m.Item("Format Document").Chosen() {
+		a.later(func() { a.formatDocument() })
+	}
+	if isMarkdownPath(p.Note.Path) {
+		m.Separator()
+		if m.Item("Open Markdown Preview to the Side").Chosen() {
+			a.later(func() { a.openMarkdownPreviewSide() })
+		}
+	}
+	if terminalsSupported() {
+		m.Separator()
+		if m.Item("Send Reference to Terminal").Chosen() {
+			a.later(func() { a.sendReferenceToTerminal() })
+		}
+	}
+	if p.state.DiffBase != nil {
+		m.Separator()
+		if m.Item("Revert Git Change").Chosen() {
+			a.later(func() { a.editorRevertHunk() })
+		}
+	}
+}
+
+// paneSubtitle returns the shortest distinguishing parent directory suffix
+// when two or more open panes in t share the same file title.
+func paneSubtitle(t *tab, p *pane) string {
+	if t == nil || p == nil {
+		return ""
+	}
+	title, rel := paneTitleAndRel(p)
+	if title == "" || rel == "" {
+		return ""
+	}
+	var peers []string
+	for _, other := range t.panes() {
+		if other == p {
+			continue
+		}
+		ot, orel := paneTitleAndRel(other)
+		if ot == title && orel != "" && orel != rel {
+			peers = append(peers, filepath.ToSlash(orel))
+		}
+	}
+	if len(peers) == 0 {
+		return ""
+	}
+	dir := filepath.ToSlash(filepath.Dir(rel))
+	if dir == "." || dir == "" {
+		return "./"
+	}
+	parts := strings.Split(dir, "/")
+	for depth := 1; depth <= len(parts); depth++ {
+		cand := strings.Join(parts[len(parts)-depth:], "/")
+		unique := true
+		for _, orel := range peers {
+			odir := filepath.ToSlash(filepath.Dir(orel))
+			if odir == "." {
+				odir = ""
+			}
+			if odir == cand || strings.HasSuffix(odir, "/"+cand) {
+				unique = false
+				break
+			}
+		}
+		if unique {
+			return cand
+		}
+	}
+	return dir
+}
+
+func paneTitleAndRel(p *pane) (string, string) {
+	switch {
+	case p.Note != nil:
+		return p.Note.Title, p.Note.Rel
+	case p.Asset != nil:
+		return p.Asset.Name, p.Asset.Rel
+	default:
+		return "", ""
+	}
 }
 
 // laterPane closes the pane after the frame that shows it, so the tab and

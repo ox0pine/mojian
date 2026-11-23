@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"mojian/internal/icons"
+	"mojian/internal/motion"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -388,10 +389,10 @@ func (a *app) terminalSearchBar(c *ui.Context, k *colors, p *pane) {
 	}
 	tt := p.Term
 	st := tt.Term.SearchStatus()
-	bar := ui.Row(c.Key("term-find:"+p.ID)).Absolute().Top(8).Right(10).
-		Height(32).Padding(0, 6).Gap(4).AlignItems(ui.Center).
-		Background(k.Panel).Border(1, k.PanelBorder).Radius(radius).
-		Shadow(0, 4, 14, -2, k.ShadowFocused)
+	bar := a.surface(ui.Row(c.Key("term-find:"+p.ID)).Absolute().Top(8).Right(10).
+		Height(32).Padding(0, 6).Gap(4).AlignItems(ui.Center).Radius(radius), k.Panel).
+		Border(1, k.PanelBorder).
+		Shadow(0, 4, 14, -2, k.ShadowFocused).Transition(motion.FloatingBar)
 	bar.Children(func() {
 		ui.Icon(c, icons.Icon("search")).Size(13, 13).TextColor(k.TextMuted).Shrink(0)
 		in := ui.TextInputBase(c.Key("term-find-in:"+p.ID), &tt.findQuery).

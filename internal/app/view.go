@@ -47,6 +47,8 @@ func (a *app) view(c *ui.Context) {
 	a.refsModal(c, k)
 	a.problemsModal(c, k)
 	a.renameSymbolModal(c, k)
+	a.codeActionsModal(c, k)
+	a.conflictModal(c, k)
 	a.searchModal(c, k)
 	a.remoteBusyView(c, k)
 	if !a.remoteBusy {
@@ -133,8 +135,8 @@ func (a *app) titleBar(c *ui.Context, k *colors) {
 		// that matches the tabs: the same height, radius and border, and
 		// the chip whose menu is open lifts to the active tab's face.
 		compactContext := row.Bounds().W > 0 && row.Bounds().W < 900
-		ui.Row(c).Height(tabH+4).Padding(2).Gap(4).Radius(radius).
-			Background(k.Track).Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(1).MinWidth(0).ClipX().
+		a.trackSurface(ui.Row(c).Height(tabH+4).Padding(2).Gap(4).Radius(radius), k.Track).
+			Border(0.5, k.TrackBorder).AlignItems(ui.Center).Shrink(1).MinWidth(0).ClipX().
 			Children(func() {
 				if terminalsSupported() {
 					a.serverChip(c, k)
@@ -270,9 +272,9 @@ func (a *app) errorBanner(c *ui.Context, k *colors) {
 	ui.Overlay(c, func() {
 		ui.Row(c).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).
 			PassThrough().Children(func() {
-			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(radius).Background(k.Panel).
+			a.surface(ui.Row(c.Key("error-banner")).Gap(10).Padding(8, 10, 8, 14).Radius(radius), k.Panel).
 				Border(1, k.PanelBorder).Shadow(0, 8, 24, 0, k.ShadowFocused).
-				AlignItems(ui.Center).Children(func() {
+				AlignItems(ui.Center).Transition(motion.Banner).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Background(k.Danger)
 				ui.Text(c, a.err).FontSize(c.Theme().Rem(12.5 / 13)).TextColor(k.Text).MaxWidth(520)
 				if iconButton(c, k, "x", "Dismiss", iconBtnSm, iconGlyphSm).Clicked() {

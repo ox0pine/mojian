@@ -26,10 +26,11 @@ func (a *app) initCommands() {
 	r.Bind("rename", func() { a.renameSelection() })
 	r.Bind("trash", func() { a.trashSelection() })
 	r.Bind("new-tab", func() { a.newTab() })
+	r.Bind("reopen-closed", func() { a.reopenClosed() })
 	r.Bind("save", func() {
 		a.saveNowAsync(func(err error) {
 			if err != nil {
-				a.fail(err)
+				a.handleSaveError(err)
 			}
 		})
 	})
@@ -60,7 +61,9 @@ func (a *app) initCommands() {
 	r.Bind("next-diagnostic", func() { a.jumpDiagnostic(1) })
 	r.Bind("prev-diagnostic", func() { a.jumpDiagnostic(-1) })
 	r.Bind("rename-symbol", func() { a.openRenameSymbol() })
+	r.Bind("code-actions", func() { a.openCodeActions() })
 	r.Bind("format-document", func() { a.formatDocument() })
+	r.Bind("markdown-preview-side", func() { a.openMarkdownPreviewSide() })
 	r.Bind("restart-lsp", func() { a.restartLSP() })
 	r.Bind("nav-back", func() { a.navBack() })
 	r.Bind("nav-forward", func() { a.navForward() })

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mojian/internal/editorconfig"
 	gitpage "mojian/internal/git"
 
 	"github.com/egoist/mygo/ui"
@@ -37,9 +38,16 @@ type workspace struct {
 	git                gitpage.Page
 	gitMutationPending bool
 	gitReloadPending   bool
+	gitFileStatus      map[string]string
+	gitDirDirty        map[string]bool
+	gitStatusSeq       int
+	gitStatusLoading   bool
 	branch             branchState
 	diffBases          map[string]*diffBaseEntry
 	diffBaseGen        int
+	ecCache            map[string]editorconfig.Props
+	ecFiles            map[string][]byte
+	closedStack        []closedEntry
 	lsp                *lspManager
 	nav                navHistory
 	revealTab          bool
@@ -113,6 +121,8 @@ func (a *app) stashActiveWorkspace() {
 	a.branch.seq++
 	a.branch.loading = false
 	a.branch.queued = false
+	a.gitStatusSeq++
+	a.gitStatusLoading = false
 	if key := a.activeWorkspaceKey(); key != "" {
 		a.workspace.key = key
 		a.workspaces[key] = a.workspace
@@ -169,6 +179,8 @@ func (a *app) activateWorkspace(ws *workspace) {
 	a.branch.open = false
 	a.branch.creating = false
 	a.branch.err = ""
+	a.gitStatusSeq++
+	a.gitStatusLoading = false
 	// Focus requests are consumed by the editor. Request it again every
 	// time a cached project becomes visible, not only when it is first read.
 	a.focusReq = nil
@@ -176,6 +188,7 @@ func (a *app) activateWorkspace(ws *workspace) {
 		a.focusReq = t.editorPane()
 	}
 	a.refreshBranch()
+	a.refreshGitStatus()
 	a.syncProjectWatcher()
 	a.updateTitle()
 	a.invalidate()
@@ -208,6 +221,9 @@ func (a *app) closeModals() {
 	a.refsOpen = false
 	a.problemsOpen = false
 	a.symRenameOpen = false
+	a.codeActionsOpen = false
+	a.indentMenuOpen = false
+	a.conflict = nil
 	a.closeSearch()
 	a.sessionPick = false
 	a.sshPick = false

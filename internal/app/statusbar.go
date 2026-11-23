@@ -2,8 +2,9 @@ package app
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
+
+	"mojian/internal/motion"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -13,7 +14,7 @@ const statusBarH = 24
 
 // statusBar draws a quiet bottom strip when ShowStatusBar is enabled:
 // Vim mode, LSP server & diagnostic counts, remote reconnect state,
-// cursor line/column, indentation, line ending, and file language.
+// clickable cursor line/column, indentation menu, line ending toggle, and file language.
 func (a *app) statusBar(c *ui.Context, k *colors) {
 	if !a.ShowStatusBar {
 		return
@@ -85,7 +86,7 @@ func (a *app) statusBar(c *ui.Context, k *colors) {
 
 			ui.Spacer(c)
 
-			// Right side: cursor position, indent, line ending, language.
+			// Right side: clickable cursor position, indentation menu, line ending toggle, language.
 			if p == nil || p.Note == nil || p.Preview || p.state == nil {
 				return
 			}
@@ -99,25 +100,107 @@ func (a *app) statusBar(c *ui.Context, k *colors) {
 				}
 				cursorText += fmt.Sprintf(" (%d selected)", n)
 			}
-			ui.Text(c, cursorText).Font(noteFont.Family).FontSize(c.Theme().Rem(11.0 / 13)).
-				TextColor(k.TextMuted).Shrink(0)
-
-			indent := fmt.Sprintf("Spaces: %d", a.tabSize())
-			if st.Indent == editor.IndentTabs || (st.Indent == editor.IndentAuto && strings.EqualFold(filepath.Ext(p.Note.Path), ".go")) {
-				indent = fmt.Sprintf("Tabs: %d", a.tabSize())
+			posBtn := ui.ButtonBase(c.Key("status-cursor")).Padding(1, 5).Radius(4).
+				Cursor(ui.CursorPointer).Tooltip("Go to Line").Label("Go to line")
+			if posBtn.Hovered() {
+				posBtn.Background(k.Hover)
 			}
-			ui.Text(c, indent).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).Shrink(0)
+			if posBtn.Clicked() {
+				a.later(func() {
+					if p.state != nil {
+						p.state.Run(editor.GoToLine)
+						a.invalidate()
+					}
+				})
+			}
+			posBtn.Children(func() {
+				ui.Text(c, cursorText).Font(noteFont.Family).FontSize(c.Theme().Rem(11.0 / 13)).
+					TextColor(k.TextMuted).Shrink(0)
+			})
+
+			a.statusIndentMenu(c, k, p)
 
 			eol := "LF"
-			if p.Note.Buffer().LineEnding() == "\r\n" {
+			isCRLF := p.Note.Buffer().LineEnding() == "\r\n"
+			if isCRLF {
 				eol = "CRLF"
 			}
-			ui.Text(c, eol).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).Shrink(0)
+			eolBtn := ui.ButtonBase(c.Key("status-eol")).Padding(1, 5).Radius(4).
+				Cursor(ui.CursorPointer).Tooltip("Click to toggle LF / CRLF").Label("Line ending " + eol)
+			if eolBtn.Hovered() {
+				eolBtn.Background(k.Hover)
+			}
+			if eolBtn.Clicked() {
+				noteRef := p.Note
+				nextEnding := "\r\n"
+				if isCRLF {
+					nextEnding = "\n"
+				}
+				a.later(func() {
+					noteRef.Buffer().SetLineEnding(nextEnding)
+					a.invalidate()
+				})
+			}
+			eolBtn.Children(func() {
+				ui.Text(c, eol).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).Shrink(0)
+			})
 
 			if lang := p.Note.Buffer().Language(); lang != nil && lang.Name != "" {
 				ui.Text(c, lang.Name).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).Shrink(0)
 			}
 		})
+}
+
+func (a *app) statusIndentMenu(c *ui.Context, k *colors, p *pane) {
+	_, size := a.effectiveIndent(p, p.Note)
+	useSpaces := a.insertSpacesFor(p, p.Note)
+	indentLabel := fmt.Sprintf("Spaces: %d", size)
+	if !useSpaces {
+		indentLabel = fmt.Sprintf("Tabs: %d", size)
+	}
+	m := ui.MenuBase(c.Key("status-indent-menu"), &a.indentMenuOpen)
+	trig := m.Trigger.Padding(1, 5).Radius(4).Cursor(ui.CursorPointer).
+		Tooltip("Change indentation for this pane").Label("Indentation " + indentLabel)
+	if a.indentMenuOpen || trig.Hovered() {
+		trig.Background(k.Hover)
+	}
+	drop := float32(0)
+	if a.indentMenuOpen {
+		drop = 1
+	}
+	drop = trig.AnimateTo("indent-menu", drop, motion.PopoverIn)
+	trig.Children(func() {
+		ui.Text(c, indentLabel).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).Shrink(0)
+	})
+	m.Popup(func(panel ui.Element) {
+		a.menuSurface(panel, k, drop)
+		panel.Margin(0, 0, 4, 0)
+		menuHeader(c, k, "INDENTATION", "")
+		if menuChoice(c, k, m, "indent:spaces", "sliders-horizontal", "Use Spaces", useSpaces).Clicked() {
+			p.indentOverride = editor.IndentSpaces
+			a.invalidate()
+		}
+		if menuChoice(c, k, m, "indent:tabs", "sliders-horizontal", "Use Tabs", !useSpaces).Clicked() {
+			p.indentOverride = editor.IndentTabs
+			a.invalidate()
+		}
+		ui.Divider(c).Margin(4, 6)
+		for _, w := range []int{2, 4, 8} {
+			w := w
+			if menuChoice(c, k, m, fmt.Sprintf("indent:w:%d", w), "sliders-horizontal", fmt.Sprintf("Tab Width: %d", w), size == w).Clicked() {
+				p.tabSizeOverride = w
+				a.invalidate()
+			}
+		}
+		if p.indentOverride != 0 || p.tabSizeOverride != 0 {
+			ui.Divider(c).Margin(4, 6)
+			if menuAction(c, k, m, "indent:reset", "refresh-cw", "Reset to Default").Clicked() {
+				p.indentOverride = 0
+				p.tabSizeOverride = 0
+				a.invalidate()
+			}
+		}
+	})
 }
 
 func (a *app) paneVimModeLabel(p *pane) string {

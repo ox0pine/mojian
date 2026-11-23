@@ -54,6 +54,11 @@ func (a *app) markdownBody(c *ui.Context, k *colors, p *pane, overlay bool) {
 				opts.HTML = func(c *ui.Context, block string) {
 					preview.MarkdownHTMLBlock(c, block, images, load, a.colorsOf(c), !a.harness)
 				}
+				noteRef := p.Note
+				opts.OnTask = func(line int, checked bool) {
+					toggleMarkdownTask(noteRef, line, checked)
+					a.invalidate()
+				}
 				p.md = opts
 			}
 			markdown.View(c, p.Note.Text(), p.md)

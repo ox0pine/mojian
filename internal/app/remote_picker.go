@@ -177,11 +177,11 @@ func (a *app) remotePickerModal(c *ui.Context, k *colors) {
 	dirs := a.remoteDirs
 	q := strings.ToLower(strings.TrimSpace(a.remoteQuery))
 	ui.DialogBase(c, &a.remotePicker, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.Backdrop)
-		panel.WidthPercent(58).HeightPercent(66).
+		backdrop.Background(k.Backdrop).Transition(motion.Backdrop)
+		a.surface(panel.WidthPercent(58).HeightPercent(66).
 			MinWidth(520).MinHeight(360).MaxWidth(680).MaxHeight(480).
-			Radius(radius).Background(k.Sheet).Border(1, k.PanelBorder).
-			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip()
+			Radius(radius), k.Sheet).Border(1, k.PanelBorder).
+			Shadow(0, 24, 70, -10, k.ShadowDialog).Clip().Transition(motion.Dialog)
 		ui.Column(c).Fill().Children(func() {
 			ui.Row(c).Height(60).Padding(0, 18).Gap(11).AlignItems(ui.Center).
 				BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {
@@ -342,7 +342,7 @@ func (a *app) serverChip(c *ui.Context, k *colors) {
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	m.Popup(func(panel ui.Element) {
-		menuSurface(panel, k, drop)
+		a.menuSurface(panel, k, drop)
 		panel.Margin(4, 0, 0, 0)
 		menuHeader(c, k, "Servers", "")
 		menuList(c, func() {

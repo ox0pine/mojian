@@ -100,8 +100,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   including Show Tab, is temporarily empty so macOS delivers ⌘1–⌘9 to the recording control; ending
   recording restores the menu keys. Closing Settings stops recording before dropping its window
   handle, so the Settings-only lifetime restores them too.
-- Motion uses `internal/motion`: critically damped springs for pages, tabs, the tree and panes, a
-  short color curve for hover; MyGo drops movement when the system asks for less motion.
+- Motion uses `internal/motion`: critically damped springs (zero overshoot) for entrances and
+  spatial moves (`Page`, `Tab`, `Sidebar`, `Tree`, `Row`, `Pane`, `Sheet`, `Dialog`, `Banner`,
+  `FloatingBar`, `PopoverIn`, `ListMove`) paired with faster asymmetric ease-out exits (`95–120 ms`)
+  so dismissals never linger, plus a crisp `100 ms` `Colors` curve for hover/press states. Explorer
+  folder groups unfold with `motion.Tree(reduceMotion)`, and MyGo drops spatial movement when the
+  system requests reduced motion.
 - Settings › Advanced › Shell command writes the `mojian` alias through `internal/shellcmd` into
   the startup file of the chosen shell, in one marked block. Both existing and dangling startup
   symlinks stay links: Install and Remove write the referenced target, creating it when necessary.
@@ -169,8 +173,9 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   a pair per call site.
 - An optional quiet 24-pixel bottom status bar (`internal/app/statusbar.go`, controlled by
   `prefs.ShowStatusBar`, off by default) shows the active Vim mode badge, active LSP server and
-  diagnostic counts, SSH reconnect status, cursor `Ln/Col` (and selection length), indentation,
-  line ending (`LF`/`CRLF`) and language name.
+  diagnostic counts, SSH reconnect status, clickable cursor `Ln/Col` (opens Go to Line), clickable
+  indentation menu (`Spaces`/`Tabs` and width override, layered over `.editorconfig` and global
+  preferences), clickable line ending toggle (`LF`/`CRLF`) and language name.
 - Optional Vim modal editing (`internal/app/vim/`, controlled by `prefs.EditorVimMode`) intercepts
   editor key events through `editor.State.OnInput`, sets `NoInputMethod` in Normal/Visual/Command
   modes so CJK IMEs never hijack motions, switches `CursorShape` (`Block`/`Bar`/`Underline`) and
@@ -180,10 +185,23 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   `rust-analyzer`, `clangd`, `zls`, `lua-language-server`, `bash-language-server`, `yaml-language-server`,
   `vscode-json/css/html-language-server`, `sourcekit-lsp`, `ruby-lsp`) locally or on a remote SSH host
   via `mojian-server`'s `StartLSP` stream. It wires `OnCompletion`, `OnHover`, `OnDefinition`,
-  `SetDiagnostics`, `textDocument/didOpen`/`didChange`/`didSave`, plus `CommandDialog` pickers for
+  `SetDiagnostics`, `textDocument/didOpen`/`didChange`/`didSave`, `textDocument/documentHighlight`
+  (`TextBackgrounds`), plus `CommandDialog` pickers for Quick Fix / Code Actions (`⌘.` / `Ctrl+.`),
   Find References (`⇧F12`), Workspace Symbols (`⌥⌘O` / `Alt+Shift+O`), Workspace Problems (`⇧⌘M`,
   also reachable by clicking status-bar diagnostic counts, plus `F8`/`⇧F8` Next/Previous Problem),
-  in-memory Rename Symbol (`⇧F2`), Format Document (`⌥⇧F`) and Restart Language Server.
+  in-memory Rename Symbol (`⇧F2`), Format Document (`⌥⇧F`), optional Format on Save
+  (`prefs.EditorFormatOnSave`, running bounded LSP formatting before explicit `⌘S` saves), editor
+  right-click context menu items, and Restart Language Server.
+- Pane headers disambiguate duplicate file names across panes in the active tab with the shortest
+  distinguishing parent directory suffix (`paneSubtitle` in `internal/app/pane.go`). Markdown
+  editor panes support opening a paired side-by-side live preview (`⇧⌘V` / `Ctrl+Shift+V`,
+  `internal/app/drop.go`) sharing the same `editor.Buffer`, with synchronized vertical scroll ratio
+  and interactive GFM task-list checkboxes (`markdown.Options.OnTask`, undoable and respecting `⌘S`).
+- Native drag and drop (`internal/app/drop.go`, `internal/app/tabs.go`, `internal/app/explorer/`):
+  OS file drops (`Window.OnFileDrop`) open dropped folders as projects or dropped files directly;
+  Explorer rows drag onto folders (or the Explorer header) to move via `Store.MoveRel` and onto
+  pane cards to open in place or split on an edge; tabs drag across the tab strip to reorder; and
+  `Reopen Closed` (`⇧⌘T` on macOS, `Ctrl+Alt+Shift+T` elsewhere) restores closed file panes and tabs.
 - Per-workspace navigation history (`internal/app/nav.go`, `Go Back` `⌃-` / `Alt+Left` and `Go Forward`
   `⌃⇧-` / `Alt+Right`) records jumps from Go to Definition, Go to Symbol, Workspace Symbols, Find
   References, Problems, Search in Project and terminal file-link clicks.

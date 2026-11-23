@@ -54,7 +54,8 @@ func (u *UI) Sidebar(c *ui.Context, k *colors) {
 							d := u.TreeDraft()
 							renaming := d != nil && d.Kind == DraftRename && d.Target == child.Rel
 							u.treeFolderRow(c, k, child, depth, item.Row, renaming)
-							item.Group(func() { walk(child, depth+1) })
+							item.Group(func() { walk(child, depth+1) }).
+								Transition(motion.Tree(c.Preferences().ReduceMotion))
 							continue
 						}
 						if child.Note == nil && child.Asset == nil {
@@ -87,8 +88,16 @@ func (u *UI) emptyTreeVisible() bool {
 }
 
 func (u *UI) sidebarHeader(c *ui.Context, k *colors) {
-	ui.Row(c).Height(headerH).Padding(0, 7, 0, 11).Gap(6).AlignItems(ui.Center).
-		PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, "", true) }).Children(func() {
+	hdr := ui.Row(c).Height(headerH).Padding(0, 7, 0, 11).Gap(6).AlignItems(ui.Center).
+		PopoverMenu(func(m *ui.Menu) { u.NodeMenu(m, "", true) })
+	if item, ok := ui.DragOver[DragItem](hdr); ok && item.Rel != "" {
+		hdr.Background(k.PanelSel)
+	}
+	if item, ok := ui.Drop[DragItem](hdr); ok && item.Rel != "" {
+		rel := item.Rel
+		u.later(func() { u.MoveEntry(rel, "") })
+	}
+	hdr.Children(func() {
 		ui.Icon(c, icons.FolderIcon()).Size(16, 16).TextColor(k.TextMuted)
 		ui.Text(c, "Explorer").FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text)
 		ui.Spacer(c)
@@ -142,7 +151,18 @@ func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row
 		u.treeRenameInput(c, k, true)
 		return
 	}
-	if n.Rel == u.TreeSel() {
+	row.Drag(DragItem{Rel: n.Rel, Dir: true})
+	dropHover := false
+	if item, ok := ui.DragOver[DragItem](row); ok && item.Rel != "" && item.Rel != n.Rel {
+		dropHover = true
+	}
+	if item, ok := ui.Drop[DragItem](row); ok && item.Rel != "" && item.Rel != n.Rel {
+		src, dest := item.Rel, n.Rel
+		u.later(func() { u.MoveEntry(src, dest) })
+	}
+	if dropHover {
+		row.Background(k.PanelSel).Border(1, c.Theme().Accent)
+	} else if n.Rel == u.TreeSel() {
 		row.Background(k.PanelSel)
 	} else if row.Hovered() {
 		row.Background(k.Hover)
@@ -154,6 +174,7 @@ func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row
 	if n.Rel == u.TreeReveal() {
 		row.ScrollIntoView()
 	}
+	dirDirty := u.GitDirDirty(n.Rel)
 	row.Children(func() {
 		arrow := "chevron-right"
 		if u.dirOpen(n.Rel) {
@@ -163,6 +184,11 @@ func (u *UI) treeFolderRow(c *ui.Context, k *colors, n *fileNode, depth int, row
 		ui.Icon(c, icons.FolderIcon()).Size(15, 15).TextColor(k.TextMuted)
 		ui.Text(c, n.Name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(600).TextColor(k.Text).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		if dirDirty {
+			ui.Spacer(c)
+			ui.Box(c).Size(5, 5).Radius(2.5).Background(k.Attention.Alpha(0.75)).Shrink(0).
+				Tooltip("Contains Git changes")
+		}
 	})
 }
 
@@ -185,6 +211,7 @@ func (u *UI) treeFileRow(c *ui.Context, k *colors, n *fileNode, depth int, row u
 		u.treeRenameInput(c, k, false)
 		return
 	}
+	row.Drag(DragItem{Rel: n.Rel, Dir: false})
 	if n.Rel == u.TreeSel() {
 		row.Background(k.PanelSel)
 	} else if n.Note != nil && u.currentNote() == n.Note {
@@ -201,12 +228,27 @@ func (u *UI) treeFileRow(c *ui.Context, k *colors, n *fileNode, depth int, row u
 	if n.Rel == u.TreeReveal() {
 		row.ScrollIntoView()
 	}
+	gitSt := u.GitStatus(n.Rel)
+	nameColor := k.Text
+	badgeColor := k.Attention
+	switch gitSt {
+	case "C":
+		nameColor = k.Danger
+		badgeColor = k.Danger
+	case "M", "U", "A", "R":
+		nameColor = k.Attention
+		badgeColor = k.Attention
+	}
 	row.Children(func() {
 		ui.Box(c).Size(12, 12).Shrink(0)
 		ui.Icon(c, icons.FileIcon(path)).Size(15, 15).TextColor(k.TextMuted)
-		ui.Text(c, n.Name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(500).TextColor(k.Text).
+		ui.Text(c, n.Name).FontSize(c.Theme().Rem(12.5 / 13)).FontWeight(500).TextColor(nameColor).
 			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Spacer(c)
+		if gitSt != "" {
+			ui.Text(c, gitSt).FontSize(c.Theme().Rem(10.0 / 13)).FontWeight(650).
+				TextColor(badgeColor).Shrink(0)
+		}
 		if n.Note != nil && n.Note.Dirty() {
 			ui.Box(c).Size(6, 6).Radius(3).Background(k.Attention).Shrink(0)
 		}

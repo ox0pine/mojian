@@ -114,6 +114,11 @@ func (a *app) createWindow(stateKey string) *mygo.Window {
 	win.OnFocus(func() {
 		a.refreshProjectOnFocus()
 	})
+	win.OnFileDrop(func(e *mygo.FileDropEvent) {
+		if e != nil && len(e.Paths) > 0 {
+			a.handleFileDrop(e.Paths)
+		}
+	})
 	win.OnClose(func(e *mygo.CloseEvent) {
 		if a.quitting || a.saveSkipped || a.closeReady {
 			return

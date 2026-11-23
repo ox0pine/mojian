@@ -136,7 +136,7 @@ func (a *app) refsModal(c *ui.Context, k *colors) {
 	was := a.refsOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.refsOpen, func() {
+	a.commandDialog(c, k, &a.refsOpen, func() {
 		in := sheetHeader(c, k, &a.refsQuery, "Filter references…", "References", &a.refsOpen)
 		if listNav(in, &a.refsSel, len(filtered), &reveal) && len(filtered) > 0 {
 			chosen = a.refsSel
@@ -332,7 +332,7 @@ func (a *app) workspaceSymbolsModal(c *ui.Context, k *colors) {
 	was := a.wsSymbolsOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.wsSymbolsOpen, func() {
+	a.commandDialog(c, k, &a.wsSymbolsOpen, func() {
 		in := sheetHeader(c, k, &a.wsSymbolsQuery, "Search workspace symbols…", "Workspace symbols", &a.wsSymbolsOpen)
 		if listNav(in, &a.wsSymbolsSel, len(items), &reveal) && len(items) > 0 {
 			chosen = a.wsSymbolsSel
@@ -458,7 +458,7 @@ func (a *app) problemsModal(c *ui.Context, k *colors) {
 	was := a.problemsOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.problemsOpen, func() {
+	a.commandDialog(c, k, &a.problemsOpen, func() {
 		in := sheetHeader(c, k, &a.problemsQuery, "Filter problems…", "Problems", &a.problemsOpen)
 		if listNav(in, &a.problemsSel, len(filtered), &reveal) && len(filtered) > 0 {
 			chosen = a.problemsSel
@@ -599,7 +599,7 @@ func (a *app) renameSymbolModal(c *ui.Context, k *colors) {
 	}
 	was := a.symRenameOpen
 	submit := false
-	commandDialog(c, k, &a.symRenameOpen, func() {
+	a.commandDialog(c, k, &a.symRenameOpen, func() {
 		in := sheetHeader(c, k, &a.symRenameText, "New symbol name…", "Rename symbol", &a.symRenameOpen)
 		if in.Submitted() {
 			submit = true
@@ -687,23 +687,302 @@ func (a *app) applyLSPRename(newName string) {
 				a.invalidate()
 				return
 			}
-			for targetURI, edits := range changes {
-				targetRel, ok := a.lspRelFromURI(ws, targetURI)
-				if !ok {
-					continue
-				}
-				tn := ws.store.ByRelPath(filepath.FromSlash(targetRel))
-				if tn == nil || !a.loadNote(tn) {
-					continue
-				}
-				applyLSPTextEditsToNote(tn, edits)
-			}
+			a.applyLSPWorkspaceEdit(ws, changes)
 			a.symRenameOpen = false
 			a.restoreModalFocus()
 			a.invalidate()
 		})
 	}()
 	a.invalidate()
+}
+
+func (a *app) applyLSPWorkspaceEdit(ws *workspace, changes map[string][]lsp.TextEdit) {
+	if ws == nil || ws.store == nil || len(changes) == 0 {
+		return
+	}
+	for targetURI, edits := range changes {
+		targetRel, ok := a.lspRelFromURI(ws, targetURI)
+		if !ok {
+			continue
+		}
+		tn := ws.store.ByRelPath(filepath.FromSlash(targetRel))
+		if tn == nil || !a.loadNote(tn) {
+			continue
+		}
+		applyLSPTextEditsToNote(tn, edits)
+	}
+}
+
+// openCodeActions queries LSP textDocument/codeAction for the focused caret or
+// selection and opens a CommandDialog listing available quick fixes and refactors.
+func (a *app) openCodeActions() {
+	p := a.focusPane()
+	if p == nil || p.Note == nil || p.state == nil || a.workspace == nil {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	a.closeModals()
+	a.codeActionsOpen = true
+	a.codeActionsQuery = ""
+	a.codeActionsSel = 0
+	a.codeActionsList = ui.ListState{}
+	a.codeActionsItems = nil
+	a.codeActionsErr = ""
+	a.codeActionsNote = n
+	a.codeActionsWS = ws
+	a.codeActionsSeq++
+	seq := a.codeActionsSeq
+
+	cl := a.lspClientForNote(ws, n)
+	if cl == nil {
+		a.codeActionsBusy = false
+		a.codeActionsErr = "No language server active for " + n.Title
+		a.invalidate()
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	rel := filepath.ToSlash(n.Rel)
+	uri := a.lspURIForRel(ws, rel)
+	text := n.Text()
+	sel := p.state.Selection()
+	startOff, endOff := sel.Anchor, sel.Head
+	if startOff > endOff {
+		startOff, endOff = endOff, startOff
+	}
+	rng := lsp.Range{
+		Start: lsp.OffsetToPosition(text, startOff),
+		End:   lsp.OffsetToPosition(text, endOff),
+	}
+	var diags []lsp.Diagnostic
+	if ws.lsp != nil {
+		if d, ok := ws.lsp.diags[rel]; ok {
+			for _, rd := range d.raw {
+				if rd.Range.End.Line >= rng.Start.Line && rd.Range.Start.Line <= rng.End.Line {
+					diags = append(diags, rd)
+				}
+			}
+		}
+	}
+	a.codeActionsBusy = true
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		actions, err := cl.CodeActions(ctx, uri, rng, diags)
+		cancel()
+		post(func() {
+			if a.windowSeq != winSeq || a.codeActionsSeq != seq || !a.codeActionsOpen {
+				return
+			}
+			a.codeActionsBusy = false
+			if err != nil {
+				a.codeActionsErr = err.Error()
+			} else {
+				a.codeActionsItems = actions
+				a.codeActionsSel = 0
+			}
+			a.invalidate()
+		})
+	}()
+	a.invalidate()
+}
+
+func (a *app) applyCodeAction(act lsp.CodeAction) {
+	ws := a.codeActionsWS
+	n := a.codeActionsNote
+	a.codeActionsOpen = false
+	a.restoreModalFocus()
+	if ws == nil || ws != a.workspace || n == nil {
+		a.invalidate()
+		return
+	}
+	if act.Edit != nil {
+		a.applyLSPWorkspaceEdit(ws, lsp.NormalizeWorkspaceEdit(*act.Edit))
+	}
+	if act.Command != nil && act.Command.Command != "" {
+		if cl := a.lspClientForNote(ws, n); cl != nil {
+			cmd := act.Command.Command
+			args := act.Command.Arguments
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = cl.ExecuteCommand(ctx, cmd, args)
+				cancel()
+			}()
+		}
+	}
+	a.invalidate()
+}
+
+func (a *app) codeActionsModal(c *ui.Context, k *colors) {
+	if !a.codeActionsOpen {
+		return
+	}
+	q := strings.ToLower(strings.TrimSpace(a.codeActionsQuery))
+	var items []lsp.CodeAction
+	for _, it := range a.codeActionsItems {
+		if q == "" || fuzzy(strings.ToLower(it.Title+" "+it.Kind), q) {
+			items = append(items, it)
+		}
+	}
+	a.codeActionsSel = min(max(a.codeActionsSel, 0), max(len(items)-1, 0))
+	was := a.codeActionsOpen
+	reveal := false
+	chosen := -1
+	a.commandDialog(c, k, &a.codeActionsOpen, func() {
+		in := sheetHeader(c, k, &a.codeActionsQuery, "Filter code actions…",
+			"Code actions", &a.codeActionsOpen)
+		if listNav(in, &a.codeActionsSel, len(items), &reveal) {
+			chosen = a.codeActionsSel
+		}
+		if a.codeActionsBusy {
+			ui.Row(c).Padding(12, rowPadX).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c).Size(12, 12).Label("Loading code actions")
+				ui.Text(c, "Fetching code actions…").FontSize(rowDetail).TextColor(k.TextFaint)
+			})
+			return
+		}
+		if a.codeActionsErr != "" {
+			emptyLine(c, k, a.codeActionsErr)
+			return
+		}
+		a.codeActionsList.Selected = &a.codeActionsSel
+		a.codeActionsList.Key = func(i int) any { return fmt.Sprintf("ca:%d:%s", i, items[i].Title) }
+		list := ui.List(c, &a.codeActionsList, len(items), func(i int) {
+			it := items[i]
+			row := ui.Row(c.Key(fmt.Sprintf("ca:%d:%s", i, it.Title))).Height(rowH).
+				Padding(0, rowPadX).Gap(rowGap).Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+			fg, muted := k.Text, k.TextFaint
+			if i == a.codeActionsSel {
+				fg = c.Theme().AccentText
+				muted = fg.Alpha(0.9)
+			} else if row.Hovered() {
+				row.Background(k.Hover)
+			}
+			if row.Clicked() {
+				chosen = i
+			}
+			row.Children(func() {
+				ui.Icon(c, icons.Icon("sliders-horizontal")).Size(15, 15).TextColor(muted)
+				ui.Text(c, it.Title).FontSize(rowTitle).FontWeight(500).TextColor(fg).
+					SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+				if it.Kind != "" {
+					ui.Text(c, it.Kind).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(muted).Shrink(0)
+				}
+			})
+		}).MaxHeight(sheetListHeight(c)).Padding(6)
+		if len(items) == 0 {
+			list.Children(func() { emptyLine(c, k, "No code actions available here") })
+		}
+		if reveal {
+			a.codeActionsList.ScrollIntoView(a.codeActionsSel)
+		}
+	})
+	if chosen >= 0 && chosen < len(items) {
+		act := items[chosen]
+		a.later(func() { a.applyCodeAction(act) })
+	}
+	if was && !a.codeActionsOpen {
+		a.restoreModalFocus()
+	}
+}
+
+// formatDirtyNotesBeforeSave formats dirty notes that have a ready LSP client
+// before an explicit save, bounded by a short timeout so saving never stalls.
+func (a *app) formatDirtyNotesBeforeSave(done func()) {
+	ws := a.workspace
+	if ws == nil || ws.store == nil || ws.lsp == nil {
+		done()
+		return
+	}
+	type fmtJob struct {
+		n            *note
+		cl           *lsp.Client
+		uri          string
+		ver          uint64
+		tabSize      int
+		insertSpaces bool
+	}
+	var jobs []fmtJob
+	for _, n := range ws.store.Notes {
+		if !n.Dirty() {
+			continue
+		}
+		lang := lsp.LanguageForPath(n.Rel)
+		if lang == "" {
+			continue
+		}
+		st := ws.lsp.servers[lsp.ServerGroup(lang)]
+		if st == nil || st.client == nil || !st.client.Ready() {
+			continue
+		}
+		var paneMatch *pane
+		if t := a.tab(); t != nil {
+			for _, p := range t.panes() {
+				if p.Note == n {
+					paneMatch = p
+					break
+				}
+			}
+		}
+		_, tabSize := a.effectiveIndent(paneMatch, n)
+		jobs = append(jobs, fmtJob{
+			n:            n,
+			cl:           st.client,
+			uri:          a.lspURIForRel(ws, filepath.ToSlash(n.Rel)),
+			ver:          n.Buffer().Version(),
+			tabSize:      tabSize,
+			insertSpaces: a.insertSpacesFor(paneMatch, n),
+		})
+	}
+	if len(jobs) == 0 {
+		done()
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		// Synchronous test path.
+		for _, j := range jobs {
+			ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+			edits, err := j.cl.Formatting(ctx, j.uri, j.tabSize, j.insertSpaces)
+			cancel()
+			if err == nil && len(edits) > 0 && j.n.Buffer().Version() == j.ver {
+				applyLSPTextEditsToNote(j.n, edits)
+			}
+		}
+		done()
+		return
+	}
+	winSeq := a.windowSeq
+	go func() {
+		type fmtResult struct {
+			n     *note
+			ver   uint64
+			edits []lsp.TextEdit
+		}
+		results := make([]fmtResult, 0, len(jobs))
+		for _, j := range jobs {
+			ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+			edits, err := j.cl.Formatting(ctx, j.uri, j.tabSize, j.insertSpaces)
+			cancel()
+			if err == nil && len(edits) > 0 {
+				results = append(results, fmtResult{n: j.n, ver: j.ver, edits: edits})
+			}
+		}
+		post(func() {
+			if a.windowSeq != winSeq || a.workspace != ws {
+				return
+			}
+			for _, r := range results {
+				if r.n.Buffer().Version() == r.ver {
+					applyLSPTextEditsToNote(r.n, r.edits)
+				}
+			}
+			done()
+		})
+	}()
 }
 
 // formatDocument runs LSP textDocument/formatting on the focused file and applies
@@ -726,15 +1005,8 @@ func (a *app) formatDocument() {
 	}
 	rel := filepath.ToSlash(n.Rel)
 	uri := a.lspURIForRel(ws, rel)
-	tabSize := a.tabSize()
-	insertSpaces := !strings.EqualFold(filepath.Ext(n.Path), ".go")
-	if p.state != nil {
-		if p.state.Indent == editor.IndentTabs {
-			insertSpaces = false
-		} else if p.state.Indent == editor.IndentSpaces {
-			insertSpaces = true
-		}
-	}
+	_, tabSize := a.effectiveIndent(p, n)
+	insertSpaces := a.insertSpacesFor(p, n)
 	ver := n.Buffer().Version()
 	winSeq := a.windowSeq
 	go func() {

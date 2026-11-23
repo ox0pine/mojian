@@ -165,7 +165,7 @@ func (a *app) branchChip(c *ui.Context, k *colors, compact bool) {
 		ui.Icon(c, icons.Icon("chevron-down")).Size(12, 12).TextColor(k.TextFaint)
 	})
 	m.Popup(func(panel ui.Element) {
-		menuSurface(panel, k, drop)
+		a.menuSurface(panel, k, drop)
 		panel.Margin(4, 0, 0, 0)
 		a.branchMenuBody(c, k, m)
 	})

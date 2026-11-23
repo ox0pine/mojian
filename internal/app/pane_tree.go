@@ -20,25 +20,32 @@ type pane struct {
 
 	// Preview shows Markdown rendered rather than as source; assetView
 	// holds what a picture or a PDF viewer has loaded.
-	Preview       bool
-	previewScroll ui.ScrollState
-	md            *markdown.Options
-	assetView     *assetView
-	dragging      bool
-	closing       bool // fading out before the split closes
-	closeStarted  bool
-	hideStarted   bool    // a zoom hid it; its fade over the old place has begun
-	lastBounds    ui.Rect // where the card showed, for its overlay
-	enter         bool    // fades and slides in as a new pane, or back from a zoom
-	enterX        float32
-	enterY        float32
-	emptyQuery    string // the file search in an empty pane
-	emptySel      int
-	blameLine     int
-	blameVer      uint64
-	blameSeq      int
-	blameText     string
-	vim           *vim.State
+	Preview         bool
+	previewScroll   ui.ScrollState
+	md              *markdown.Options
+	assetView       *assetView
+	dragging        bool
+	closing         bool // fading out before the split closes
+	closeStarted    bool
+	hideStarted     bool    // a zoom hid it; its fade over the old place has begun
+	lastBounds      ui.Rect // where the card showed, for its overlay
+	enter           bool    // fades and slides in as a new pane, or back from a zoom
+	enterX          float32
+	enterY          float32
+	emptyQuery      string // the file search in an empty pane
+	emptySel        int
+	blameLine       int
+	blameVer        uint64
+	blameSeq        int
+	blameText       string
+	hlOffset        int
+	hlVer           uint64
+	hlSeq           int
+	hlRanges        []editor.TextBackground
+	indentOverride  editor.IndentStyle
+	tabSizeOverride int
+	lastScrollY     float64
+	vim             *vim.State
 }
 
 // assetView is what a picture or PDF pane has loaded, and its headings.

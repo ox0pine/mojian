@@ -98,7 +98,15 @@ func listNav(in ui.Element, sel *int, n int, reveal *bool) bool {
 	return widgets.ListNav(in, sel, n, reveal)
 }
 
-func commandDialog(c *ui.Context, k *colors, open *bool, body func()) {
+func (a *app) surface(e ui.Element, tint ui.Color) ui.Element {
+	return theme.Surface(e, tint)
+}
+
+func (a *app) trackSurface(e ui.Element, tint ui.Color) ui.Element {
+	return theme.TrackSurface(e, tint)
+}
+
+func (a *app) commandDialog(c *ui.Context, k *colors, open *bool, body func()) {
 	widgets.CommandDialog(c, k, open, body)
 }
 
@@ -126,7 +134,9 @@ func sheetHeader(c *ui.Context, k *colors, query *string, placeholder, label str
 	return widgets.SheetHeader(c, k, query, placeholder, label, open)
 }
 
-func menuSurface(panel ui.Element, k *colors, drop float32) { widgets.MenuSurface(panel, k, drop) }
+func (a *app) menuSurface(panel ui.Element, k *colors, drop float32) {
+	widgets.MenuSurface(panel, k, drop)
+}
 
 func menuHeader(c *ui.Context, k *colors, title, keys string) { widgets.MenuHeader(c, k, title, keys) }
 

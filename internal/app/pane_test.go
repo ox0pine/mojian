@@ -134,8 +134,8 @@ func TestMarkdownPreviewKeepsHeaderButtonsWhenUnfocused(t *testing.T) {
 	if got := countText(tt.Texts(), "Close Pane"); got != 2 {
 		t.Fatalf("close buttons: %d, want 2 (preview and focused editor)", got)
 	}
-	if !tt.HasText("Edit") {
-		t.Fatalf("the preview's Edit button is gone: %q", tt.Texts())
+	if got := countText(tt.Texts(), "Zoom"); got != 2 {
+		t.Fatalf("zoom buttons: %d, want 2 (preview and focused editor)", got)
 	}
 }
 

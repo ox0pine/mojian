@@ -183,7 +183,7 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 	was := a.searchOpen
 	reveal := false
 	chosen := -1
-	commandDialog(c, k, &a.searchOpen, func() {
+	a.commandDialog(c, k, &a.searchOpen, func() {
 		var in ui.Element
 		ui.Row(c).Height(48).Padding(0, 16).Gap(6).AlignItems(ui.Center).
 			BorderWidth(0, 0, 1, 0).BorderColor(k.PanelBorder).Children(func() {

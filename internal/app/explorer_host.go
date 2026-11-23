@@ -36,9 +36,11 @@ func (h explorerHost) ReloadProject(force bool)                { h.a.reloadProje
 func (h explorerHost) Refreshing() bool {
 	return h.a.reloadStore != nil && h.a.reloadStore == h.a.store
 }
-func (h explorerHost) RefreshGit()                            { h.a.refreshGit() }
+func (h explorerHost) RefreshGit()                            { h.a.refreshGit(); h.a.refreshGitStatus() }
 func (h explorerHost) GitOpen() bool                          { return h.a.git.Open }
 func (h explorerHost) AutoRefreshGit() bool                   { return !h.a.NoGitAutoRefresh }
+func (h explorerHost) GitStatus(rel string) string            { return h.a.gitStatusFor(rel) }
+func (h explorerHost) GitDirDirty(rel string) bool            { return h.a.gitDirDirtyFor(rel) }
 func (h explorerHost) FilteredFiles() ([]*note, []*assetFile) { return h.a.filteredFiles() }
 func (h explorerHost) ActiveWorkspaceKey() string             { return h.a.activeWorkspaceKey() }
 func (h explorerHost) NativeWindow() bool                     { return h.a.win != nil }
@@ -108,9 +110,12 @@ func (a *app) refreshProject() { a.reloadProject(true) }
 // still rereads HEAD: a commit may have changed only ignored .git files.
 func (a *app) refreshProjectOnFocus() {
 	a.reloadProject(false)
-	if a.git.Open && !a.NoGitAutoRefresh {
-		a.invalidateDiffBases()
-		a.refreshGit()
+	if !a.NoGitAutoRefresh {
+		a.refreshGitStatus()
+		if a.git.Open {
+			a.invalidateDiffBases()
+			a.refreshGit()
+		}
 	}
 }
 

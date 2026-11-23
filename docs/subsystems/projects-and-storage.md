@@ -67,12 +67,19 @@ the save path, path guards and the asset cache.
 ## Contracts and failure behavior
 
 - Edits stay in memory until an explicit save. Nothing in the app writes a buffer on a timer.
-- A save conflict leaves both disk and the dirty buffer intact and identifies the file in the
-  existing error banner. Users must preserve their local edits separately before reloading.
+- A save conflict (`*project.FileChangedError`, wrapping `project.ErrFileChanged`) leaves both disk
+  and the dirty buffer intact, identifies the file in the error banner, and opens the visual conflict
+  resolver (`internal/app/conflict.go`) with an `editor.DiffView` comparing the disk version against
+  unsaved local edits so the user can choose **Keep Editing**, **Reload from Disk** (`Store.ReloadNote`),
+  or **Overwrite Disk** (`Store.ForceSave` / `Store.WriteSnapshotForce`, writing atomically).
   Content comparison detects changes even if size and modification time are unchanged. It is a
   pre-write check, not an inter-process lock: another writer can still race between the read and
   atomic replacement. Server-backed projects use the same check through the existing read/write
   protocol; their metadata-only listings do not automatically reload already loaded clean notes.
+- Zero-config `.editorconfig` support (`internal/editorconfig/` + `internal/app/editorconfig.go`)
+  resolves `indent_style`, `indent_size`, `tab_width`, `end_of_line`, `trim_trailing_whitespace`,
+  and `insert_final_newline` hierarchically up to `root = true`, cached per workspace and invalidated
+  on `.editorconfig` saves or watcher reloads. Save transforms run only on explicit `⌘S` saves.
 - `Note.Saved` holds exact on-disk bytes, including line endings. `Note.Text` remains normalized
   once an editor buffer exists; it must not be used to serialize a file for saving.
 - A server project has no local mirror. `Server.List` names files with their size, time, kind and an

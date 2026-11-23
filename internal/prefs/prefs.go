@@ -14,7 +14,6 @@ type Prefs struct {
 	EditorTabSize    int     `json:"editorTabSize,omitempty"`
 	EditorSoftWrap   bool    `json:"editorSoftWrap,omitempty"`
 	HideLineNumbers  bool    `json:"hideLineNumbers,omitempty"`
-	MarkdownPreview  bool    `json:"markdownPreview,omitempty"`
 	NoActiveLine     bool    `json:"noActiveLine,omitempty"`
 	NoIndentGuides   bool    `json:"noIndentGuides,omitempty"`
 	NoAutoClose      bool    `json:"noAutoClose,omitempty"`
@@ -24,6 +23,7 @@ type Prefs struct {
 	EditorScrollMargin  int     `json:"editorScrollMargin,omitempty"`
 	EditorGitBlame      bool    `json:"editorGitBlame,omitempty"`
 	EditorVimMode       bool    `json:"editorVimMode,omitempty"`
+	EditorFormatOnSave  bool    `json:"editorFormatOnSave,omitempty"`
 	ShowStatusBar       bool    `json:"showStatusBar,omitempty"`
 	TerminalFontFamily  string  `json:"terminalFontFamily,omitempty"`
 	TerminalFontSize    float64 `json:"terminalFontSize,omitempty"`

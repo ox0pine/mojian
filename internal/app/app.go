@@ -217,6 +217,20 @@ type app struct {
 	symRenameBusy bool
 	symRenameSeq  int
 
+	codeActionsOpen  bool
+	codeActionsQuery string
+	codeActionsSel   int
+	codeActionsList  ui.ListState
+	codeActionsItems []lsp.CodeAction
+	codeActionsBusy  bool
+	codeActionsErr   string
+	codeActionsSeq   int
+	codeActionsNote  *note
+	codeActionsWS    *workspace
+
+	indentMenuOpen bool
+	conflict       *saveConflict
+
 	rename      *tab
 	renameText  string
 	renameFocus bool
@@ -454,6 +468,7 @@ func (a *app) open() {
 	a.checkHosts()
 	a.registerActiveWorkspace()
 	a.refreshBranch()
+	a.refreshGitStatus()
 	a.syncProjectWatcher()
 	a.updateTitle()
 }
@@ -549,9 +564,31 @@ func (a *app) askQuit(err error, proceed func()) {
 func (a *app) saveNow() error {
 	var first error
 	if a.store != nil {
+		ecTouched := false
+		var savedNotes []*note
+		for _, n := range a.store.Notes {
+			if n.Dirty() {
+				a.applyEditorConfigSaveTransforms(n)
+				if isEditorConfigPath(n.Rel) {
+					ecTouched = true
+				}
+				savedNotes = append(savedNotes, n)
+			}
+		}
 		if err := a.store.SaveAll(); err != nil {
 			log.Print(err)
 			first = err
+		}
+		if ecTouched {
+			a.invalidateEditorConfig()
+		}
+		for _, n := range savedNotes {
+			if !n.Dirty() {
+				a.notifyLSPSaved(n)
+			}
+		}
+		if len(savedNotes) > 0 {
+			a.refreshGitStatus()
 		}
 	}
 	if a.layoutDirty {

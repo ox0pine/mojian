@@ -259,6 +259,19 @@ func relPath(dir, p string) string {
 // the bytes it was loaded from or last saved as.
 var ErrFileChanged = errors.New("file changed outside mojian")
 
+// FileChangedError wraps ErrFileChanged with the conflicting note's path and
+// current on-disk contents so the UI can present a diff and resolution choices.
+type FileChangedError struct {
+	Rel  string
+	Disk string
+}
+
+func (e *FileChangedError) Error() string {
+	return fmt.Sprintf("%s: %s; local edits were kept; copy them elsewhere before reloading", e.Rel, ErrFileChanged)
+}
+
+func (e *FileChangedError) Unwrap() error { return ErrFileChanged }
+
 // ErrSaveSnapshotStale reports that a path mutation made a snapshot's
 // original destination unsafe to write. The current dirty note can be
 // snapshotted again at its new path instead.
@@ -339,7 +352,7 @@ func (s *Store) WriteSnapshot(ctx context.Context, snapshot SaveSnapshot) error 
 			return ErrSaveSnapshotStale
 		}
 		if string(current) != snapshot.saved {
-			return fmt.Errorf("%s: %w; local edits were kept; copy them elsewhere before reloading", snapshot.rel, ErrFileChanged)
+			return &FileChangedError{Rel: snapshot.rel, Disk: string(current)}
 		}
 	}
 	s.mutationMu.RLock()
@@ -353,6 +366,55 @@ func (s *Store) WriteSnapshot(ctx context.Context, snapshot SaveSnapshot) error 
 		return backend.WriteContext(ctx, snapshot.rel, []byte(snapshot.body))
 	}
 	return s.FS.Write(snapshot.rel, []byte(snapshot.body))
+}
+
+// WriteSnapshotForce writes snapshot atomically without comparing against the
+// saved baseline, used after the user explicitly chooses Overwrite Disk in the
+// external-change conflict dialog.
+func (s *Store) WriteSnapshotForce(ctx context.Context, snapshot SaveSnapshot) error {
+	if snapshot.mutationSeq != s.MutationSeq() {
+		return ErrSaveSnapshotStale
+	}
+	s.mutationMu.RLock()
+	defer s.mutationMu.RUnlock()
+	if snapshot.mutationSeq != s.MutationSeq() {
+		return ErrSaveSnapshotStale
+	}
+	if backend, ok := s.FS.(interface {
+		WriteContext(context.Context, string, []byte) error
+	}); ok {
+		return backend.WriteContext(ctx, snapshot.rel, []byte(snapshot.body))
+	}
+	return s.FS.Write(snapshot.rel, []byte(snapshot.body))
+}
+
+// ForceSave writes n atomically, overwriting external changes on disk.
+func (s *Store) ForceSave(n *Note) error {
+	snapshot, changed, err := s.SnapshotSave(n)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		body, berr := n.fileText()
+		if berr != nil {
+			return fmt.Errorf("serializing %s: %w", n.Rel, berr)
+		}
+		snapshot = SaveSnapshot{note: n, rel: n.Rel, saved: n.Saved, body: body, mutationSeq: s.MutationSeq()}
+	}
+	if err := s.WriteSnapshotForce(context.Background(), snapshot); err != nil {
+		return err
+	}
+	s.CommitSnapshot(snapshot)
+	return nil
+}
+
+// ReloadNote replaces n's in-memory text and saved baseline with diskText.
+func (s *Store) ReloadNote(n *Note, diskText string) {
+	if n == nil {
+		return
+	}
+	n.load(diskText)
+	n.Mod = time.Now()
 }
 
 // CommitSnapshot records a successful write. Newer edits stay dirty: the

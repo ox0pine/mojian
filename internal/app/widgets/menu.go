@@ -17,9 +17,13 @@ const (
 // MenuSurface styles the popover the machine, project and branch menus
 // share, so the three open at one size, corner and shadow.
 func MenuSurface(panel ui.Element, k *theme.Colors, drop float32) {
-	panel.Width(MenuW).Padding(6).Radius(theme.Radius).Background(k.Panel).
+	theme.Surface(panel.Width(MenuW).Padding(6).Radius(theme.Radius), k.Panel).
 		Border(1, k.PanelBorder).Shadow(0, 12, 32, 0, k.ShadowFocused).Gap(1).
-		Translate(0, -4*(1-drop)).Opacity(0.45 + 0.55*drop)
+		TransformOrigin(0.5, 0)
+	if drop < 0.999 {
+		s := 0.965 + 0.035*drop
+		panel.Translate(0, -6*(1-drop)).Scale(s, s).Opacity(0.15 + 0.85*drop)
+	}
 }
 
 // MenuHeader is the caption at the top of a menu, with the keys that run
