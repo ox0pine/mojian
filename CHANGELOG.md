@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.0
+
+- Liquid Glass surfaces and redesigned motion: floating sheets, popover menus, dialogs, banners,
+  terminal find bars and title-bar/Git tracks now render with MyGo's cross-platform Liquid Glass
+  material tinted by each theme (automatically falling back under OS Reduce Transparency), paired
+  with faster critically damped spring entrances, brisk asymmetric exits and smooth Explorer folder
+  unfolding.
+- Deeper LSP editing: adds `Quick Fix / Code Actions…` (`⌘.` / `Ctrl+.`), optional **Format on
+  save** (`Settings › Editor`), symbol `DocumentHighlight` spans, and an editor right-click context
+  menu with LSP, Markdown, Terminal and Git actions.
+- Visual external-conflict resolution: when `⌘S` detects a file modified outside Mojian (locally or
+  over SSH), a diff dialog compares the disk version against unsaved edits with **Keep Editing**,
+  **Reload from Disk**, and **Overwrite Disk** actions.
+- Zero-config `.editorconfig` support and an interactive status bar: resolves `indent_style`,
+  `indent_size`, `tab_width`, `end_of_line`, `trim_trailing_whitespace` and `insert_final_newline`
+  up to `root = true`, while status bar items now trigger Go to Line, per-pane indentation/width
+  overrides and `LF`/`CRLF` toggling.
+- Workspace craft and native drag-and-drop: Explorer shows working-tree Git status badges and dirty
+  directory dots, split panes disambiguate duplicate filenames with shortest parent paths, OS file
+  drops open projects/files, Explorer rows drag to move or open/split into panes, tabs drag to
+  reorder, and `Reopen Closed` (`⇧⌘T` / `Ctrl+Alt+Shift+T`) restores closed panes and tabs.
+- Side-by-side Markdown live preview: `Open Markdown Preview to the Side` (`⇧⌘V` / `Ctrl+Shift+V`)
+  splits a synced live preview sharing the same buffer with interactive GFM task-list checkboxes;
+  the old in-place Edit/Preview toggle button and default-preview setting have been removed.
+
 ## 0.6.5
 
 - Git status and history refresh when the window regains focus, while editor gutters re-read HEAD;
