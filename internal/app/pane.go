@@ -112,16 +112,23 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 	overTarget := false
 	overExplorerFile := false
 	if !overlay {
-		if over, ok := ui.DragOver[*pane](card); ok && over != nil && over != p && t.contains(over) {
-			overTarget = true
-			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
-				overZone = dropZoneAt(x, y, width, height)
-			}
-		} else if item, ok := ui.DragOver[explorer.DragItem](card); ok && item.Rel != "" && !item.Dir {
-			overTarget = true
-			overExplorerFile = true
-			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
-				overZone = dropZoneAt(x, y, width, height)
+		if value, ok := ui.DragOver[any](card); ok {
+			switch value := value.(type) {
+			case *pane:
+				if value != nil && value != p && t.contains(value) {
+					overTarget = true
+					if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
+						overZone = dropZoneAt(x, y, width, height)
+					}
+				}
+			case explorer.DragItem:
+				if value.Rel != "" && !value.Dir {
+					overTarget = true
+					overExplorerFile = true
+					if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
+						overZone = dropZoneAt(x, y, width, height)
+					}
+				}
 			}
 		}
 	}
@@ -289,20 +296,27 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		}
 	})
 	if !overlay {
-		if from, ok := ui.Drop[*pane](card); ok && from != nil && from != p && t.contains(from) {
-			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
-				zone := dropZoneAt(x, y, width, height)
-				if zone != dropNone && zone != dropCenter {
-					a.later(func() { a.movePaneTo(t, from, p, zone) })
+		if value, ok := ui.Drop[any](card); ok {
+			switch value := value.(type) {
+			case *pane:
+				if value != nil && value != p && t.contains(value) {
+					if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
+						zone := dropZoneAt(x, y, width, height)
+						if zone != dropNone && zone != dropCenter {
+							a.later(func() { a.movePaneTo(t, value, p, zone) })
+						}
+					}
+				}
+			case explorer.DragItem:
+				if value.Rel != "" && !value.Dir {
+					zone := dropCenter
+					if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
+						zone = dropZoneAt(x, y, width, height)
+					}
+					rel := value.Rel
+					a.later(func() { a.openDroppedExplorerFile(t, p, rel, zone) })
 				}
 			}
-		} else if item, ok := ui.Drop[explorer.DragItem](card); ok && item.Rel != "" && !item.Dir {
-			zone := dropCenter
-			if x, y, inside := card.PointerPosition(); inside && width > 0 && height > 0 {
-				zone = dropZoneAt(x, y, width, height)
-			}
-			rel := item.Rel
-			a.later(func() { a.openDroppedExplorerFile(t, p, rel, zone) })
 		}
 	}
 	if p.dragging || (overTarget && (overExplorerFile || (overZone != dropNone && overZone != dropCenter))) {

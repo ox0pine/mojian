@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+
+- Pane drag-and-drop: restores moving panes by dropping them on another pane's top, bottom, left or
+  right edge, fixing the drop-type registration conflict introduced with Explorer file drops.
+
 ## 0.7.1
 
 - LSP Inlay Hints & Signature Help: adds `textDocument/inlayHint` inline parameter and type hints

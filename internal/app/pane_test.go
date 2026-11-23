@@ -399,6 +399,41 @@ func TestDropOnEdgeInsertsPane(t *testing.T) {
 	}
 }
 
+func TestPaneDropOnEdgeMovesPane(t *testing.T) {
+	registerFonts()
+	a := newProjectApp(t)
+	a.splitWith(a.store.ByRelPath("Reading notes.md"))
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	tt.Frame()
+	panes := a.tab().panes()
+	if len(panes) != 2 {
+		t.Fatalf("panes: %d", len(panes))
+	}
+	first, second := panes[0], panes[1]
+	handle, ok := tt.Find("Move Pane " + paneName(first))
+	if !ok {
+		t.Fatal("no source drag handle")
+	}
+	sx, sy := handle.X+handle.W/2, handle.Y+handle.H/2
+	target := second.lastBounds
+	tx, ty := target.X+target.W*0.9, target.Y+target.H*0.5
+	tt.Press(sx, sy)
+	tt.Frame()
+	tt.Move(tx, ty)
+	tt.Frame()
+	if !first.dragging {
+		t.Fatal("pane drag did not start")
+	}
+	tt.Release(tx, ty)
+	tt.Frame()
+	tt.Frame()
+	got := a.tab().panes()
+	if len(got) != 2 || got[0] != second || got[1] != first {
+		t.Fatalf("edge drop did not move pane: got %v, want [%v %v]", got, second, first)
+	}
+}
+
 func TestPaneHeaderStartsADrag(t *testing.T) {
 	a := newProjectApp(t)
 	first := a.tab().Focus
