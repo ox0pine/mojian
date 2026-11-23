@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.1
+
+- LSP Inlay Hints & Signature Help: adds `textDocument/inlayHint` inline parameter and type hints
+  merged cooperatively with trailing inline Git Blame (toggleable via **Settings › Editor › Inlay
+  hints** or `Toggle Inlay Hints`), plus `textDocument/signatureHelp` rendered in a Liquid Glass
+  floating card with active-parameter accent highlighting (auto-triggered inside call parentheses or
+  via `⇧⌘Space` / `Ctrl+Shift+Space`).
+- Code folding commands & live symbol breadcrumbs: exposes `Fold` (`⌥⌘[` / `Ctrl+Alt+[`), `Unfold`
+  (`⌥⌘]` / `Ctrl+Alt+]`), `Toggle Fold`, `Fold All`, `Unfold All` and `Fold Imports` to the Command
+  Palette, Edit menu and editor context menu; pane headers now show the enclosing symbol breadcrumb
+  (`› Symbol`, seeded instantly and upgraded with hierarchical LSP `documentSymbol`, clickable to
+  open **Go to Symbol**).
+- Advanced Vim mode: adds `.` repeat last edit (covering Normal edits and Insert sessions),
+  system clipboard registers (`"+y` / `"+p` / `"+P` / `"*`), `*` / `#` whole-word search under cursor
+  with `n` / `N`, and Ex commands (`:sp`, `:vs`, `:e`, `:tabnew`, `:tabc`, `:<line>`).
+- Docs, website & polish: synced `README.md`, `README.zh-CN.md`, and `site/` i18n copy with 0.7.x
+  features, refreshed product screenshots for README and site, and fixed multi-pane tab width
+  measurement so short tab names no longer truncate prematurely.
+
 ## 0.7.0
 
 - Liquid Glass surfaces and redesigned motion: floating sheets, popover menus, dialogs, banners,
