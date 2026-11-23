@@ -148,3 +148,104 @@ func (a *app) jumpToSymbol(sym lsp.Symbol) {
 		a.invalidate()
 	}
 }
+
+// syncPaneBreadcrumb keeps p.symCrumb updated with the symbol enclosing the
+// editor's caret. It seeds instantaneously from FallbackSymbols and upgrades
+// asynchronously with hierarchical LSP DocumentSymbols when a server is active.
+func (a *app) syncPaneBreadcrumb(p *pane, st *editor.State, focused bool) {
+	if p == nil || p.Note == nil || st == nil {
+		return
+	}
+	ver := p.Note.Buffer().Version()
+	line := st.CursorPos().Line
+	if !p.symLoaded || p.symNote != p.Note || p.symVer != ver {
+		p.symNote = p.Note
+		p.symVer = ver
+		p.symLoaded = true
+		p.symLSP = false
+		p.symList = lsp.FallbackSymbols(p.Note.Rel, p.Note.Text())
+		p.symLine = line
+		p.symCrumb = enclosingSymbolLabel(p.symList, line)
+	} else if p.symLine != line {
+		p.symLine = line
+		p.symCrumb = enclosingSymbolLabel(p.symList, line)
+	}
+	if !focused || p.symLSP || a.workspace == nil {
+		return
+	}
+	cl := a.lspClientForNote(a.workspace, p.Note)
+	if cl == nil {
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	p.symLSP = true
+	p.symSeq++
+	seq := p.symSeq
+	ws := a.workspace
+	n := p.Note
+	text := n.Text()
+	uri := a.lspURIForRel(ws, filepath.ToSlash(n.Rel))
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		syms, err := cl.DocumentSymbols(ctx, uri, text)
+		cancel()
+		if err != nil || len(syms) == 0 {
+			return
+		}
+		post(func() {
+			if a.windowSeq != winSeq || p.symSeq != seq || p.Note != n || p.state != st || n.Buffer().Version() != ver {
+				return
+			}
+			p.symList = syms
+			p.symLine = st.CursorPos().Line
+			p.symCrumb = enclosingSymbolLabel(syms, p.symLine)
+			a.invalidate()
+		})
+	}()
+}
+
+// enclosingSymbolLabel returns the display breadcrumb for the symbol enclosing
+// 0-based line (e.g. "Session › Attach" or "main"), or "" if none applies.
+func enclosingSymbolLabel(syms []lsp.Symbol, line int) string {
+	if len(syms) == 0 || line < 0 {
+		return ""
+	}
+	// First pass: prefer symbols with explicit EndLine ranges, picking the innermost.
+	bestIdx := -1
+	bestSpan := int(^uint(0) >> 1)
+	for i, s := range syms {
+		if s.EndLine > 0 && s.Line <= line && line <= s.EndLine {
+			span := s.EndLine - s.Line
+			if bestIdx < 0 || span < bestSpan || (span == bestSpan && s.Line >= syms[bestIdx].Line) {
+				bestIdx = i
+				bestSpan = span
+			}
+		}
+	}
+	if bestIdx >= 0 {
+		s := syms[bestIdx]
+		if s.Container != "" {
+			return s.Container + " › " + s.Name
+		}
+		return s.Name
+	}
+	// Fallback pass (for regex symbols without EndLine): last symbol starting at or before line.
+	lastIdx := -1
+	for i, s := range syms {
+		if s.Line <= line && (lastIdx < 0 || s.Line >= syms[lastIdx].Line) {
+			lastIdx = i
+		}
+	}
+	if lastIdx < 0 {
+		return ""
+	}
+	s := syms[lastIdx]
+	if s.Container != "" {
+		return s.Container + " › " + s.Name
+	}
+	return s.Name
+}

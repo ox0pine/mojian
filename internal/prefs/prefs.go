@@ -21,9 +21,10 @@ type Prefs struct {
 	// EditorScrollMargin is how many lines the editor keeps between the
 	// caret and the edge of the pane; -1 keeps none, as Vim's scrolloff.
 	EditorScrollMargin  int     `json:"editorScrollMargin,omitempty"`
-	EditorGitBlame      bool    `json:"editorGitBlame,omitempty"`
-	EditorVimMode       bool    `json:"editorVimMode,omitempty"`
-	EditorFormatOnSave  bool    `json:"editorFormatOnSave,omitempty"`
+	EditorGitBlame     bool `json:"editorGitBlame,omitempty"`
+	NoInlayHints       bool `json:"noInlayHints,omitempty"`
+	EditorVimMode      bool `json:"editorVimMode,omitempty"`
+	EditorFormatOnSave bool `json:"editorFormatOnSave,omitempty"`
 	ShowStatusBar       bool    `json:"showStatusBar,omitempty"`
 	TerminalFontFamily  string  `json:"terminalFontFamily,omitempty"`
 	TerminalFontSize    float64 `json:"terminalFontSize,omitempty"`

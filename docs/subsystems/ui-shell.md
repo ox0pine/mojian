@@ -178,22 +178,32 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   preferences), clickable line ending toggle (`LF`/`CRLF`) and language name.
 - Optional Vim modal editing (`internal/app/vim/`, controlled by `prefs.EditorVimMode`) intercepts
   editor key events through `editor.State.OnInput`, sets `NoInputMethod` in Normal/Visual/Command
-  modes so CJK IMEs never hijack motions, switches `CursorShape` (`Block`/`Bar`/`Underline`) and
-  uses relative line numbers in Normal/Visual modes.
+  modes so CJK IMEs never hijack motions, switches `CursorShape` (`Block`/`Bar`/`Underline`), uses
+  relative line numbers in Normal/Visual modes, and supports `.` repeat-last-edit (including Insert
+  sessions), system clipboard registers (`"+y`/`"+p`/`"+P`/`"*`), whole-word cursor search (`*`/`#`
+  with `n`/`N`), and Ex commands (`:w`, `:q`, `:wq`, `:sp`, `:vs`, `:e`, `:tabnew`, `:tabc`, `:<line>`).
 - Zero-config lightweight LSP (`internal/lsp/` + `internal/app/lsp.go` + `internal/app/lsp_actions.go`)
   auto-detects installed language servers (`gopls`, `typescript-language-server`, `pyright-langserver`,
   `rust-analyzer`, `clangd`, `zls`, `lua-language-server`, `bash-language-server`, `yaml-language-server`,
   `vscode-json/css/html-language-server`, `sourcekit-lsp`, `ruby-lsp`) locally or on a remote SSH host
   via `mojian-server`'s `StartLSP` stream. It wires `OnCompletion`, `OnHover`, `OnDefinition`,
   `SetDiagnostics`, `textDocument/didOpen`/`didChange`/`didSave`, `textDocument/documentHighlight`
-  (`TextBackgrounds`), plus `CommandDialog` pickers for Quick Fix / Code Actions (`⌘.` / `Ctrl+.`),
+  (`TextBackgrounds`), `textDocument/inlayHint` (merged cooperatively with trailing inline Git blame
+  via `applyPaneInlays` / `editor.State.SetInlays`, toggleable via `prefs.NoInlayHints` and
+  `Toggle Inlay Hints`), `textDocument/signatureHelp` (auto-triggered inside call parentheses or
+  explicitly via `⇧⌘Space`, rendered in a quiet Liquid Glass floating card with active-parameter
+  accent highlighting), plus `CommandDialog` pickers for Quick Fix / Code Actions (`⌘.` / `Ctrl+.`),
   Find References (`⇧F12`), Workspace Symbols (`⌥⌘O` / `Alt+Shift+O`), Workspace Problems (`⇧⌘M`,
   also reachable by clicking status-bar diagnostic counts, plus `F8`/`⇧F8` Next/Previous Problem),
   in-memory Rename Symbol (`⇧F2`), Format Document (`⌥⇧F`), optional Format on Save
   (`prefs.EditorFormatOnSave`, running bounded LSP formatting before explicit `⌘S` saves), editor
-  right-click context menu items, and Restart Language Server.
+  right-click context menu items (including a `Folding` submenu), code folding commands (`Fold`
+  `⌥⌘[`, `Unfold` `⌥⌘]`, `Toggle Fold`, `Fold All`, `Unfold All`, `Fold Imports`), and Restart
+  Language Server.
 - Pane headers disambiguate duplicate file names across panes in the active tab with the shortest
-  distinguishing parent directory suffix (`paneSubtitle` in `internal/app/pane.go`). Markdown
+  distinguishing parent directory suffix (`paneSubtitle` in `internal/app/pane.go`) and show the
+  current enclosing symbol breadcrumb (`› Symbol`, seeded instantly from `FallbackSymbols` and
+  upgraded asynchronously with hierarchical LSP `documentSymbol`, clickable to open `Go to Symbol`). Markdown
   editor panes support opening a paired side-by-side live preview (`⇧⌘V` / `Ctrl+Shift+V`,
   `internal/app/drop.go`) sharing the same `editor.Buffer`, with synchronized vertical scroll ratio
   and interactive GFM task-list checkboxes (`markdown.Options.OnTask`, undoable and respecting `⌘S`).

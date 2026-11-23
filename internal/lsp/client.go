@@ -306,6 +306,16 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 					},
 				},
 				"documentHighlight": map[string]any{},
+				"inlayHint":         map[string]any{},
+				"signatureHelp": map[string]any{
+					"signatureInformation": map[string]any{
+						"documentationFormat": []string{"plaintext", "markdown"},
+						"parameterInformation": map[string]any{
+							"labelOffsetSupport": true,
+						},
+						"activeParameterSupport": true,
+					},
+				},
 				"documentSymbol": map[string]any{
 					"hierarchicalDocumentSymbolSupport": true,
 				},
@@ -473,14 +483,20 @@ func (c *Client) DocumentSymbols(ctx context.Context, uri, text string) ([]Symbo
 				off := PositionToOffset(text, r.Start)
 				col := colInLine(text, off)
 				out = append(out, Symbol{
-					Name:   s.Name,
-					Detail: detail,
-					Kind:   s.Kind,
-					Line:   r.Start.Line,
-					Col:    col,
+					Name:      s.Name,
+					Detail:    detail,
+					Container: prefix,
+					Kind:      s.Kind,
+					Line:      r.Start.Line,
+					EndLine:   s.Range.End.Line,
+					Col:       col,
 				})
 				if len(s.Children) > 0 {
-					walk(s.Name, s.Children)
+					nextPrefix := s.Name
+					if prefix != "" {
+						nextPrefix = prefix + " › " + s.Name
+					}
+					walk(nextPrefix, s.Children)
 				}
 			}
 		}
@@ -659,4 +675,36 @@ func (c *Client) DocumentHighlight(ctx context.Context, uri string, pos Position
 		return nil, nil
 	}
 	return out, nil
+}
+
+// InlayHints queries textDocument/inlayHint for rng.
+func (c *Client) InlayHints(ctx context.Context, uri string, rng Range) ([]InlayHint, error) {
+	raw, err := c.call(ctx, "textDocument/inlayHint", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        rng,
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var out []InlayHint
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// SignatureHelp queries textDocument/signatureHelp at pos.
+func (c *Client) SignatureHelp(ctx context.Context, uri string, pos Position) (*SignatureHelp, error) {
+	raw, err := c.call(ctx, "textDocument/signatureHelp", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     pos,
+	})
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil, err
+	}
+	var out SignatureHelp
+	if err := json.Unmarshal(raw, &out); err != nil || len(out.Signatures) == 0 {
+		return nil, nil
+	}
+	return &out, nil
 }

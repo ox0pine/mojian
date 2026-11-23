@@ -230,7 +230,7 @@ function Proof({ t }: { t: Dict }) {
           srcSet="/home-1000.webp 1000w, /home-1466.webp 1466w"
           sizes="(max-width: 1280px) calc(100vw - 48px), 1120px"
           width={1466}
-          height={919}
+          height={917}
           fetchPriority="high"
           decoding="async"
           alt={t.alt}

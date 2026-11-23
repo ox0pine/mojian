@@ -55,13 +55,137 @@ type PublishDiagnosticsParams struct {
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
-// Symbol is a flattened document symbol for Go to Symbol (⇧⌘O).
+// Symbol is a flattened document symbol for Go to Symbol (⇧⌘O) and breadcrumbs.
 type Symbol struct {
-	Name   string
-	Detail string
-	Kind   int
-	Line   int // 0-based
-	Col    int // 0-based byte offset within line
+	Name      string
+	Detail    string
+	Container string
+	Kind      int
+	Line      int // 0-based start line
+	EndLine   int // 0-based end line (0 if unknown)
+	Col       int // 0-based byte offset within line
+}
+
+// InlayHintLabelPart is one segment of a structured LSP InlayHint label.
+type InlayHintLabelPart struct {
+	Value string `json:"value"`
+}
+
+// InlayHint is a type or parameter hint returned by textDocument/inlayHint.
+type InlayHint struct {
+	Position     Position        `json:"position"`
+	Label        json.RawMessage `json:"label"`
+	Kind         int             `json:"kind,omitempty"` // 1=Type, 2=Parameter
+	PaddingLeft  bool            `json:"paddingLeft,omitempty"`
+	PaddingRight bool            `json:"paddingRight,omitempty"`
+}
+
+// LabelText flattens an InlayHint's string or label-part array into plain text.
+func (h InlayHint) LabelText() string {
+	if len(h.Label) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(h.Label, &s) == nil {
+		return s
+	}
+	var parts []InlayHintLabelPart
+	if json.Unmarshal(h.Label, &parts) == nil {
+		var b strings.Builder
+		for _, p := range parts {
+			b.WriteString(p.Value)
+		}
+		return b.String()
+	}
+	return ""
+}
+
+// ParameterInformation is one parameter inside a SignatureInformation.
+type ParameterInformation struct {
+	Label         json.RawMessage `json:"label"`
+	Documentation json.RawMessage `json:"documentation,omitempty"`
+}
+
+// DocText returns the parameter's documentation as plain text.
+func (p ParameterInformation) DocText() string {
+	return extractMarkup(p.Documentation)
+}
+
+// SignatureInformation describes one callable overload.
+type SignatureInformation struct {
+	Label           string                 `json:"label"`
+	Documentation   json.RawMessage        `json:"documentation,omitempty"`
+	Parameters      []ParameterInformation `json:"parameters,omitempty"`
+	ActiveParameter *int                   `json:"activeParameter,omitempty"`
+}
+
+// DocText returns the signature's documentation as plain text.
+func (s SignatureInformation) DocText() string {
+	return extractMarkup(s.Documentation)
+}
+
+// ActiveParamSpan resolves the byte [start, end) range of paramIdx inside s.Label.
+func (s SignatureInformation) ActiveParamSpan(paramIdx int) (start, end int, ok bool) {
+	if paramIdx < 0 || paramIdx >= len(s.Parameters) {
+		return 0, 0, false
+	}
+	raw := s.Parameters[paramIdx].Label
+	if len(raw) == 0 {
+		return 0, 0, false
+	}
+	var offsets [2]int
+	if json.Unmarshal(raw, &offsets) == nil && offsets[1] > offsets[0] {
+		st := utf16OffsetInLine(s.Label, offsets[0])
+		en := utf16OffsetInLine(s.Label, offsets[1])
+		if en > st && en <= len(s.Label) {
+			return st, en, true
+		}
+	}
+	var sub string
+	if json.Unmarshal(raw, &sub) == nil && sub != "" {
+		if idx := strings.Index(s.Label, sub); idx >= 0 {
+			return idx, idx + len(sub), true
+		}
+	}
+	return 0, 0, false
+}
+
+func utf16OffsetInLine(s string, want int) int {
+	if want <= 0 {
+		return 0
+	}
+	cols := 0
+	i := 0
+	for i < len(s) && cols < want {
+		r, sz := utf8.DecodeRuneInString(s[i:])
+		cols += utf16.RuneLen(r)
+		i += sz
+	}
+	return i
+}
+
+// SignatureHelp is the response of textDocument/signatureHelp.
+type SignatureHelp struct {
+	Signatures      []SignatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature"`
+	ActiveParameter int                    `json:"activeParameter"`
+}
+
+// Active returns the currently active signature and its effective active parameter index.
+func (sh *SignatureHelp) Active() (SignatureInformation, int, bool) {
+	if sh == nil || len(sh.Signatures) == 0 {
+		return SignatureInformation{}, 0, false
+	}
+	idx := sh.ActiveSignature
+	if idx < 0 || idx >= len(sh.Signatures) {
+		idx = 0
+	}
+	sig := sh.Signatures[idx]
+	param := sh.ActiveParameter
+	if sig.ActiveParameter != nil {
+		param = *sig.ActiveParameter
+	}
+	return sig, param, true
 }
 
 // WorkspaceSymbol is a symbol returned by workspace/symbol.

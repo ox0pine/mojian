@@ -139,6 +139,18 @@ func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
 					ID:      msg.ID,
 					Result:  json.RawMessage(`[{"range":{"start":{"line":2,"character":5},"end":{"line":2,"character":9}},"kind":1}]`),
 				})
+			case "textDocument/inlayHint":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"position":{"line":2,"character":10},"label":"ctx:","kind":2,"paddingRight":true},{"position":{"line":2,"character":14},"label":[{"value":": "},{"value":"error"}],"kind":1,"paddingLeft":true}]`),
+				})
+			case "textDocument/signatureHelp":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"signatures":[{"label":"Attach(ctx context.Context, addr string) error","documentation":"Attach connects a window.","parameters":[{"label":[7,26],"documentation":"Request context"},{"label":"addr string","documentation":"Target address"}]}],"activeSignature":0,"activeParameter":1}`),
+				})
 			}
 		}
 	}()
@@ -214,6 +226,23 @@ func TestClientInitializeRequestsAndDiagnostics(t *testing.T) {
 	hls, err := cl.DocumentHighlight(ctx, uri, Position{Line: 2, Character: 5})
 	if err != nil || len(hls) != 1 || hls[0].Range.Start.Line != 2 {
 		t.Fatalf("DocumentHighlight = %+v err=%v", hls, err)
+	}
+	hints, err := cl.InlayHints(ctx, uri, Range{Start: Position{Line: 0}, End: Position{Line: 3}})
+	if err != nil || len(hints) != 2 || hints[0].LabelText() != "ctx:" || hints[1].LabelText() != ": error" {
+		t.Fatalf("InlayHints = %+v err=%v", hints, err)
+	}
+	sh, err := cl.SignatureHelp(ctx, uri, Position{Line: 2, Character: 12})
+	if err != nil || sh == nil {
+		t.Fatalf("SignatureHelp = %+v err=%v", sh, err)
+	}
+	sig, paramIdx, ok := sh.Active()
+	if !ok || paramIdx != 1 || sig.DocText() != "Attach connects a window." {
+		t.Fatalf("SignatureHelp.Active = %+v param=%d ok=%v", sig, paramIdx, ok)
+	}
+	s0, e0, ok0 := sig.ActiveParamSpan(0)
+	s1, e1, ok1 := sig.ActiveParamSpan(1)
+	if !ok0 || sig.Label[s0:e0] != "ctx context.Context" || !ok1 || sig.Label[s1:e1] != "addr string" {
+		t.Fatalf("ActiveParamSpan = (%d,%d,%v) (%d,%d,%v)", s0, e0, ok0, s1, e1, ok1)
 	}
 }
 

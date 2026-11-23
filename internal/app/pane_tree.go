@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"mojian/internal/app/vim"
+	"mojian/internal/lsp"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -38,6 +39,26 @@ type pane struct {
 	blameVer        uint64
 	blameSeq        int
 	blameText       string
+	blameInlay      *editor.Inlay
+	inlayNote       *note
+	inlayVer        uint64
+	inlaySeq        int
+	inlayLoaded     bool
+	inlayHints      []editor.Inlay
+	sigOffset       int
+	sigVer          uint64
+	sigSeq          int
+	sigHelp         *lsp.SignatureHelp
+	sigDismissedVer uint64
+	sigDismissedOff int
+	symNote         *note
+	symVer          uint64
+	symSeq          int
+	symLoaded       bool
+	symLSP          bool
+	symList         []lsp.Symbol
+	symLine         int
+	symCrumb        string
 	hlOffset        int
 	hlVer           uint64
 	hlSeq           int

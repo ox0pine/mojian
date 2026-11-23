@@ -126,6 +126,12 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		}
 	}
 	card.Children(func() {
+		if p.Note != nil && !p.Preview {
+			if p.state == nil {
+				p.state = p.Note.NewState()
+			}
+			a.syncPaneBreadcrumb(p, p.state, focused && !overlay)
+		}
 		a.paneHeader(c, k, t, p, width, overlay)
 		body := ui.Box(c).Grow(1).MinHeight(0).Padding(0, 0, 6, 0)
 		body.Children(func() {
@@ -206,8 +212,10 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				st.LineNumbers = lineNumbersFor(p.Note.Path)
 			}
 			a.syncEditorLSP(p, st)
+			a.syncEditorInlays(p, st, focused && !overlay)
 			a.syncEditorBlame(p, st, focused && !overlay)
 			a.syncEditorHighlights(p, st, focused && !overlay, k)
+			a.syncEditorSignatureHelp(p, st, focused && !overlay)
 			st.ContextMenu = func(m *ui.Menu) {
 				a.editorContextMenu(m, p)
 			}
@@ -222,7 +230,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 							a.later(func() {
 								a.saveNowAsync(func(err error) {
 									if err != nil {
-										a.fail(err)
+										a.handleSaveError(err)
 									}
 								})
 							})
@@ -230,16 +238,40 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 						Close: func() {
 							a.later(func() { a.closePane(p) })
 						},
+						SplitDown: func() {
+							a.later(func() { a.splitFocusedSide(splitDown) })
+						},
+						SplitRight: func() {
+							a.later(func() { a.splitFocusedSide(splitRight) })
+						},
+						NewTab: func() {
+							a.later(func() { a.newTab() })
+						},
+						CloseTab: func() {
+							a.later(func() { a.closeTab(a.tab()) })
+						},
+						OpenFile: func(name string) {
+							a.later(func() { a.vimOpenFile(name) })
+						},
+						ReadClipboard:  c.ReadClipboard,
+						WriteClipboard: c.WriteClipboard,
 					})
 				}
 			} else {
 				st.NoInputMethod = false
 				st.CursorShape = editor.CursorBar
-				st.OnInput = func(ui.InputEvent) bool {
+				st.OnInput = func(ev ui.InputEvent) bool {
+					if p.sigHelp != nil && ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
+						a.dismissSignatureHelp(p)
+						return true
+					}
 					return false
 				}
 			}
 			tv := editor.View(c, st).Fill()
+			if !overlay && focused && p.sigHelp != nil {
+				a.signatureHelpOverlay(c, k, p)
+			}
 			if !overlay {
 				a.syncMarkdownPreviewScroll(t, p)
 			}
@@ -531,6 +563,25 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 				ui.Text(c, subtitle).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).
 					SingleLine().TruncateStart().Shrink(2).MinWidth(0)
 			}
+			if !compact && p.Note != nil && !p.Preview && p.symCrumb != "" {
+				crumb := ui.Row(c.Key("crumb:"+p.ID)).Gap(4).AlignItems(ui.Center).
+					Padding(1, 5).Radius(5).Cursor(ui.CursorPointer).Shrink(2).MinWidth(0).ClipX().
+					Tooltip(a.tip("Go to Symbol", cmdSymbols))
+				if !overlay && crumb.Hovered() {
+					crumb.Background(k.Hover)
+				}
+				if !overlay && crumb.Clicked() {
+					a.later(func() {
+						t.Focus = p
+						a.openSymbols()
+					})
+				}
+				crumb.Children(func() {
+					ui.Text(c, "›").FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextFaint).Shrink(0)
+					ui.Text(c, p.symCrumb).Font(noteFont.Family).FontSize(c.Theme().Rem(11.0 / 13)).
+						TextColor(k.TextMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+				})
+			}
 			if p.Note != nil && p.Note.Dirty() {
 				ui.Box(c).Size(dotSize, dotSize).Radius(dotSize/2).Background(k.Attention).Margin(0, 0, 0, 2).
 					Tooltip("Unsaved edits")
@@ -638,12 +689,37 @@ func (a *app) editorContextMenu(m *ui.Menu, p *pane) {
 	if m.Item("Quick Fix / Code Actions…").Chosen() {
 		a.later(func() { a.openCodeActions() })
 	}
+	if m.Item("Signature Help").Chosen() {
+		a.later(func() { a.triggerSignatureHelp() })
+	}
 	if m.Item("Rename Symbol…").Chosen() {
 		a.later(func() { a.openRenameSymbol() })
 	}
 	if m.Item("Format Document").Chosen() {
 		a.later(func() { a.formatDocument() })
 	}
+	m.Separator()
+	m.Submenu("Folding", func(sub *ui.Menu) {
+		if sub.Item("Fold").Chosen() {
+			a.later(func() { a.editorFold() })
+		}
+		if sub.Item("Unfold").Chosen() {
+			a.later(func() { a.editorUnfold() })
+		}
+		if sub.Item("Toggle Fold").Chosen() {
+			a.later(func() { a.editorToggleFold() })
+		}
+		sub.Separator()
+		if sub.Item("Fold All").Chosen() {
+			a.later(func() { a.editorFoldAll() })
+		}
+		if sub.Item("Unfold All").Chosen() {
+			a.later(func() { a.editorUnfoldAll() })
+		}
+		if sub.Item("Fold Imports").Chosen() {
+			a.later(func() { a.editorFoldImports() })
+		}
+	})
 	if isMarkdownPath(p.Note.Path) {
 		m.Separator()
 		if m.Item("Open Markdown Preview to the Side").Chosen() {
@@ -727,6 +803,34 @@ func paneTitleAndRel(p *pane) (string, string) {
 // its siblings are not changed while they build.
 func (a *app) laterPane(p *pane) {
 	a.later(func() { a.closePane(p) })
+}
+
+// vimOpenFile opens a relative path requested by Vim :e/:sp/:vs/:tabnew, or
+// opens Quick Open when name is empty.
+func (a *app) vimOpenFile(name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		a.openQuickOpen()
+		return
+	}
+	if a.store == nil {
+		return
+	}
+	if n := a.store.ByRelPath(filepath.FromSlash(name)); n != nil {
+		a.openNote(n)
+		return
+	}
+	low := strings.ToLower(filepath.ToSlash(name))
+	for _, n := range a.store.Sorted() {
+		rel := strings.ToLower(filepath.ToSlash(n.Rel))
+		if rel == low || strings.HasSuffix(rel, "/"+low) || strings.ToLower(n.Title) == low {
+			a.openNote(n)
+			return
+		}
+	}
+	a.openQuickOpen()
+	a.quickQuery = name
+	a.invalidate()
 }
 
 // paneOverlay is a copy of a pane card over the place it last showed: a

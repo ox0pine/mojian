@@ -14,16 +14,17 @@ Mojian is a native plain-text editor for ordinary folders. Edit files, preview i
 
 [Download the latest release](https://github.com/ox0pine/mojian/releases) · [简体中文](README.zh-CN.md) · [Build from source](#build-from-source)
 
-![Mojian with an editor, a pane choosing a file, and two terminals in one tab](resources/screenshot.png?v=6b38e5e)
+![Mojian 0.7.0 showing Explorer Git status badges, Liquid Glass branch popover and title tracks, Go code with gutter diff markers, side-by-side Markdown live preview, and the interactive status bar](resources/screenshot.png?v=0.7.0)
 
 ## Features
 
-- **Ordinary files and folders.** A project is a folder on disk. Nothing is imported, indexed, or synced, and edits stay in memory until you save.
-- **Tabs as workspaces.** Each tab contains a split tree of editors, image and PDF viewers, and terminals.
-- **Persistent terminals.** Shells run in a detached session server and reattach when Mojian opens again.
-- **Built-in Git diffs.** Inspect staged, unstaged, and untracked work without leaving the window.
-- **Remote projects over SSH.** Files, Git, and terminals run directly on the configured host on macOS and Linux.
-- **Native UI in one Go binary.** [MyGo](https://mygo.egoist.dev) draws the interface with Metal on macOS, GTK 3 on Linux, and Direct3D 11 on Windows. No Electron or JavaScript build.
+- **Ordinary files and folders.** A project is a folder on disk. Nothing is imported, indexed, or synced, and edits stay in memory until you save—with a visual side-by-side diff resolver if a file changed externally before `⌘S`.
+- **Tabs as workspaces.** Each tab contains a split tree of editors, side-by-side Markdown live previews, image and PDF viewers, and terminals, with drag-and-drop panes, tab reordering, and `⇧⌘T` Reopen Closed.
+- **Persistent terminals × editor synergy.** Shells run in a detached session server and reattach when Mojian opens again. `⌘+Click` file paths (`file:line:col`) to split and jump beside the terminal, press `⌥⌘L` to send `@file:line-range` to a shell or CLI agent, search scrollback with `⌘F`, and jump to OSC 9/99/777 notifications with `⌘J`.
+- **Zero-config lightweight LSP.** Auto-detects installed language servers (`gopls`, `tsserver`, `pyright`, `rust-analyzer`, `clangd`, `zls`, and more) locally and over SSH: completion, hover, go to definition, find references, document highlights, file and workspace symbols, in-memory rename, Quick Fix / Code Actions (`⌘.`), Format Document (`⌥⇧F`) & Format on Save, Problems panel, and navigation history.
+- **Complete Git loop.** Unified and split diffs with word-level highlights, hunk-level Stage / Unstage / Discard, branch switcher (`⇧⌘B`), Commit / Stash / Sync, Explorer status badges (`M`/`A`/`U`/`D`) and dirty directory dots, editor gutter markers, and inline Git Blame.
+- **Remote projects over SSH.** Files, real-time watching, LSP, Git, and persistent terminals run directly on the configured Linux host via a per-user `mojian-server` over standard `ssh`, with automatic reconnect.
+- **Native UI with Liquid Glass in one Go binary.** [MyGo](https://mygo.egoist.dev) draws the interface with Metal on macOS, GTK 3 on Linux, and Direct3D 11 on Windows—with Liquid Glass floating surfaces and title-bar tracks, asymmetric spring motion, and ten hand-tuned light/dark themes. No Electron or JavaScript build.
 
 ## Projects and files
 
@@ -50,48 +51,53 @@ On first launch, Mojian opens `~/Documents/Mojian` when no project is selected a
 The Explorer shows the folder as it exists on disk:
 
 - Toggle it with `Cmd+B` / `Ctrl+B`.
+- See working-tree Git status badges (`M`, `A`, `U`, `D`) on files and dirty dots on parent folders.
 - Filter the visible tree with its search field.
-- Search every project file with **Open File**, `Cmd+P` / `Ctrl+P`.
-- Create files and folders directly in the tree.
+- Search every project file with **Open File**, `Cmd+P` / `Ctrl+P`, or search and replace across the project with `Shift+Cmd+F` / `Ctrl+Shift+F`.
+- Create files and folders directly in the tree, or drag files from the OS onto the Explorer or any editor pane.
 - Right-click to open, rename, duplicate, copy, cut, copy a path, reveal, or move an entry to trash.
 
 Generated folders such as `.git`, `node_modules`, `dist`, and `build` stay hidden.
 
 ## Tabs, panes, and terminals
 
-Press `Cmd+T` / `Ctrl+Shift+T` to open a tab, as in Ghostty. Split the focused pane right or down with `Cmd+D` / `Shift+Cmd+D` (`Ctrl+Shift+O` / `Ctrl+Shift+E` on Linux); left and up have no default keys, and can be assigned in **Settings › Keyboard**. A new pane opens with an inline file search.
+Press `Cmd+T` / `Ctrl+Shift+T` to open a tab, as in Ghostty, and `Shift+Cmd+T` / `Ctrl+Alt+Shift+T` to reopen a recently closed pane or tab. Split the focused pane right or down with `Cmd+D` / `Shift+Cmd+D` (`Ctrl+Shift+O` / `Ctrl+Shift+E` on Linux); left and up have no default keys, and can be assigned in **Settings › Keyboard**. A new pane opens with an inline file search, and panes with duplicate basenames automatically disambiguate their parent folder in the header.
 
-Drag a pane by its header onto another pane's edge to move it. Use `Option+Cmd` / `Ctrl+Alt` and the arrows to move focus, `Shift+Cmd+Enter` / `Ctrl+Shift+Enter` to zoom the focused pane, `Cmd+W` to close a pane, and `Option+Cmd+W` / `Ctrl+Alt+W` to close the tab.
+Drag a pane by its header onto another pane's edge to move it, or drag tabs in the title bar to reorder them. Use `Option+Cmd` / `Ctrl+Alt` and the arrows to move focus, `Shift+Cmd+Enter` / `Ctrl+Shift+Enter` to zoom the focused pane, `Cmd+W` to close a pane, and `Option+Cmd+W` / `Ctrl+Alt+W` to close the tab.
 
-Double-click a tab to rename it, double-click a pane header to zoom it, or right-click a tab for more actions.
+Double-click a tab to rename it, double-click a pane header to zoom it, or right-click a tab or pane header for more actions.
 
-Press `Ctrl` and the backtick key (`⌃` + backtick on macOS) to toggle a terminal at the project root. Terminals are panes, so they can be split, moved, zoomed, and closed like any other pane. On macOS, Linux and Windows, quitting Mojian leaves their shells alive and reopening attaches them again.
+Press `Ctrl` and the backtick key (`⌃` + backtick on macOS) to toggle a terminal at the project root. Terminals are panes, so they can be split, moved, zoomed, and closed like any other pane. On macOS, Linux and Windows, quitting Mojian leaves their shells alive and reopening attaches them again. `⌘+Click` (`Ctrl+Click`) any `path:line:col` in terminal output to jump directly to that line in an editor pane, press `⌥⌘L` (`Ctrl+Alt+L`) from an editor to send `@file:line-range` to the terminal, search terminal scrollback with `⌘F`, and press `⌘J` (`Ctrl+J`) to jump to panes signaling OSC 9/99/777 attention.
 
 Press `Shift+Cmd+S` / `Ctrl+Shift+S` on macOS or Linux to open an SSH terminal to a host from **Settings › Hosts**.
 
 ## Writing and previewing
 
-Code keeps line numbers and prose wraps. Syntax highlighting covers Python, JavaScript, TypeScript, Go, Rust, C and C++, Swift, Kotlin, Ruby, JSON, YAML, TOML, SQL, HTML, CSS, Markdown, and more.
+Code keeps line numbers and prose wraps. Syntax highlighting covers Python, JavaScript, TypeScript, Go, Rust, C and C++, Swift, Kotlin, Ruby, JSON, YAML, TOML, SQL, HTML, CSS, Markdown, and more. Mojian resolves hierarchical `.editorconfig` files automatically for indentation, line endings, trailing whitespace, and final newlines, and offers an optional quiet 24px interactive Status Bar (cursor position, indent override, line ending, language, LSP status) plus optional Vim modal editing (with automatic CJK IME suppression in Normal mode).
 
-Markdown panes switch between source and preview from the pane header. **Settings › Editor** can render new `.md` files by default. Images, including SVG, open in a contained viewer. PDFs page through every page: drawn with Poppler's `pdftoppm` when it is installed, else with PDFKit on macOS.
+Zero-config LSP activates automatically when a language server is on `PATH` (locally or on a remote SSH host), providing completion, hover, inline type/parameter Inlay Hints (coexisting with inline Git Blame), Signature Help (`⇧⌘Space` or automatically inside call parentheses), go to definition, find references (`⇧F12`), same-symbol document highlights, file and workspace symbols (`⇧⌘O` / `⌥⌘O`) with live pane-header symbol breadcrumbs, in-memory rename (`⇧F2`), Quick Fix / Code Actions (`⌘.`), Format Document (`⌥⇧F`) and optional Format on Save, a Problems panel (`⇧⌘M`), code folding commands (`Fold` `⌥⌘[`, `Unfold` `⌥⌘]`, `Fold All`, `Unfold All`, `Fold Imports`), and back/forward navigation history. Right-clicking inside an editor opens a context menu with LSP, folding, and editing actions.
 
-Press `Cmd+S` / `Ctrl+S` to write every unsaved note atomically. Unsaved work is also written when the window closes.
+Optional Vim mode (in **Settings › Editor**) suppresses CJK IMEs in Normal/Visual modes and supports motions, text objects (`iw`/`i"`/`i(`/etc.), `.` repeat last edit, system clipboard registers (`"+y` / `"+p`), `*`/`#` current-word search, and Ex commands (`:w`, `:q`, `:wq`, `:sp`, `:vs`, `:e`, `:tabnew`, `:tabc`, `:<line>`).
+
+Open a live side-by-side Markdown preview with `Shift+Cmd+V` / `Ctrl+Shift+V` (or the **Preview to the Side** button in the pane header), with synchronized scrolling and clickable GFM task checkboxes that update the source buffer in memory. Images, including SVG, open in a contained viewer. PDFs page through every page: drawn with Poppler's `pdftoppm` when it is installed, else with PDFKit on macOS.
+
+Press `Cmd+S` / `Ctrl+S` to write every unsaved note atomically. If a file changed on disk while you were editing it, Mojian opens a visual side-by-side conflict diff resolver so you can keep yours, reload from disk, or review every hunk before overwriting. Unsaved work is also written when the window closes.
 
 ## Git, commands, and settings
 
 ### Git
 
-Press `Ctrl+Shift+G` on both platforms to compare the working tree with `HEAD`. Statuses appear on the left and a two-gutter diff on the right, including staged, unstaged, and untracked work.
+Press `Ctrl+Shift+G` on both platforms to compare the working tree with `HEAD`. Switch between unified and split diffs with word-level highlights, Stage / Unstage / Discard individual hunks, switch or create branches (`⇧⌘B`), and Commit, Stash, or Sync without leaving the window. Editors also show live gutter diff markers and optional inline Git Blame.
 
 ### Command palette
 
-Press `Shift+Cmd+P` / `Ctrl+Shift+P` to search commands, files, and tabs with fuzzy matching.
+Press `Shift+Cmd+P` / `Ctrl+Shift+P` to search commands, files, and tabs with fuzzy matching inside a translucent Liquid Glass overlay.
 
 ### Settings
 
 Press `Cmd+,` / `Ctrl+,` to open the separate Settings window. Its pages are General, Appearance, Editor, Terminal, Keyboard, Hosts, Advanced, and About; shell, notification, Git and update options live inside those pages.
 
-Search finds preferences by name or keyword, and `Cmd+F` focuses the search field. Mojian follows the system appearance by default; **View › Appearance** overrides it, and the Appearance page's theme grid picks one of ten color themes (Petal, Mist, Meadow, Dusk, Tide, Apricot, Aurora, Dune, Paper, Plain) for the window, the editor and terminals.
+Search finds preferences by name or keyword, and `Cmd+F` focuses the search field. Mojian follows the system appearance by default; **View › Appearance** overrides it, and the Appearance page's theme grid picks one of ten color themes (Petal, Mist, Meadow, Dusk, Tide, Apricot, Aurora, Dune, Paper, Plain) for the window, Liquid Glass surfaces, the editor, and terminals.
 
 ## Remote projects
 
@@ -131,6 +137,7 @@ The labels in Mojian follow the platform. These are the default bindings; **Sett
 | Move selected entry to Trash | `⌘⌫` | `Ctrl+Backspace` |
 | Save all | `⌘S` | `Ctrl+S` |
 | New tab | `⌘T` | `Ctrl+Shift+T` |
+| Reopen closed pane / tab | `⇧⌘T` | `Ctrl+Alt+Shift+T` |
 | Close pane / tab | `⌘W` / `⌥⌘W` | `Ctrl+Shift+W` / `Ctrl+Alt+W` |
 | Next / previous tab | `⇧⌘]` / `⇧⌘[` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Show tab 1-9 | `⌘1…⌘9` | `Alt+1…Alt+9` |
@@ -139,10 +146,22 @@ The labels in Mojian follow the platform. These are the default bindings; **Sett
 | Focus neighboring pane | `⌥⌘` + arrows | `Ctrl+Alt` + arrows |
 | Move focused pane | drag, or assign in Settings | drag, or assign in Settings |
 | Zoom pane | `⇧⌘↩` | `Ctrl+Shift+Enter` |
+| Markdown preview to the side | `⇧⌘V` | `Ctrl+Shift+V` |
+| Search & replace in project | `⇧⌘F` | `Ctrl+Shift+F` |
+| Go to symbol (file / workspace) | `⇧⌘O` / `⌥⌘O` | `Ctrl+Alt+O` / `Alt+Shift+O` |
+| Find references / Rename symbol | `⇧F12` / `⇧F2` | `Shift+F12` / `Shift+F2` |
+| Quick Fix / Code Actions | `⌘.` | `Ctrl+.` |
+| Signature Help | `⇧⌘Space` | `Ctrl+Shift+Space` |
+| Format document | `⌥⇧F` | `Alt+Shift+F` |
+| Fold / Unfold | `⌥⌘[` / `⌥⌘]` | `Ctrl+Alt+[` / `Ctrl+Alt+]` |
+| Show problems / Next problem | `⇧⌘M` / `F8` | `Ctrl+Shift+M` / `F8` |
+| Go back / forward | `⌃-` / `⌃⇧-` | `Alt+Left` / `Alt+Right` |
 | Toggle file tree | `⌘B` | `Ctrl+B` |
 | Toggle terminal | `⌃` + backtick | `Ctrl` + backtick |
+| Send reference to terminal | `⌥⌘L` | `Ctrl+Alt+L` |
+| Jump to terminal attention | `⌘J` | `Ctrl+J` |
 | SSH terminal | `⇧⌘S` | `Ctrl+Shift+S` |
-| Git diff page | `⌃⇧G` | `Ctrl+Shift+G` |
+| Git diff page / Switch branch | `⌃⇧G` / `⇧⌘B` | `Ctrl+Shift+G` / `Ctrl+Shift+B` |
 | Command palette | `⇧⌘P` | `Ctrl+Shift+P` |
 | Settings | `⌘,` | `Ctrl+,` |
 

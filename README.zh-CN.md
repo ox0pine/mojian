@@ -14,16 +14,17 @@
 
 [下载最新版本](https://github.com/ox0pine/mojian/releases) · [English](README.md) · [从源码构建](#从源码构建)
 
-![墨间：同一标签页中的编辑器、选择文件的窗格和两个终端](resources/screenshot.png?v=6b38e5e)
+![墨间 0.7.0：带 Git 状态徽标的文件树、Liquid Glass 分支浮层与标题栏轨道、带行号槽 diff 标记的 Go 代码、Markdown 分屏实时预览与底部交互状态栏](resources/screenshot.png?v=0.7.0)
 
 ## 功能
 
-- **普通文件与文件夹。** 项目就是磁盘上的文件夹。没有导入、索引或同步，编辑内容留在内存，保存时才写入。
-- **标签页即工作区。** 每个标签页包含一棵拆分树，装着编辑器、图片与 PDF 查看器和终端。
-- **终端常驻。** shell 运行在独立的会话服务器中，重新打开墨间时接回。
-- **内置 Git diff。** 不离开窗口即可查看已暂存、未暂存和未跟踪的改动。
-- **通过 SSH 的远程项目。** 在 macOS 与 Linux 上，文件、Git 和终端直接在配置的主机上运行。
-- **单个 Go 二进制的原生界面。** [MyGo](https://mygo.egoist.dev) 在 macOS 上用 Metal、在 Linux 上用 GTK 3、在 Windows 上用 Direct3D 11 绘制界面。没有 Electron，也没有 JavaScript 构建。
+- **普通文件与文件夹。** 项目就是磁盘上的文件夹。没有导入、索引或同步，编辑内容留在内存，保存时才写入；保存前若文件在外部被修改，会弹出可视化左右分栏冲突对比器。
+- **标签页即工作区。** 每个标签页包含一棵拆分树，装着编辑器、Markdown 分屏实时预览、图片与 PDF 查看器和终端，支持窗格拖放、标签页拖拽重排与 `⇧⌘T` 重新打开最近关闭的窗格或标签页。
+- **常驻终端 × 编辑器协同。** shell 运行在独立的会话服务器中，重新打开墨间时接回。终端内 `⌘+Click` 报错路径（`file:line:col`）直接分屏跳转到对应行；按 `⌥⌘L` 一键把 `@file:line-range` 发给终端或 CLI Agent；内置滚动区搜索（`⌘F`）与 OSC 9/99/777 通知跳转（`⌘J`）。
+- **零配置轻量 LSP。** 本地与 SSH 远程一致，自动探测已安装的语言服务（`gopls`、`tsserver`、`pyright`、`rust-analyzer`、`clangd`、`zls` 等）：补全、悬停、跳定义、查引用、同符号高亮、文件与工作区符号、内存内重命名、Quick Fix / Code Actions（`⌘.`）、格式化文档（`⌥⇧F`）与保存时格式化、问题面板及跳转历史。
+- **完整 Git 闭环。** 统一与分栏 diff（含词级高亮）、单个 Hunk 的 Stage / Unstage / Discard、分支切换（`⇧⌘B`）、Commit / Stash / Sync、文件树 Git 状态徽标（`M`/`A`/`U`/`D`）与脏目录圆点、编辑器行号槽改动标记与行尾 Git Blame。
+- **通过 SSH 的远程项目。** 通过标准 `ssh` 按需上传单用户 `mojian-server`，文件、实时监听、LSP、Git 和常驻终端直接在配置的 Linux 主机上运行，断网或休眠后自动重连。
+- **带 Liquid Glass 的单二进制原生界面。** [MyGo](https://mygo.egoist.dev) 在 macOS 上用 Metal、在 Linux 上用 GTK 3、在 Windows 上用 Direct3D 11 绘制界面，自带 Liquid Glass 浮动浮层与标题栏轨道、非对称弹簧动效及十套手工调校浅/深主题。没有 Electron，也没有 JavaScript 构建。
 
 ## 项目与文件
 
@@ -50,48 +51,53 @@ mojian ~/git/abc/README.md      # 文件，其所在文件夹成为项目
 文件树展示磁盘上真实存在的目录：
 
 - 用 `Cmd+B` / `Ctrl+B` 显示或隐藏。
+- 在文件上显示工作区 Git 状态徽标（`M`、`A`、`U`、`D`），在有改动的父目录上显示圆点提示。
 - 用文件树的搜索框过滤可见目录。
-- 用 **打开文件**（`Cmd+P` / `Ctrl+P`）搜索项目中的所有文件。
-- 直接在文件树中新建文件与文件夹。
+- 用 **打开文件**（`Cmd+P` / `Ctrl+P`）搜索项目中的所有文件，或用 `Shift+Cmd+F` / `Ctrl+Shift+F` 全局搜索与内存内替换。
+- 直接在文件树中新建文件与文件夹，或从系统文件管理器直接拖入文件到文件树或任意编辑器窗格。
 - 右键可打开、重命名、创建副本、复制、剪切、复制路径、在文件管理器中显示，或移到废纸篓。
 
 `.git`、`node_modules`、`dist`、`build` 等生成目录默认隐藏。
 
 ## 标签页、窗格与终端
 
-按 `Cmd+T` / `Ctrl+Shift+T` 打开标签页，与 Ghostty 一致。用 `Cmd+D` / `Shift+Cmd+D`（Linux 上是 `Ctrl+Shift+O` / `Ctrl+Shift+E`）向右或向下拆分当前窗格；向左、向上默认没有快捷键，可在 **设置 › 快捷键** 中绑定。新窗格会带一个内联文件搜索。
+按 `Cmd+T` / `Ctrl+Shift+T` 打开标签页，与 Ghostty 一致；按 `Shift+Cmd+T` / `Ctrl+Alt+Shift+T` 重新打开最近关闭的窗格或标签页。用 `Cmd+D` / `Shift+Cmd+D`（Linux 上是 `Ctrl+Shift+O` / `Ctrl+Shift+E`）向右或向下拆分当前窗格；向左、向上默认没有快捷键，可在 **设置 › 快捷键** 中绑定。新窗格会带一个内联文件搜索；当同一标签页打开同名文件时，窗格标题栏会自动补齐父目录名以消歧。
 
-拖动窗格标题到另一个窗格的边缘即可移动它。用 `Option+Cmd` / `Ctrl+Alt` 加方向键在窗格之间移动焦点，用 `Shift+Cmd+Enter` / `Ctrl+Shift+Enter` 放大当前窗格，用 `Cmd+W` 关闭窗格，用 `Option+Cmd+W` / `Ctrl+Alt+W` 关闭标签页。
+拖动窗格标题到另一个窗格的边缘即可移动它，也可以在标题栏拖动标签页重排顺序。用 `Option+Cmd` / `Ctrl+Alt` 加方向键在窗格之间移动焦点，用 `Shift+Cmd+Enter` / `Ctrl+Shift+Enter` 放大当前窗格，用 `Cmd+W` 关闭窗格，用 `Option+Cmd+W` / `Ctrl+Alt+W` 关闭标签页。
 
-双击标签页重命名，双击窗格标题放大，或右键标签页查看更多操作。
+双击标签页重命名，双击窗格标题放大，或右键标签页与窗格标题查看更多操作。
 
-按 `Ctrl` 加反引号键（macOS 上是 `⌃` 加反引号）在项目根目录切换终端。终端也是窗格，可以像其他窗格一样拆分、移动、放大和关闭。在 macOS、Linux 和 Windows 上，退出墨间后 shell 仍然存活，重新打开会接回。
+按 `Ctrl` 加反引号键（macOS 上是 `⌃` 加反引号）在项目根目录切换终端。终端也是窗格，可以像其他窗格一样拆分、移动、放大和关闭。在 macOS、Linux 和 Windows 上，退出墨间后 shell 仍然存活，重新打开会接回。在终端输出中 `⌘+Click`（`Ctrl+Click`）任意 `path:line:col` 可直接分屏跳到编辑器对应行；在编辑器按 `⌥⌘L`（`Ctrl+Alt+L`）可把 `@file:line-range` 发送给终端；在终端按 `⌘F` 搜索滚动历史，按 `⌘J`（`Ctrl+J`）跳转到触发 OSC 9/99/777 通知的窗格。
 
 在 macOS 或 Linux 上，按 `Shift+Cmd+S` / `Ctrl+Shift+S` 打开到 **设置 › 主机** 中某个主机的 SSH 终端。
 
 ## 写作与预览
 
-代码保留行号，散文自动换行。语法高亮覆盖 Python、JavaScript、TypeScript、Go、Rust、C 与 C++、Swift、Kotlin、Ruby、JSON、YAML、TOML、SQL、HTML、CSS、Markdown 等语言。
+代码保留行号，散文自动换行。语法高亮覆盖 Python、JavaScript、TypeScript、Go、Rust、C 与 C++、Swift、Kotlin、Ruby、JSON、YAML、TOML、SQL、HTML、CSS、Markdown 等语言。墨间自动解析层级 `.editorconfig` 配置（缩进风格、缩进宽度、换行符、行尾空白与末尾换行），并提供可选的 24px 底部交互状态栏（行列号、缩进覆写、换行符、语言与 LSP 状态）以及可选的 Vim 模式（Normal 态自动抑制中文输入法）。
 
-Markdown 窗格可在标题栏切换源码与预览。**设置 › 编辑器** 可以让新打开的 `.md` 文件默认渲染。图片（包括 SVG）在窗格内的查看器中打开；PDF 可以逐页查看全部页面：装了 Poppler 的 `pdftoppm` 时用它渲染，macOS 上则用 PDFKit。
+当 `PATH` 中存在语言服务器（本地或远端 SSH 主机）时，零配置轻量 LSP 会自动启用，提供补全、悬停、类型与参数 Inlay Hints（与行尾 Git Blame 协同共存）、函数签名提示 Signature Help（括号内自动触发或按 `⇧⌘Space`）、跳定义、查引用（`⇧F12`）、同符号高亮、文件与工作区符号（`⇧⌘O` / `⌥⌘O`）及窗格标题栏实时当前符号面包屑、内存内重命名（`⇧F2`）、Quick Fix / Code Actions（`⌘.`）、格式化文档（`⌥⇧F`）与可选保存时格式化、问题面板（`⇧⌘M`）、代码折叠命令（`Fold` `⌥⌘[`、`Unfold` `⌥⌘]`、`Fold All`、`Unfold All`、`Fold Imports`）及前进/后退跳转历史。在编辑器内右键可调出包含 LSP、折叠与编辑动作的上下文菜单。
 
-按 `Cmd+S` / `Ctrl+S` 原子写入所有未保存的笔记；关闭窗口时也会写入未保存的修改。
+可选 Vim 模式（**设置 › 编辑器**）在 Normal/Visual 态自动抑制中文输入法，支持常用移动、文本对象（`iw`/`i"`/`i(` 等）、`.` 重复上次编辑、系统剪贴板寄存器（`"+y` / `"+p`）、`*`/`#` 当前词搜索，以及 `:w`、`:q`、`:wq`、`:sp`、`:vs`、`:e`、`:tabnew`、`:tabc`、`:<行号>` 等 Ex 命令。
+
+按 `Shift+Cmd+V` / `Ctrl+Shift+V`（或点击窗格标题栏的 **Preview to the Side** 图标）可在右侧打开 Markdown 实时分栏预览，支持滚动同步与交互式 GFM 任务复选框（勾选直接更新内存中的源码）。图片（包括 SVG）在窗格内的查看器中打开；PDF 可以逐页查看全部页面：装了 Poppler 的 `pdftoppm` 时用它渲染，macOS 上则用 PDFKit。
+
+按 `Cmd+S` / `Ctrl+S` 原子写入所有未保存的笔记；若保存前文件在磁盘上已被外部修改，墨间会打开可视化左右分栏冲突解决器，可逐块查看差异并选择保留本地或从磁盘重载。关闭窗口时也会写入未保存的修改。
 
 ## Git、命令与设置
 
 ### Git
 
-按 `Ctrl+Shift+G`（macOS 上是 `⌃⇧G`）将工作区与 `HEAD` 比较。左侧显示状态，右侧是带两列行号的 diff，包含已暂存、未暂存和未跟踪的改动。
+按 `Ctrl+Shift+G`（macOS 上是 `⌃⇧G`）将工作区与 `HEAD` 比较。支持统一与分栏 diff（含词级高亮）、单个 Hunk 的 Stage / Unstage / Discard、分支切换与新建（`⇧⌘B`），以及不离窗的 Commit、Stash 与 Sync；编辑器内同时提供行号槽改动标记与可选行尾 Git Blame。
 
 ### 命令面板
 
-按 `Shift+Cmd+P` / `Ctrl+Shift+P` 用模糊匹配搜索命令、文件和标签页。
+按 `Shift+Cmd+P` / `Ctrl+Shift+P` 在半透明 Liquid Glass 浮层中用模糊匹配搜索命令、文件和标签页。
 
 ### 设置
 
 按 `Cmd+,` / `Ctrl+,` 打开独立的设置窗口：通用、外观、编辑器、终端、快捷键、主机、高级、关于；Shell、通知、Git 与更新是这些页里的分组。
 
-搜索可以按名称或关键词找到设置项，`Cmd+F` 聚焦搜索框。墨间默认跟随系统外观；**视图 › 外观** 可以覆盖它，外观页的主题网格还可以从十种配色里选一种（Petal、Mist、Meadow、Dusk、Tide、Apricot、Aurora、Dune、Paper、Plain），统一决定窗口、编辑器与终端的颜色。
+搜索可以按名称或关键词找到设置项，`Cmd+F` 聚焦搜索框。墨间默认跟随系统外观；**视图 › 外观** 可以覆盖它，外观页的主题网格还可以从十种配色里选一种（Petal、Mist、Meadow、Dusk、Tide、Apricot、Aurora、Dune、Paper、Plain），统一决定窗口、Liquid Glass 材质表面、编辑器与终端的颜色。
 
 ## 远程项目
 
@@ -107,7 +113,7 @@ Markdown 窗格可在标题栏切换源码与预览。**设置 › 编辑器** �
 
 ## 更新
 
-打开 **设置 › 更新** 检查 GitHub 上最新的签名版本：
+打开 **设置 › 关于 › Software Update** 检查 GitHub 上最新的签名版本：
 
 - **检查更新** 报告是否有更新版本。
 - **安装更新** 下载并校验签名。
@@ -129,6 +135,7 @@ Markdown 窗格可在标题栏切换源码与预览。**设置 › 编辑器** �
 | 移到废纸篓 | `⌘⌫` | `Ctrl+Backspace` |
 | 保存 | `⌘S` | `Ctrl+S` |
 | 新建标签页 | `⌘T` | `Ctrl+Shift+T` |
+| 重新打开已关闭窗格 / 标签页 | `⇧⌘T` | `Ctrl+Alt+Shift+T` |
 | 关闭窗格 / 标签页 | `⌘W` / `⌥⌘W` | `Ctrl+Shift+W` / `Ctrl+Alt+W` |
 | 下一个 / 上一个标签页 | `⇧⌘]` / `⇧⌘[` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | 显示标签页 1-9 | `⌘1…⌘9` | `Alt+1…Alt+9` |
@@ -137,10 +144,22 @@ Markdown 窗格可在标题栏切换源码与预览。**设置 › 编辑器** �
 | 聚焦相邻窗格 | `⌥⌘` + 方向键 | `Ctrl+Alt` + 方向键 |
 | 移动当前窗格 | 拖动，或在设置中绑定 | 拖动，或在设置中绑定 |
 | 放大窗格 | `⇧⌘↩` | `Ctrl+Shift+Enter` |
+| Markdown 分屏实时预览 | `⇧⌘V` | `Ctrl+Shift+V` |
+| 项目内搜索与替换 | `⇧⌘F` | `Ctrl+Shift+F` |
+| 跳转到符号（文件 / 工作区） | `⇧⌘O` / `⌥⌘O` | `Ctrl+Alt+O` / `Alt+Shift+O` |
+| 查找引用 / 重命名符号 | `⇧F12` / `⇧F2` | `Shift+F12` / `Shift+F2` |
+| Quick Fix / Code Actions | `⌘.` | `Ctrl+.` |
+| 函数签名提示（Signature Help） | `⇧⌘Space` | `Ctrl+Shift+Space` |
+| 格式化文档 | `⌥⇧F` | `Alt+Shift+F` |
+| 折叠 / 展开代码块 | `⌥⌘[` / `⌥⌘]` | `Ctrl+Alt+[` / `Ctrl+Alt+]` |
+| 问题面板 / 下一个问题 | `⇧⌘M` / `F8` | `Ctrl+Shift+M` / `F8` |
+| 后退 / 前进 | `⌃-` / `⌃⇧-` | `Alt+Left` / `Alt+Right` |
 | 显示 / 隐藏文件树 | `⌘B` | `Ctrl+B` |
 | 打开 / 关闭终端 | `⌃` + 反引号 | `Ctrl` + 反引号 |
+| 发送代码引用到终端 | `⌥⌘L` | `Ctrl+Alt+L` |
+| 跳转到终端通知 | `⌘J` | `Ctrl+J` |
 | SSH 终端 | `⇧⌘S` | `Ctrl+Shift+S` |
-| Git 工作区 | `⌃⇧G` | `Ctrl+Shift+G` |
+| Git 工作区 / 切换分支 | `⌃⇧G` / `⇧⌘B` | `Ctrl+Shift+G` / `Ctrl+Shift+B` |
 | 命令面板 | `⇧⌘P` | `Ctrl+Shift+P` |
 | 设置 | `⌘,` | `Ctrl+,` |
 

@@ -97,6 +97,11 @@ func (a *app) tabMiddleClick(t *tab, ev ui.InputEvent) bool {
 func tabWidth(c *ui.Context, t *tab) float32 {
 	name, detail := t.label()
 	w, _ := c.MeasureText(0, tabLabel(c, name, detail, ui.Color{}, ui.Color{})...)
+	if detail != "" {
+		// tabItem lays out name and detail as two Row children with Gap(5),
+		// slightly wider than a single space span.
+		w += 8
+	}
 	tiles := float32(0)
 	if n := len(t.panes()); n > 0 {
 		tiles = float32(tileW + tileStep*min(n-1, 2) + 2)
@@ -108,7 +113,7 @@ func tabWidth(c *ui.Context, t *tab) float32 {
 	if t.dirty() || t.hasAttention() {
 		actions += 11
 	}
-	return min(max(6+tiles+9+w+9+actions+4, tabMinW), tabMaxW)
+	return min(max(14+tiles+16+w+actions+4, tabMinW), tabMaxW)
 }
 
 // tabLabel is the label of a tab: the name and, fainter, the detail.

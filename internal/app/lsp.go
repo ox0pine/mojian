@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"path"
 	"path/filepath"
@@ -10,7 +11,9 @@ import (
 
 	gitpage "mojian/internal/git"
 	"mojian/internal/lsp"
+	"mojian/internal/motion"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 )
 
@@ -555,6 +558,419 @@ func (a *app) editorRevertHunk() {
 	}
 }
 
+// Editor code folding commands (exposed to Command Palette, menus & shortcuts).
+func (a *app) editorFold() {
+	if p := a.focusPane(); p != nil && p.Note != nil && p.state != nil {
+		p.state.Run(editor.Fold)
+		a.invalidate()
+	}
+}
+
+func (a *app) editorUnfold() {
+	if p := a.focusPane(); p != nil && p.Note != nil && p.state != nil {
+		p.state.Run(editor.Unfold)
+		a.invalidate()
+	}
+}
+
+func (a *app) editorToggleFold() {
+	if p := a.focusPane(); p != nil && p.Note != nil && p.state != nil {
+		p.state.Run(editor.ToggleFold)
+		a.invalidate()
+	}
+}
+
+func (a *app) editorFoldAll() {
+	if p := a.focusPane(); p != nil && p.Note != nil && p.state != nil {
+		p.state.Run(editor.FoldAll)
+		a.invalidate()
+	}
+}
+
+func (a *app) editorUnfoldAll() {
+	if p := a.focusPane(); p != nil && p.Note != nil && p.state != nil {
+		p.state.Run(editor.UnfoldAll)
+		a.invalidate()
+	}
+}
+
+func (a *app) editorFoldImports() {
+	if p := a.focusPane(); p != nil && p.Note != nil && p.state != nil {
+		p.state.FoldImports()
+		a.invalidate()
+	}
+}
+
+// toggleInlayHints flips LSP inlay hints and persists the preference.
+func (a *app) toggleInlayHints() {
+	a.NoInlayHints = !a.NoInlayHints
+	a.saveSettings()
+	if t := a.tab(); t != nil {
+		for _, p := range t.panes() {
+			if p.state != nil {
+				if a.NoInlayHints {
+					p.inlayHints = nil
+					p.inlayLoaded = false
+					applyPaneInlays(p, p.state)
+				} else {
+					p.inlayLoaded = false
+				}
+			}
+		}
+	}
+	a.invalidate()
+}
+
+// applyPaneInlays merges LSP inlay hints and the optional trailing Git blame
+// inlay into a single SetInlays call so both features coexist cleanly.
+func applyPaneInlays(p *pane, st *editor.State) {
+	if p == nil || st == nil {
+		return
+	}
+	n := len(p.inlayHints)
+	if p.blameInlay != nil {
+		n++
+	}
+	if n == 0 {
+		st.SetInlays(nil)
+		return
+	}
+	out := make([]editor.Inlay, 0, n)
+	out = append(out, p.inlayHints...)
+	if p.blameInlay != nil {
+		out = append(out, *p.blameInlay)
+	}
+	st.SetInlays(out)
+}
+
+// syncEditorInlays asynchronously queries textDocument/inlayHint for the open
+// note and merges them with any active inline Git blame inlay.
+func (a *app) syncEditorInlays(p *pane, st *editor.State, focused bool) {
+	if p == nil || p.Note == nil || st == nil {
+		return
+	}
+	if a.NoInlayHints || a.workspace == nil || a.store == nil || a.store.IsMemory() {
+		if len(p.inlayHints) > 0 || p.inlayLoaded {
+			p.inlayHints = nil
+			p.inlayLoaded = false
+			applyPaneInlays(p, st)
+		}
+		return
+	}
+	cl := a.lspClientForNote(a.workspace, p.Note)
+	if cl == nil {
+		if len(p.inlayHints) > 0 {
+			p.inlayHints = nil
+			p.inlayLoaded = false
+			applyPaneInlays(p, st)
+		}
+		return
+	}
+	ver := p.Note.Buffer().Version()
+	if p.inlayLoaded && p.inlayNote == p.Note && p.inlayVer == ver {
+		return
+	}
+	if !focused && p.inlayLoaded && p.inlayNote == p.Note {
+		return
+	}
+	p.inlayNote = p.Note
+	p.inlayVer = ver
+	p.inlayLoaded = true
+	p.inlaySeq++
+	seq := p.inlaySeq
+
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	text := n.Text()
+	lineCount := max(n.Buffer().LineCount(), 1)
+	uri := a.lspURIForRel(ws, filepath.ToSlash(n.Rel))
+	rng := lsp.Range{
+		Start: lsp.Position{Line: 0, Character: 0},
+		End:   lsp.Position{Line: lineCount, Character: 0},
+	}
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		hints, err := cl.InlayHints(ctx, uri, rng)
+		cancel()
+		if err != nil {
+			return
+		}
+		inlays := lspInlayHintsToEditor(text, hints)
+		post(func() {
+			if a.windowSeq != winSeq || p.inlaySeq != seq || p.Note != n || p.state != st {
+				return
+			}
+			if a.NoInlayHints || n.Buffer().Version() != ver {
+				return
+			}
+			p.inlayHints = inlays
+			applyPaneInlays(p, st)
+			a.invalidate()
+		})
+	}()
+}
+
+func lspInlayHintsToEditor(text string, hints []lsp.InlayHint) []editor.Inlay {
+	if len(hints) == 0 {
+		return nil
+	}
+	const maxHints = 300
+	limit := min(len(hints), maxHints)
+	out := make([]editor.Inlay, 0, limit)
+	for _, h := range hints[:limit] {
+		label := strings.TrimSpace(h.LabelText())
+		if label == "" {
+			continue
+		}
+		var b strings.Builder
+		if h.PaddingLeft || h.Kind == 1 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(label)
+		if h.PaddingRight || h.Kind == 2 {
+			b.WriteByte(' ')
+		}
+		off := lsp.PositionToOffset(text, h.Position)
+		out = append(out, editor.Inlay{
+			Offset: off,
+			Text:   b.String(),
+		})
+	}
+	return out
+}
+
+// triggerSignatureHelp explicitly queries textDocument/signatureHelp at the
+// focused editor's cursor (⇧⌘Space).
+func (a *app) triggerSignatureHelp() {
+	p := a.focusPane()
+	if p == nil || p.Note == nil || p.state == nil || a.workspace == nil {
+		return
+	}
+	p.sigDismissedVer = 0
+	p.sigDismissedOff = -1
+	a.requestSignatureHelp(p, p.state, true)
+}
+
+func (a *app) dismissSignatureHelp(p *pane) {
+	if p == nil || p.Note == nil || p.state == nil {
+		return
+	}
+	p.sigHelp = nil
+	p.sigDismissedVer = p.Note.Buffer().Version()
+	p.sigDismissedOff = p.state.Cursor()
+	a.invalidate()
+}
+
+// syncEditorSignatureHelp automatically queries signature help while the
+// focused caret is inside a function call's parentheses.
+func (a *app) syncEditorSignatureHelp(p *pane, st *editor.State, focused bool) {
+	if p == nil || p.Note == nil || st == nil {
+		return
+	}
+	if !focused || a.workspace == nil || a.store == nil || a.store.IsMemory() {
+		if p.sigHelp != nil {
+			p.sigHelp = nil
+		}
+		return
+	}
+	off := st.Cursor()
+	ver := p.Note.Buffer().Version()
+	if p.sigDismissedVer == ver && p.sigDismissedOff == off {
+		return
+	}
+	if p.sigOffset == off && p.sigVer == ver {
+		return
+	}
+	text := p.Note.Text()
+	if !inCallContext(text, off) {
+		p.sigOffset = off
+		p.sigVer = ver
+		p.sigHelp = nil
+		return
+	}
+	a.requestSignatureHelp(p, st, false)
+}
+
+func (a *app) requestSignatureHelp(p *pane, st *editor.State, explicit bool) {
+	cl := a.lspClientForNote(a.workspace, p.Note)
+	if cl == nil {
+		p.sigHelp = nil
+		return
+	}
+	off := st.Cursor()
+	ver := p.Note.Buffer().Version()
+	p.sigOffset = off
+	p.sigVer = ver
+	p.sigSeq++
+	seq := p.sigSeq
+
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	text := n.Text()
+	uri := a.lspURIForRel(ws, filepath.ToSlash(n.Rel))
+	pos := lsp.OffsetToPosition(text, off)
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		sh, err := cl.SignatureHelp(ctx, uri, pos)
+		cancel()
+		if err != nil {
+			if explicit {
+				post(func() {
+					if a.windowSeq == winSeq && p.sigSeq == seq {
+						p.sigHelp = nil
+						a.invalidate()
+					}
+				})
+			}
+			return
+		}
+		post(func() {
+			if a.windowSeq != winSeq || p.sigSeq != seq || p.Note != n || p.state != st || n.Buffer().Version() != ver {
+				return
+			}
+			p.sigHelp = sh
+			a.invalidate()
+		})
+	}()
+}
+
+// inCallContext reports whether byte offset off sits inside an unclosed call
+// parenthesis '(' on the nearby preceding text.
+func inCallContext(text string, off int) bool {
+	if off <= 0 || off > len(text) {
+		return false
+	}
+	start := max(0, off-400)
+	depth := 0
+	sq, dq, bq := false, false, false
+	for i := off - 1; i >= start; i-- {
+		ch := text[i]
+		if sq {
+			if ch == '\'' && (i == 0 || text[i-1] != '\\') {
+				sq = false
+			}
+			continue
+		}
+		if dq {
+			if ch == '"' && (i == 0 || text[i-1] != '\\') {
+				dq = false
+			}
+			continue
+		}
+		if bq {
+			if ch == '`' {
+				bq = false
+			}
+			continue
+		}
+		switch ch {
+		case '\'':
+			sq = true
+		case '"':
+			dq = true
+		case '`':
+			bq = true
+		case ')':
+			depth++
+		case '(':
+			if depth == 0 {
+				return true
+			}
+			depth--
+		case ';', '{', '}':
+			if depth == 0 {
+				return false
+			}
+		}
+	}
+	return false
+}
+
+// signatureHelpOverlay draws a quiet Liquid Glass floating signature hint card
+// inside the focused editor pane.
+func (a *app) signatureHelpOverlay(c *ui.Context, k *colors, p *pane) {
+	if p == nil || p.sigHelp == nil {
+		return
+	}
+	sig, activeParam, ok := p.sigHelp.Active()
+	if !ok || strings.TrimSpace(sig.Label) == "" {
+		return
+	}
+	card := a.surface(
+		ui.Column(c.Key("sig-help:"+p.ID)).Absolute().Top(8).Right(14).
+			MaxWidth(460).Padding(7, 10).Gap(3).Radius(radius),
+		k.Panel,
+	).Border(1, k.PanelBorder).
+		Shadow(0, 4, 16, -2, k.ShadowDialog).
+		Transition(motion.Dialog)
+	card.Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			spans := signatureSpans(c, k, sig, activeParam)
+			ui.RichText(c, spans...).Font(noteFont.Family).FontSize(c.Theme().Rem(11.5 / 13)).
+				Grow(1).MinWidth(0)
+			if len(p.sigHelp.Signatures) > 1 {
+				idx := p.sigHelp.ActiveSignature
+				if idx < 0 || idx >= len(p.sigHelp.Signatures) {
+					idx = 0
+				}
+				ui.Text(c, fmt.Sprintf("%d/%d", idx+1, len(p.sigHelp.Signatures))).
+					FontSize(c.Theme().Rem(10.5 / 13)).TextColor(k.TextFaint).Shrink(0)
+			}
+			if iconButton(c, k, "x", "Dismiss Signature Help", iconBtnXs, iconGlyphXs).Clicked() {
+				a.later(func() { a.dismissSignatureHelp(p) })
+			}
+		})
+		doc := ""
+		if activeParam >= 0 && activeParam < len(sig.Parameters) {
+			doc = firstNonEmptyLine(sig.Parameters[activeParam].DocText())
+		}
+		if doc == "" {
+			doc = firstNonEmptyLine(sig.DocText())
+		}
+		if doc != "" {
+			ui.Text(c, doc).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextMuted).
+				SingleLine().Ellipsis("…")
+		}
+	})
+}
+
+func signatureSpans(c *ui.Context, k *colors, sig lsp.SignatureInformation, activeParam int) []ui.Span {
+	sz := c.Theme().Rem(11.5 / 13)
+	s, e, ok := sig.ActiveParamSpan(activeParam)
+	if !ok {
+		return []ui.Span{{Text: sig.Label, Size: sz, Color: k.Text}}
+	}
+	var out []ui.Span
+	if s > 0 {
+		out = append(out, ui.Span{Text: sig.Label[:s], Size: sz, Color: k.TextMuted})
+	}
+	out = append(out, ui.Span{Text: sig.Label[s:e], Size: sz, Weight: 600, Color: c.Theme().Accent})
+	if e < len(sig.Label) {
+		out = append(out, ui.Span{Text: sig.Label[e:], Size: sz, Color: k.TextMuted})
+	}
+	return out
+}
+
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
 // syncEditorBlame asynchronously fetches commit attribution for the focused
 // editor's active line and displays it as a subtle trailing inlay.
 func (a *app) syncEditorBlame(p *pane, st *editor.State, focused bool) {
@@ -562,10 +978,11 @@ func (a *app) syncEditorBlame(p *pane, st *editor.State, focused bool) {
 		return
 	}
 	if !a.EditorGitBlame || !focused || a.store == nil || a.store.IsMemory() || a.store.Dir == "" {
-		if p.blameText != "" {
+		if p.blameText != "" || p.blameInlay != nil {
 			p.blameText = ""
 			p.blameLine = -1
-			st.SetInlays(nil)
+			p.blameInlay = nil
+			applyPaneInlays(p, st)
 		}
 		return
 	}
@@ -579,7 +996,8 @@ func (a *app) syncEditorBlame(p *pane, st *editor.State, focused bool) {
 	p.blameSeq++
 	seq := p.blameSeq
 	p.blameText = ""
-	st.SetInlays(nil)
+	p.blameInlay = nil
+	applyPaneInlays(p, st)
 
 	post := a.uiPoster()
 	if post == nil {
@@ -605,12 +1023,14 @@ func (a *app) syncEditorBlame(p *pane, st *editor.State, focused bool) {
 			}
 			p.blameText = text
 			off := lineEndOffset(n.Text(), line)
-			st.SetInlays([]editor.Inlay{{
+			inlay := editor.Inlay{
 				Offset:   off,
 				Text:     "   " + text,
 				Trailing: true,
 				Ellipsis: "…",
-			}})
+			}
+			p.blameInlay = &inlay
+			applyPaneInlays(p, st)
 			a.invalidate()
 		})
 	}()
