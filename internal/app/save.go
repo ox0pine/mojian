@@ -3,10 +3,32 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"mojian/internal/project"
 )
+
+func (a *app) dirtySummary() (int, string) {
+	if a.store == nil {
+		return 0, ""
+	}
+	count := 0
+	lastTitle := ""
+	for _, n := range a.store.Notes {
+		if n.Dirty() {
+			count++
+			lastTitle = n.Title
+		}
+	}
+	if count == 1 {
+		return 1, lastTitle
+	}
+	if count > 1 {
+		return count, fmt.Sprintf("%d files", count)
+	}
+	return 0, ""
+}
 
 // saveTask is the remote save currently writing immutable buffer snapshots.
 // Its sequence rejects a completion canceled by an explicit abandon.

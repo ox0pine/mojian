@@ -14,7 +14,6 @@ import (
 	"mojian/internal/motion"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/editor"
 )
 
 // parseTerminalLink parses a terminal Command/Ctrl+Click link into a file path
@@ -218,7 +217,10 @@ func (a *app) openTerminalLink(tt *termTab, raw string) bool {
 		return true
 	}
 	n := a.store.ByRelPath(rel)
-	if n == nil || !a.loadNote(n) {
+	if n == nil {
+		return false
+	}
+	if !a.isAsyncRemote() && !a.loadNote(n) {
 		return false
 	}
 	t := a.tab()
@@ -232,6 +234,7 @@ func (a *app) openTerminalLink(tt *termTab, raw string) bool {
 		if t.splitSide(from, ed, splitLeft) {
 			t.Focus = ed
 			a.focusReq = ed
+			a.touchMRU(n.Rel)
 			a.revealRel(n.Rel)
 			a.changed()
 		}
@@ -241,12 +244,17 @@ func (a *app) openTerminalLink(tt *termTab, raw string) bool {
 	p := a.focusPane()
 	if p != nil && p.Note == n {
 		p.Preview = false
-		if p.state == nil {
-			p.state = n.NewState()
-		}
 		if line > 0 {
 			colIdx := max(col-1, 0)
-			p.state.GoTo(editor.Pos{Line: line - 1, Col: colIdx})
+			p.setPendingPos(line, colIdx, 0, 0)
+		}
+		if a.isAsyncRemote() && !n.Loaded {
+			a.startLoadNote(p, n)
+		} else {
+			if p.state == nil {
+				p.state = n.NewState()
+			}
+			a.applyPendingPanePos(p)
 		}
 		a.focusReq = p
 	}
@@ -329,6 +337,7 @@ func (a *app) sendReferenceToTerminal() {
 			} else {
 				tp.Term.pendingPaste += ref
 			}
+			a.notify("Sent " + strings.TrimSpace(ref) + " to terminal")
 			a.changed()
 			a.invalidate()
 			return
@@ -336,6 +345,7 @@ func (a *app) sendReferenceToTerminal() {
 	}
 	// No terminal in this tab: split one to the right and queue the paste.
 	a.newTerminalWithPaste(ref)
+	a.notify("Sent " + strings.TrimSpace(ref) + " to terminal")
 }
 
 func (a *app) newTerminalWithPaste(paste string) {

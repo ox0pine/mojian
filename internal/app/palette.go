@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"runtime"
 	"sort"
 	"strings"
@@ -111,57 +112,123 @@ func (a *app) openPalette() {
 // paletteItem is a row of the command palette: a command, a file, or a tab.
 type paletteItem struct {
 	id, title, detail, keys, glyph string
+	score                          int
+	titlePos, detailPos            []int
+	note                           *note
+	asset                          *assetFile
 	run                            func()
 }
 
 func (a *app) paletteItems() []paletteItem {
 	var items []paletteItem
-	q := strings.ToLower(strings.TrimSpace(a.paletteQuery))
-	match := func(s string) bool { return q == "" || fuzzy(strings.ToLower(s), q) }
+	q := strings.TrimSpace(a.paletteQuery)
 	for _, c := range paletteCommands {
 		if !commandAvailable(c) {
 			continue
 		}
-		if !match(c.Title) {
+		score, tPos, ok := fuzzyScore(c.Title, q)
+		if !ok {
 			continue
 		}
+		if q != "" {
+			score += 5
+		}
 		c := c
-		items = append(items, paletteItem{id: "cmd:" + c.ID, title: c.Title,
-			keys: a.commandKeys(c), glyph: c.Glyph, run: func() { a.run(c) }})
+		items = append(items, paletteItem{
+			id: "cmd:" + c.ID, title: c.Title,
+			keys: a.commandKeys(c), glyph: c.Glyph,
+			score: score, titlePos: tPos,
+			run: func() { a.run(c) },
+		})
 	}
 	if a.store != nil {
-		for _, n := range a.store.Sorted() {
-			if !match(n.Title + " " + n.Rel) {
-				continue
+		if q == "" {
+			for _, ch := range a.mruFileChoices() {
+				ch := ch
+				if ch.note != nil {
+					n := ch.note
+					items = append(items, paletteItem{
+						id: "note:" + n.Rel, title: n.Title, detail: n.Rel, glyph: "file-text",
+						note: n,
+						run: func() {
+							a.openNote(n)
+							a.updateTitle()
+						},
+					})
+				} else if ch.asset != nil {
+					f := ch.asset
+					items = append(items, paletteItem{
+						id: "asset:" + f.Rel, title: f.Name, detail: f.Rel, glyph: "file-text",
+						asset: f,
+						run: func() {
+							a.openAsset(f)
+							a.updateTitle()
+						},
+					})
+				}
 			}
-			n := n
-			items = append(items, paletteItem{id: "note:" + n.Rel, title: n.Title, detail: n.Rel, glyph: "file-text",
-				run: func() {
-					a.openNote(n)
-					a.updateTitle()
-				}})
-		}
-		var assets []*assetFile
-		for _, f := range a.store.Assets {
-			assets = append(assets, f)
-		}
-		sort.Slice(assets, func(i, j int) bool { return assets[i].Rel < assets[j].Rel })
-		for _, f := range assets {
-			if !match(f.Name + " " + f.Rel) {
-				continue
+		} else {
+			for _, n := range a.store.Sorted() {
+				score, tPos, rPos, ok := scoreFileMatch(n.Title, n.Rel, q)
+				if !ok {
+					continue
+				}
+				if rank := a.mruRank(n.Rel); rank >= 0 {
+					score += max(40-rank*2, 4)
+				}
+				n := n
+				items = append(items, paletteItem{
+					id: "note:" + n.Rel, title: n.Title, detail: n.Rel, glyph: "file-text",
+					score: score, titlePos: tPos, detailPos: rPos, note: n,
+					run: func() {
+						a.openNote(n)
+						a.updateTitle()
+					},
+				})
 			}
-			f := f
-			items = append(items, paletteItem{id: "asset:" + f.Rel, title: f.Name, detail: f.Rel, glyph: "file-text",
-				run: func() {
-					a.openAsset(f)
-					a.updateTitle()
-				}})
+			var assets []*assetFile
+			for _, f := range a.store.Assets {
+				assets = append(assets, f)
+			}
+			sort.Slice(assets, func(i, j int) bool { return assets[i].Rel < assets[j].Rel })
+			for _, f := range assets {
+				score, tPos, rPos, ok := scoreFileMatch(f.Name, f.Rel, q)
+				if !ok {
+					continue
+				}
+				if rank := a.mruRank(f.Rel); rank >= 0 {
+					score += max(40-rank*2, 4)
+				}
+				f := f
+				items = append(items, paletteItem{
+					id: "asset:" + f.Rel, title: f.Name, detail: f.Rel, glyph: "file-text",
+					score: score, titlePos: tPos, detailPos: rPos, asset: f,
+					run: func() {
+						a.openAsset(f)
+						a.updateTitle()
+					},
+				})
+			}
 		}
 	}
 	for i, t := range a.tabs {
 		name, detail := t.label()
-		if !match(name + " " + detail) {
-			continue
+		score, tPos, tOK := fuzzyScore(name, q)
+		dScore, dPos, dOK := fuzzyScore(detail, q)
+		if q != "" && !tOK && !dOK {
+			if cScore, _, cOK := fuzzyScore(name+" "+detail, q); cOK {
+				score = cScore - 10
+			} else {
+				continue
+			}
+		} else if dOK && (!tOK || dScore > score) {
+			score = dScore
+		}
+		if !tOK {
+			tPos = nil
+		}
+		if !dOK {
+			dPos = nil
 		}
 		i := i
 		keys := ""
@@ -172,25 +239,18 @@ func (a *app) paletteItems() []paletteItem {
 		if detail != "" {
 			tabDetail += " " + detail
 		}
-		items = append(items, paletteItem{id: "tab:" + t.ID, title: name, detail: tabDetail, glyph: "layout-grid", keys: keys,
-			run: func() { a.selectTab(i); a.updateTitle() }})
+		items = append(items, paletteItem{
+			id: "tab:" + t.ID, title: name, detail: tabDetail, glyph: "layout-grid", keys: keys,
+			score: score, titlePos: tPos, detailPos: dPos,
+			run: func() { a.selectTab(i); a.updateTitle() },
+		})
+	}
+	if q != "" {
+		sort.SliceStable(items, func(i, j int) bool {
+			return items[i].score > items[j].score
+		})
 	}
 	return items
-}
-
-// fuzzy reports whether the runes of q appear in s, in order.
-func fuzzy(s, q string) bool {
-	if strings.Contains(s, q) {
-		return true
-	}
-	want := []rune(q)
-	i := 0
-	for _, r := range s {
-		if i < len(want) && r == want[i] {
-			i++
-		}
-	}
-	return i == len(want)
 }
 
 // palette draws the command palette over the window.
@@ -203,10 +263,14 @@ func (a *app) palette(c *ui.Context, k *colors) {
 	was := a.paletteOpen
 	reveal := false
 	chosen := -1
+	splitChosen := -1
 	a.commandDialog(c, k, &a.paletteOpen, func() {
 		in := sheetHeader(c, k, &a.paletteQuery, "Type a command, file, or tab name…",
 			"Search commands, files, and tabs", &a.paletteOpen)
-		if listNav(in, &a.paletteSel, len(items), &reveal) {
+		submit, split := listNavSplit(in, &a.paletteSel, len(items), &reveal)
+		if split && len(items) > 0 {
+			splitChosen = a.paletteSel
+		} else if submit && len(items) > 0 {
 			chosen = a.paletteSel
 		}
 		a.paletteList.Selected = &a.paletteSel
@@ -216,9 +280,11 @@ func (a *app) palette(c *ui.Context, k *colors) {
 			row := ui.Row(c.Key(it.id)).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
 				Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 			fg, muted, icon := k.Text, k.TextFaint, k.TextMuted
+			hiColor, hiWeight, underline := c.Theme().Accent, 700, false
 			if i == a.paletteSel {
 				fg = c.Theme().AccentText
 				muted, icon = fg.Alpha(0.9), fg.Alpha(0.9)
+				hiColor, hiWeight, underline = fg, 750, true
 			} else if row.Hovered() {
 				row.Background(k.Hover)
 			}
@@ -227,10 +293,10 @@ func (a *app) palette(c *ui.Context, k *colors) {
 			}
 			row.Children(func() {
 				ui.Icon(c, icons.Icon(it.glyph)).Size(15, 15).TextColor(icon)
-				ui.Text(c, it.title).FontSize(rowTitle).FontWeight(500).TextColor(fg).
+				highlightText(c, it.title, it.titlePos, fg, hiColor, 500, hiWeight, rowTitle, underline).
 					SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 				if it.detail != "" {
-					ui.Text(c, it.detail).FontSize(rowDetail).TextColor(muted).
+					highlightText(c, it.detail, it.detailPos, muted, hiColor, 400, hiWeight, rowDetail, underline).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 				}
 				ui.Spacer(c)
@@ -251,7 +317,15 @@ func (a *app) palette(c *ui.Context, k *colors) {
 			a.paletteList.ScrollIntoView(a.paletteSel)
 		}
 	})
-	if chosen >= 0 && chosen < len(items) {
+	if splitChosen >= 0 && splitChosen < len(items) {
+		it := items[splitChosen]
+		a.paletteOpen = false
+		if it.note != nil || it.asset != nil {
+			a.later(func() { a.openFileInSplit(it.note, it.asset, 0, 0) })
+		} else {
+			it.run()
+		}
+	} else if chosen >= 0 && chosen < len(items) {
 		a.paletteOpen = false
 		items[chosen].run()
 	}
@@ -336,11 +410,15 @@ func (a *app) openQuickOpen() {
 	a.invalidate()
 }
 
-// quickOpenChoice opens the file chosen in the picker.
-func (a *app) quickOpenChoice(ch fileChoice) {
+// quickOpenChoice opens the file chosen in the picker, optionally jumping to line/col.
+func (a *app) quickOpenChoice(ch fileChoice, line, col int) {
 	switch {
 	case ch.note != nil:
-		a.openNote(ch.note)
+		if line > 0 {
+			a.openNoteAt(ch.note.Rel, line, col, col)
+		} else {
+			a.openNote(ch.note)
+		}
 	case ch.asset != nil:
 		a.openAsset(ch.asset)
 	}
@@ -351,36 +429,118 @@ func (a *app) quickOpenModal(c *ui.Context, k *colors) {
 	if !a.quickOpen {
 		return
 	}
-	choices := a.paneChoices(a.quickQuery)
-	a.quickSel = min(max(a.quickSel, 0), max(len(choices)-1, 0))
+	trimmed := strings.TrimSpace(a.quickQuery)
+	if strings.HasPrefix(trimmed, ">") {
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, ">"))
+		a.quickOpen = false
+		a.openPalette()
+		a.paletteQuery = rest
+		return
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "@"))
+		a.quickOpen = false
+		a.openSymbols()
+		a.symbolsQuery = rest
+		return
+	}
+	if strings.HasPrefix(trimmed, "#") {
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "#"))
+		a.quickOpen = false
+		a.openWorkspaceSymbols()
+		if rest != "" {
+			a.wsSymbolsQuery = rest
+			a.queryWorkspaceSymbols(rest)
+		}
+		return
+	}
+
+	fileQuery, line, col, hasLine := parseFileLineQuery(a.quickQuery)
+	curNote := a.currentNote()
+	lineOnly := fileQuery == "" && hasLine && curNote != nil
+	var choices []fileChoice
+	nRows := 0
+	if lineOnly {
+		nRows = 1
+	} else {
+		choices = a.paneChoices(fileQuery)
+		nRows = len(choices)
+	}
+	a.quickSel = min(max(a.quickSel, 0), max(nRows-1, 0))
 	was := a.quickOpen
 	reveal := false
 	chosen := -1
+	splitChosen := -1
+	badge := formatLineColBadge(line, col, hasLine)
 	a.commandDialog(c, k, &a.quickOpen, func() {
-		in := sheetHeader(c, k, &a.quickQuery, "Open a file…", "Open a file", &a.quickOpen)
-		if listNav(in, &a.quickSel, len(choices), &reveal) {
+		in := sheetHeader(c, k, &a.quickQuery, "Open a file… (file:line, > command, @ symbol)", "Open a file", &a.quickOpen)
+		submit, split := listNavSplit(in, &a.quickSel, nRows, &reveal)
+		if split && nRows > 0 {
+			splitChosen = a.quickSel
+		} else if submit && nRows > 0 {
 			chosen = a.quickSel
 		}
 		a.quickList.Selected = &a.quickSel
-		a.quickList.Key = func(i int) any { return choices[i].rel }
-		list := ui.List(c, &a.quickList, len(choices), func(i int) {
+		a.quickList.Key = func(i int) any {
+			if lineOnly {
+				return "goto-line"
+			}
+			return choices[i].rel
+		}
+		list := ui.List(c, &a.quickList, nRows, func(i int) {
+			if lineOnly {
+				row := ui.Row(c.Key("goto-line")).Height(rowH).Padding(0, rowPadX).Gap(rowGap).
+					Radius(radius).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				fg, muted := k.Text, k.TextFaint
+				if i == a.quickSel {
+					fg = c.Theme().AccentText
+					muted = fg.Alpha(0.9)
+				} else if row.Hovered() {
+					row.Background(k.Hover)
+				}
+				if row.Clicked() {
+					chosen = 0
+				}
+				row.Children(func() {
+					ui.Icon(c, icons.Icon("arrow-right")).Size(15, 15).TextColor(muted)
+					label := fmt.Sprintf("Go to line %d", line)
+					if col > 0 {
+						label = fmt.Sprintf("Go to line %d, column %d", line, col)
+					}
+					ui.Text(c, label).FontSize(rowTitle).FontWeight(500).TextColor(fg)
+					ui.Text(c, "in "+curNote.Title).FontSize(rowDetail).TextColor(muted).
+						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+				})
+				return
+			}
 			ch := choices[i]
-			_, clicked := fileChoiceRow(c, k, ch.rel, ch, i == a.quickSel)
+			_, clicked := fileChoiceRowMatch(c, k, ch.rel, ch, badge, i == a.quickSel)
 			if clicked {
 				chosen = i
 			}
 		}).MaxHeight(sheetListHeight(c)).Padding(6)
-		if len(choices) == 0 {
+		if nRows == 0 {
 			list.Children(func() { emptyLine(c, k, "No files match") })
 		}
 		if reveal {
 			a.quickList.ScrollIntoView(a.quickSel)
 		}
 	})
-	if chosen >= 0 && chosen < len(choices) {
+	if lineOnly && (chosen == 0 || splitChosen == 0) {
+		a.quickOpen = false
+		rel := curNote.Rel
+		colIdx := max(col-1, 0)
+		a.later(func() { a.openNoteAt(rel, line, colIdx, colIdx) })
+	} else if !lineOnly && splitChosen >= 0 && splitChosen < len(choices) {
+		a.quickOpen = false
+		ch := choices[splitChosen]
+		colIdx := max(col-1, 0)
+		a.later(func() { a.openFileInSplit(ch.note, ch.asset, line, colIdx) })
+	} else if !lineOnly && chosen >= 0 && chosen < len(choices) {
 		a.quickOpen = false
 		ch := choices[chosen]
-		a.later(func() { a.quickOpenChoice(ch) })
+		colIdx := max(col-1, 0)
+		a.later(func() { a.quickOpenChoice(ch, line, colIdx) })
 	}
 	if was && !a.quickOpen {
 		if t := a.tab(); t != nil && a.focusReq == nil {

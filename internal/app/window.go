@@ -195,6 +195,7 @@ func (a *app) windowClosed() {
 		a.settingsTimer.Stop()
 		a.settingsTimer = nil
 	}
+	a.stopToast()
 	a.focusReq = nil
 	a.closeModals()
 	a.treeDraft = nil

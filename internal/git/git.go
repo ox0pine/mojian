@@ -186,6 +186,8 @@ type Page struct {
 	branchErr   string
 	branchNew   bool
 	branchName  string
+	branchQuery string
+	branchSel   int
 
 	h      Host
 	runner Runner

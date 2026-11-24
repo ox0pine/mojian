@@ -153,6 +153,8 @@ func (a *app) Invalidate() { a.invalidate() }
 
 func (a *app) Fail(err error) { a.fail(err) }
 
+func (a *app) Notify(msg string) { a.notifySuccess(msg) }
+
 func (a *app) HasPath(rel string) bool {
 	return a.store != nil && (a.store.ByRelPath(rel) != nil || a.store.AssetByRel(rel) != nil)
 }

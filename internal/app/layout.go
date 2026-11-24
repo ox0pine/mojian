@@ -38,6 +38,9 @@ type layoutPane struct {
 	Note     string          `json:"note,omitempty"`
 	Asset    string          `json:"asset,omitempty"`
 	Preview  bool            `json:"preview,omitempty"`
+	Line     int             `json:"line,omitempty"`
+	Col      int             `json:"col,omitempty"`
+	ScrollY  float64         `json:"scrollY,omitempty"`
 	Terminal *layoutTerminal `json:"terminal,omitempty"`
 }
 
@@ -87,6 +90,18 @@ func layoutPaneOf(p *pane) *layoutPane {
 		lp.Terminal = &layoutTerminal{SID: p.Term.SID, Host: p.Term.Spec.Host, Server: p.Term.Spec.Server}
 	case p.Note != nil:
 		lp.Note = p.Note.Rel
+		if p.state != nil {
+			pos := p.state.CursorPos()
+			lp.Line = pos.Line
+			lp.Col = pos.Col
+			lp.ScrollY = p.state.ScrollY()
+		} else if p.hasPendingPos || p.hasPendingScroll {
+			if p.hasPendingPos {
+				lp.Line = max(p.pendingLine-1, 0)
+				lp.Col = max(p.pendingCol, 0)
+			}
+			lp.ScrollY = p.pendingScroll
+		}
 	case p.Asset != nil:
 		lp.Asset = p.Asset.Rel
 	default:
@@ -271,18 +286,33 @@ func (a *app) restorePane(lp layoutPane, byID map[string]*pane) *pane {
 		p.Term = newTermPaneSpec(termSpec{Host: lp.Terminal.Host, Server: lp.Terminal.Server}, lp.Terminal.SID)
 	case lp.Note != "":
 		n := a.store.ByRelPath(lp.Note)
-		if n == nil || !a.loadNote(n) {
+		if n == nil {
+			return nil
+		}
+		if !a.isAsyncRemote() && !a.loadNote(n) {
 			return nil
 		}
 		p.Note = n
+		if lp.Line > 0 || lp.Col > 0 || lp.ScrollY > 0 {
+			p.setPendingPos(lp.Line+1, lp.Col, 0, lp.ScrollY)
+		}
+		if a.isAsyncRemote() && !n.Loaded {
+			a.startLoadNote(p, n)
+		}
 	case lp.Asset != "":
 		f := a.store.AssetByRel(lp.Asset)
-		if f == nil || !a.loadAsset(f) {
+		if f == nil {
+			return nil
+		}
+		if !a.isAsyncRemote() && !a.loadAsset(f) {
 			return nil
 		}
 		p.Asset = f
 		p.assetView = &assetView{}
 		p.Preview = false
+		if a.isAsyncRemote() && !f.IsBinary() && f.Local == "" {
+			a.startLoadAsset(p, f)
+		}
 	default:
 		return nil
 	}

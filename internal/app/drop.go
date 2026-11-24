@@ -90,6 +90,7 @@ func (a *app) reopenClosed() {
 		a.invalidate()
 		return
 	}
+	a.notify("No closed files to reopen")
 }
 
 // moveTab reorders tabs when a tab is dragged onto another tab in the strip.
@@ -190,22 +191,22 @@ func (a *app) openDroppedExplorerFile(t *tab, target *pane, rel string, zone pan
 	}
 	var newP *pane
 	if n := a.store.ByRelPath(rel); n != nil {
-		if !a.loadNote(n) {
-			return
-		}
 		if zone == dropNone || zone == dropCenter {
 			t.Focus = target
 			a.openNote(n)
 			return
 		}
-		newP = newPane(n)
-	} else if f := a.store.AssetByRel(rel); f != nil {
-		if !a.loadAsset(f) {
+		if !a.isAsyncRemote() && !a.loadNote(n) {
 			return
 		}
+		newP = newPane(n)
+	} else if f := a.store.AssetByRel(rel); f != nil {
 		if zone == dropNone || zone == dropCenter {
 			t.Focus = target
 			a.openAsset(f)
+			return
+		}
+		if !a.isAsyncRemote() && !a.loadAsset(f) {
 			return
 		}
 		newP = newAssetPane(f)
@@ -238,6 +239,14 @@ func (a *app) openDroppedExplorerFile(t *tab, target *pane, rel string, zone pan
 	t.splitSide(target, newP, side)
 	t.Focus = newP
 	a.focusReq = newP
+	a.touchMRU(rel)
+	if a.isAsyncRemote() {
+		if newP.Note != nil && !newP.Note.Loaded {
+			a.startLoadNote(newP, newP.Note)
+		} else if newP.Asset != nil && !newP.Asset.IsBinary() && newP.Asset.Local == "" {
+			a.startLoadAsset(newP, newP.Asset)
+		}
+	}
 	a.revealRel(rel)
 	a.changed()
 	a.invalidate()

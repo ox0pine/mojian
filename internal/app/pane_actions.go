@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/egoist/mygo/ui/editor"
@@ -67,6 +69,164 @@ func (a *app) newTab() {
 	a.invalidate()
 }
 
+func (a *app) isAsyncRemote() bool {
+	return a.store != nil && a.store.IsRemote() && a.uiPoster() != nil
+}
+
+// startLoadNote fetches an unloaded remote note off the UI thread so slow SSH
+// links never freeze the window.
+func (a *app) startLoadNote(p *pane, n *note) {
+	if p == nil || n == nil || a.store == nil {
+		return
+	}
+	if n.Loaded {
+		p.loading = false
+		p.loadErr = ""
+		a.applyPendingPanePos(p)
+		a.invalidate()
+		return
+	}
+	if !a.isAsyncRemote() {
+		if a.loadNote(n) {
+			a.applyPendingPanePos(p)
+		}
+		return
+	}
+	p.cancelLoad()
+	p.loading = true
+	p.loadSeq++
+	seq := p.loadSeq
+	ctx, cancel := context.WithCancel(context.Background())
+	p.loadCancel = cancel
+	s := a.store
+	ws := a.workspace
+	rel := n.Rel
+	winSeq := a.windowSeq
+	post := a.uiPoster()
+	go func() {
+		body, err := s.ReadNoteContext(ctx, rel)
+		post(func() {
+			if a.windowSeq != winSeq || p.loadSeq != seq || p.Note != n || ws == nil || ws.store != s {
+				cancel()
+				return
+			}
+			p.loading = false
+			p.loadCancel = nil
+			cancel()
+			if err != nil {
+				if !errors.Is(err, context.Canceled) {
+					p.loadErr = err.Error()
+				}
+				if a.workspace == ws {
+					a.invalidate()
+				}
+				return
+			}
+			s.CommitLoadedNote(n, body)
+			a.applyPendingPanePos(p)
+			for _, t := range ws.tabs {
+				for _, other := range t.panes() {
+					if other != p && other.Note == n {
+						other.cancelLoad()
+						a.applyPendingPanePos(other)
+					}
+				}
+			}
+			if a.workspace == ws {
+				a.invalidate()
+			}
+		})
+	}()
+	a.invalidate()
+}
+
+// startLoadAsset fetches an unloaded remote image or PDF off the UI thread.
+func (a *app) startLoadAsset(p *pane, f *assetFile) {
+	if p == nil || f == nil || a.store == nil {
+		return
+	}
+	if f.IsBinary() || !a.store.IsRemote() || f.Local != "" {
+		p.loading = false
+		p.loadErr = ""
+		a.invalidate()
+		return
+	}
+	if !a.isAsyncRemote() {
+		_ = a.loadAsset(f)
+		return
+	}
+	p.cancelLoad()
+	p.loading = true
+	p.loadSeq++
+	seq := p.loadSeq
+	ctx, cancel := context.WithCancel(context.Background())
+	p.loadCancel = cancel
+	s := a.store
+	ws := a.workspace
+	rel := f.Rel
+	size := f.Size
+	mod := f.Mod
+	hash := f.Hash
+	isBinary := f.IsBinary()
+	path := f.Path
+	winSeq := a.windowSeq
+	post := a.uiPoster()
+	go func() {
+		localPath, err := s.FetchAssetContext(ctx, rel, size, mod, hash, isBinary, path)
+		post(func() {
+			if a.windowSeq != winSeq || p.loadSeq != seq || p.Asset != f || ws == nil || ws.store != s {
+				cancel()
+				return
+			}
+			p.loading = false
+			p.loadCancel = nil
+			cancel()
+			if err != nil {
+				if !errors.Is(err, context.Canceled) {
+					p.loadErr = err.Error()
+				}
+				if a.workspace == ws {
+					a.invalidate()
+				}
+				return
+			}
+			s.CommitMaterializedAsset(f, localPath)
+			for _, t := range ws.tabs {
+				for _, other := range t.panes() {
+					if other != p && other.Asset == f {
+						other.cancelLoad()
+					}
+				}
+			}
+			if a.workspace == ws {
+				a.invalidate()
+			}
+		})
+	}()
+	a.invalidate()
+}
+
+// applyPendingPanePos applies a deferred cursor/selection target once n is loaded.
+func (a *app) applyPendingPanePos(p *pane) {
+	if p == nil || p.Note == nil || !p.Note.Loaded || !p.hasPendingPos {
+		return
+	}
+	if p.state == nil {
+		p.state = p.Note.NewState()
+	}
+	lineIdx := max(p.pendingLine-1, 0)
+	colIdx := max(p.pendingCol, 0)
+	p.state.GoTo(editor.Pos{Line: lineIdx, Col: colIdx})
+	if p.pendingEnd > colIdx {
+		startOff := p.state.Cursor()
+		p.state.Select(startOff, startOff+(p.pendingEnd-colIdx))
+	}
+	pos := p.state.CursorPos()
+	p.lastSavedLine = pos.Line
+	p.lastSavedCol = pos.Col
+	p.hasPendingPos = false
+}
+
 // loadNote reads a remote note's text before its pane is built. A local
 // note is already loaded; a remote one is fetched once.
 func (a *app) loadNote(n *note) bool {
@@ -99,7 +259,10 @@ func (a *app) loadAsset(f *assetFile) bool {
 
 // openNoteInTab shows n in a tab of its own.
 func (a *app) openNoteInTab(n *note) {
-	if !a.loadNote(n) {
+	if n == nil {
+		return
+	}
+	if !a.isAsyncRemote() && !a.loadNote(n) {
 		return
 	}
 	a.git.Open = false
@@ -108,9 +271,13 @@ func (a *app) openNoteInTab(n *note) {
 	a.active = len(a.tabs) - 1
 	a.focusReq = t.Focus
 	a.revealTab = true
+	a.touchMRU(n.Rel)
 	a.treeSel = n.Rel
 	a.openPath(n.Rel)
 	a.treeReveal = n.Rel
+	if a.isAsyncRemote() && !n.Loaded {
+		a.startLoadNote(t.Focus, n)
+	}
 	a.changed()
 	a.invalidate()
 }
@@ -118,7 +285,10 @@ func (a *app) openNoteInTab(n *note) {
 // openNote shows n in the focused pane, or in a new tab when none is
 // open.
 func (a *app) openNote(n *note) {
-	if !a.loadNote(n) {
+	if n == nil {
+		return
+	}
+	if !a.isAsyncRemote() && !a.loadNote(n) {
 		return
 	}
 	a.git.Open = false
@@ -131,7 +301,11 @@ func (a *app) openNote(n *note) {
 		a.active = len(a.tabs) - 1
 		a.focusReq = t.Focus
 		a.revealTab = true
+		a.touchMRU(n.Rel)
 		a.revealRel(n.Rel)
+		if a.isAsyncRemote() && !n.Loaded {
+			a.startLoadNote(t.Focus, n)
+		}
 		a.changed()
 		a.invalidate()
 		return
@@ -162,10 +336,13 @@ func (a *app) openNote(n *note) {
 		t.Root = &node{Pane: p}
 		t.Focus = p
 	}
+	p.cancelLoad()
 	if p.Note != n {
 		p.state = nil
 		p.md = nil
 		p.Preview = false
+		p.hasPendingPos = false
+		p.hasPendingScroll = false
 	}
 	if t.Zoom != nil && t.Zoom != p {
 		a.unzoom(t)
@@ -176,7 +353,80 @@ func (a *app) openNote(n *note) {
 	p.assetView = nil
 	t.Focus = p
 	a.focusReq = p
+	a.touchMRU(n.Rel)
 	a.revealRel(n.Rel)
+	if a.isAsyncRemote() && !n.Loaded {
+		a.startLoadNote(p, n)
+	}
+	a.changed()
+	a.invalidate()
+}
+
+// openFileInSplit opens n or f in a right split of the active tab, or in place
+// if no non-empty pane exists.
+func (a *app) openFileInSplit(n *note, f *assetFile, line, col int) {
+	if n == nil && f == nil {
+		return
+	}
+	t := a.tab()
+	if t == nil || t.Root == nil || (t.Focus != nil && t.Focus.Note == nil && t.Focus.Asset == nil && t.Focus.Term == nil && t.Focus.Search == nil) {
+		if n != nil {
+			if line > 0 {
+				a.openNoteAt(n.Rel, line, col, col)
+			} else {
+				a.openNote(n)
+			}
+			return
+		}
+		a.openAsset(f)
+		return
+	}
+	a.git.Open = false
+	a.clearZoom(t)
+	target := t.Focus
+	if target == nil {
+		target = firstPane(t.Root)
+	}
+	if target == nil {
+		return
+	}
+	var newP *pane
+	var rel string
+	if n != nil {
+		if !a.isAsyncRemote() && !a.loadNote(n) {
+			return
+		}
+		newP = newPane(n)
+		rel = n.Rel
+		if line > 0 {
+			newP.setPendingPos(line, col, 0, 0)
+		}
+	} else {
+		if !a.isAsyncRemote() && !a.loadAsset(f) {
+			return
+		}
+		newP = newAssetPane(f)
+		rel = f.Rel
+	}
+	newP.enterSide(splitRight)
+	if !t.splitSide(target, newP, splitRight) {
+		return
+	}
+	t.Focus = newP
+	a.focusReq = newP
+	a.touchMRU(rel)
+	a.revealRel(rel)
+	if a.isAsyncRemote() {
+		if n != nil && !n.Loaded {
+			a.startLoadNote(newP, n)
+		} else if f != nil && !f.IsBinary() && f.Local == "" {
+			a.startLoadAsset(newP, f)
+		} else if n != nil {
+			a.applyPendingPanePos(newP)
+		}
+	} else if n != nil {
+		a.applyPendingPanePos(newP)
+	}
 	a.changed()
 	a.invalidate()
 }
@@ -212,15 +462,9 @@ func (a *app) openNoteAt(rel string, line, col, end int) {
 		return
 	}
 	p.Preview = false
-	if p.state == nil {
-		p.state = n.NewState()
-	}
-	lineIdx := max(line-1, 0)
-	colIdx := max(col, 0)
-	p.state.GoTo(editor.Pos{Line: lineIdx, Col: colIdx})
-	if end > colIdx {
-		startOff := p.state.Cursor()
-		p.state.Select(startOff, startOff+(end-colIdx))
+	p.setPendingPos(line, col, end, 0)
+	if n.Loaded {
+		a.applyPendingPanePos(p)
 	}
 	a.focusReq = p
 	a.invalidate()
@@ -228,7 +472,10 @@ func (a *app) openNoteAt(rel string, line, col, end int) {
 
 // openAssetInTab shows a picture or PDF in a tab of its own.
 func (a *app) openAssetInTab(f *assetFile) {
-	if !a.loadAsset(f) {
+	if f == nil {
+		return
+	}
+	if !a.isAsyncRemote() && !a.loadAsset(f) {
 		return
 	}
 	a.git.Open = false
@@ -240,9 +487,13 @@ func (a *app) openAssetInTab(f *assetFile) {
 	a.active = len(a.tabs) - 1
 	a.focusReq = p
 	a.revealTab = true
+	a.touchMRU(f.Rel)
 	a.treeSel = f.Rel
 	a.openPath(f.Rel)
 	a.treeReveal = f.Rel
+	if a.isAsyncRemote() && !f.IsBinary() && f.Local == "" {
+		a.startLoadAsset(p, f)
+	}
 	a.changed()
 	a.invalidate()
 }
@@ -250,7 +501,10 @@ func (a *app) openAssetInTab(f *assetFile) {
 // openAsset shows a picture or PDF in the focused pane, or in a new tab
 // when none is open.
 func (a *app) openAsset(f *assetFile) {
-	if !a.loadAsset(f) {
+	if f == nil {
+		return
+	}
+	if !a.isAsyncRemote() && !a.loadAsset(f) {
 		return
 	}
 	a.git.Open = false
@@ -266,7 +520,11 @@ func (a *app) openAsset(f *assetFile) {
 		a.active = len(a.tabs) - 1
 		a.focusReq = p
 		a.revealTab = true
+		a.touchMRU(f.Rel)
 		a.revealRel(f.Rel)
+		if a.isAsyncRemote() && !f.IsBinary() && f.Local == "" {
+			a.startLoadAsset(p, f)
+		}
 		a.changed()
 		a.invalidate()
 		return
@@ -293,18 +551,25 @@ func (a *app) openAsset(f *assetFile) {
 		t.Root = &node{Pane: p}
 		t.Focus = p
 	}
+	p.cancelLoad()
 	if t.Zoom != nil && t.Zoom != p {
 		a.unzoom(t)
 	}
 	releaseAsset(p)
 	p.Note = nil
 	p.state = nil
+	p.hasPendingPos = false
+	p.hasPendingScroll = false
 	p.Asset = f
 	p.assetView = &assetView{}
 	p.Preview = false
 	t.Focus = p
 	a.focusReq = p
+	a.touchMRU(f.Rel)
 	a.revealRel(f.Rel)
+	if a.isAsyncRemote() && !f.IsBinary() && f.Local == "" {
+		a.startLoadAsset(p, f)
+	}
 	a.changed()
 	a.invalidate()
 }
@@ -323,6 +588,7 @@ func (a *app) closeTab(t *tab) {
 		return
 	}
 	for _, p := range t.panes() {
+		p.cancelLoad()
 		a.recordClosedPane(t, p, true)
 		a.endTerminalPane(p, true)
 		releaseAsset(p)
@@ -429,6 +695,7 @@ func (a *app) finishPaneOverlay(p *pane, kind paneCopy) {
 	if !p.closing {
 		return
 	}
+	p.cancelLoad()
 	a.endTerminalPane(p, true)
 	releaseAsset(p)
 	p.closing = false
@@ -469,6 +736,7 @@ func (a *app) closePaneNow(t *tab, p *pane) {
 	if len(t.panes()) > 1 {
 		a.recordClosedPane(t, p, false)
 	}
+	p.cancelLoad()
 	a.unzoom(t)
 	a.endTerminalPane(p, true)
 	releaseAsset(p)
@@ -556,8 +824,10 @@ func (a *app) cycleTab(delta int) {
 		if t.Focus != nil {
 			a.focusReq = t.Focus
 			if t.Focus.Note != nil {
+				a.touchMRU(t.Focus.Note.Rel)
 				a.revealInTree(t.Focus.Note)
 			} else if t.Focus.Asset != nil {
+				a.touchMRU(t.Focus.Asset.Rel)
 				a.revealRel(t.Focus.Asset.Rel)
 			}
 		} else {
@@ -581,8 +851,10 @@ func (a *app) selectTab(i int) {
 		if t.Focus != nil {
 			a.focusReq = t.Focus
 			if t.Focus.Note != nil {
+				a.touchMRU(t.Focus.Note.Rel)
 				a.revealInTree(t.Focus.Note)
 			} else if t.Focus.Asset != nil {
+				a.touchMRU(t.Focus.Asset.Rel)
 				a.revealRel(t.Focus.Asset.Rel)
 			}
 		} else {

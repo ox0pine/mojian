@@ -261,6 +261,11 @@ func (r *Server) MoveFrom(srcAbs, destRel string) error {
 func (r *Server) RemoveAbs(abs string) error { return r.ctl().Remove(abs) }
 
 func (r *Server) Fetch(rel string, size int64, mod time.Time, hash string) (string, error) {
+	return r.FetchContext(context.Background(), rel, size, mod, hash)
+}
+
+// FetchContext downloads a remote picture or PDF into the local cache with cancellation.
+func (r *Server) FetchContext(ctx context.Context, rel string, size int64, mod time.Time, hash string) (string, error) {
 	if r.local {
 		return r.Abs(rel)
 	}
@@ -269,7 +274,7 @@ func (r *Server) Fetch(rel string, size int64, mod time.Time, hash string) (stri
 		if info, err := os.Stat(local); err == nil && info.Size() == size {
 			return local, nil
 		}
-		data, err := r.Read(rel)
+		data, err := r.ReadContext(ctx, rel)
 		if err != nil {
 			return "", err
 		}
@@ -289,7 +294,7 @@ func (r *Server) Fetch(rel string, size int64, mod time.Time, hash string) (stri
 	if info, err := os.Stat(local); err == nil && info.Size() == size {
 		return local, nil
 	}
-	data, err := r.Read(rel)
+	data, err := r.ReadContext(ctx, rel)
 	if err != nil {
 		return "", err
 	}

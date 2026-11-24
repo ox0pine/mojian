@@ -48,9 +48,44 @@ type workspace struct {
 	ecCache            map[string]editorconfig.Props
 	ecFiles            map[string][]byte
 	closedStack        []closedEntry
+	mru                []string
 	lsp                *lspManager
 	nav                navHistory
 	revealTab          bool
+}
+
+const maxMRU = 64
+
+// touchMRU records rel as the most recently accessed project file.
+func (a *app) touchMRU(rel string) {
+	if a.workspace == nil || rel == "" {
+		return
+	}
+	out := make([]string, 0, min(len(a.workspace.mru)+1, maxMRU))
+	out = append(out, rel)
+	for _, item := range a.workspace.mru {
+		if item == rel {
+			continue
+		}
+		out = append(out, item)
+		if len(out) >= maxMRU {
+			break
+		}
+	}
+	a.workspace.mru = out
+}
+
+// mruRank returns rel's 0-based MRU position, or -1 if unrecorded.
+func (a *app) mruRank(rel string) int {
+	if a.workspace == nil || rel == "" {
+		return -1
+	}
+	for i, item := range a.workspace.mru {
+		if item == rel {
+			return i
+		}
+	}
+	return -1
 }
 
 func workspaceKeyLocal(dir string) string {
@@ -178,6 +213,9 @@ func (a *app) activateWorkspace(ws *workspace) {
 	a.branch.queued = false
 	a.branch.open = false
 	a.branch.creating = false
+	a.branch.name = ""
+	a.branch.query = ""
+	a.branch.sel = -1
 	a.branch.err = ""
 	a.gitStatusSeq++
 	a.gitStatusLoading = false
@@ -232,6 +270,9 @@ func (a *app) closeModals() {
 	a.remotePicker = false
 	a.branch.open = false
 	a.branch.creating = false
+	a.branch.name = ""
+	a.branch.query = ""
+	a.branch.sel = -1
 	a.branch.err = ""
 	a.git.CloseBranchMenu()
 }
@@ -244,6 +285,7 @@ func (a *app) closeTransientUI() {
 	a.treeDraft = nil
 	a.treeSearch.CancelFocus()
 	a.err = ""
+	a.stopToast()
 }
 
 // switchWorkspace saves the project on screen and shows another one
@@ -331,6 +373,7 @@ func closeWorkspaceTerminals(ws *workspace) {
 	}
 	for _, t := range ws.tabs {
 		for _, p := range t.panes() {
+			p.cancelLoad()
 			detachTerminalView(p)
 		}
 	}

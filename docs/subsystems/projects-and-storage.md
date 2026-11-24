@@ -33,7 +33,11 @@ the save path, path guards and the asset cache.
 
 1. A tree row click reaches `(*app).openRel`, which asks `store.ByRelPath` for the note and calls
    `(*app).openNote`. The pane keeps a `*project.Note`; the pane renders `Note.Buffer()`, one
-   `*editor.Buffer` shared by every pane showing that file.
+   `*editor.Buffer` shared by every pane showing that file. For remote projects with an active UI
+   poster, unloaded notes (`Store.ReadNoteContext` -> `Store.CommitLoadedNote`) and remote images/PDFs
+   (`Store.FetchAssetContext` -> `Store.CommitMaterializedAsset`) load off the UI thread with
+   per-pane `loadSeq` cancellation, showing a non-blocking loading card with Cancel/Retry and applying
+   any deferred cursor target once loaded.
 2. `⌘S` (**Save All**) runs `(*app).saveNowAsync`. Local projects keep the synchronous
    `store.SaveAll` → `store.Save` path. For a remote project the UI thread serializes each dirty
    buffer into an immutable `SaveSnapshot`; a goroutine performs `ReadFile` and `WriteFile` through

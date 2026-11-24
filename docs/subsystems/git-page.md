@@ -191,6 +191,10 @@ branches and reloads open notes after a checkout.
   which the project watcher excludes; in History mode the same refresh reads the commit list again.
   The same focus path invalidates open editors' cached HEAD buffers, so their gutters do not keep
   comparing against the pre-commit HEAD.
+- Both the title-bar branch menu and the Git page's branch menu include a `Filter branches…` input
+  with subsequence filtering and `Up`/`Down`/`Enter` keyboard navigation, while keeping `New Branch…`
+  reachable. Completed Git mutations (`Commit`, `Fetch`, `Pull`, `Push`, `Stash`, `StashPop`) emit a
+  lightweight auto-dismissing toast when the optional `Notify` host method is implemented.
 - The page's branch menu reads the branches again when it opens, so a branch added in a terminal
   appears without a refresh. It never opens the title bar's menu: its popover anchors to the page's
   chip and its state is the page's. A checkout is refused while a note holds unsaved edits, and the

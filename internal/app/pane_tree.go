@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	"mojian/internal/app/vim"
@@ -77,6 +78,49 @@ type pane struct {
 	tabSizeOverride int
 	lastScrollY     float64
 	vim             *vim.State
+
+	loading          bool
+	loadErr          string
+	loadSeq          int
+	loadCancel       context.CancelFunc
+	pendingLine      int // 1-based; 0 = none
+	pendingCol       int // 0-based
+	pendingEnd       int // 0-based
+	pendingScroll    float64
+	hasPendingPos    bool
+	hasPendingScroll bool
+	lastSavedLine    int
+	lastSavedCol     int
+	lastSavedScroll  float64
+}
+
+func (p *pane) cancelLoad() {
+	if p == nil {
+		return
+	}
+	p.loadSeq++
+	if p.loadCancel != nil {
+		p.loadCancel()
+		p.loadCancel = nil
+	}
+	p.loading = false
+	p.loadErr = ""
+}
+
+func (p *pane) setPendingPos(line, col, end int, scrollY float64) {
+	if p == nil {
+		return
+	}
+	if line > 0 || col > 0 || end > 0 {
+		p.pendingLine = line
+		p.pendingCol = col
+		p.pendingEnd = end
+		p.hasPendingPos = true
+	}
+	if scrollY > 0 {
+		p.pendingScroll = scrollY
+		p.hasPendingScroll = true
+	}
 }
 
 // assetView is what a picture or PDF pane has loaded, and its headings.
@@ -544,6 +588,11 @@ func (a *app) focusPaneDirection(dir paneDirection) {
 	a.unzoom(t)
 	t.Focus = target
 	a.focusReq = target
+	if target.Note != nil {
+		a.touchMRU(target.Note.Rel)
+	} else if target.Asset != nil {
+		a.touchMRU(target.Asset.Rel)
+	}
 	a.changed()
 	a.invalidate()
 }

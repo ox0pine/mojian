@@ -195,6 +195,10 @@ type actionWorkspaceHost interface {
 	DeferGitWorkspaceMutation(workspaceKey string, reloadFiles bool)
 }
 
+type toastHost interface {
+	Notify(string)
+}
+
 func (p *Page) runAction(reloadFiles bool, fn func(r Runner, root string) error, onSuccess func()) {
 	h := p.h
 	if h == nil || p.ActionBusy || p.Root == "" {
@@ -250,6 +254,9 @@ func (p *Page) runAction(reloadFiles bool, fn func(r Runner, root string) error,
 		}
 		h.AfterGitMutation()
 		p.Refresh()
+		if th, ok := h.(toastHost); ok && p.ActionInfo != "" {
+			th.Notify(p.ActionInfo)
+		}
 		h.Invalidate()
 	}
 	if h.Window() == nil {

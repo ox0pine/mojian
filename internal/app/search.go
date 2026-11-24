@@ -145,14 +145,52 @@ func (a *app) syncModalSearchOut() {
 	a.searchCollapsed = st.collapsed
 }
 
+// selectedSearchSeed returns the single-line selection of the focused editor
+// pane when suitable for seeding a project search.
+func (a *app) selectedSearchSeed() string {
+	p := a.focusPane()
+	if p == nil || p.Note == nil || p.Preview || p.state == nil {
+		return ""
+	}
+	sel := strings.TrimRight(p.state.SelectedText(), "\r")
+	if sel == "" || len(sel) > 200 || strings.ContainsAny(sel, "\n\r") {
+		return ""
+	}
+	return sel
+}
+
+func (a *app) recordSearchHistory(q string) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return
+	}
+	out := make([]string, 0, len(a.searchHistory)+1)
+	for _, h := range a.searchHistory {
+		if h != q {
+			out = append(out, h)
+		}
+	}
+	out = append(out, q)
+	if len(out) > 20 {
+		out = out[len(out)-20:]
+	}
+	a.searchHistory = out
+	a.searchHistIdx = -1
+}
+
 // openSearch shows the project-wide full-text search & replace sheet over the window.
 func (a *app) openSearch() {
+	seed := a.selectedSearchSeed()
 	a.closeModals()
 	a.searchOpen = true
 	a.searchSel = 0
 	a.searchList = ui.ListState{}
 	a.searchLastKey = ""
 	a.searchNotice = ""
+	a.searchHistIdx = -1
+	if seed != "" {
+		a.searchQuery = seed
+	}
 	st := a.syncModalSearchIn()
 	if strings.TrimSpace(st.query) != "" {
 		a.startSearchFor(st)
@@ -450,7 +488,7 @@ func (a *app) openSearchInPaneFromModal() {
 func (a *app) openSearchInPane(initial *searchState) {
 	st := initial
 	if st == nil {
-		st = &searchState{collapsed: map[string]bool{}}
+		st = &searchState{query: a.selectedSearchSeed(), collapsed: map[string]bool{}}
 	}
 	if st.collapsed == nil {
 		st.collapsed = map[string]bool{}
@@ -510,11 +548,29 @@ func (a *app) openSearchInPane(initial *searchState) {
 }
 
 func (a *app) openSearchMatchFromPane(searchPaneRef *pane, m session.SearchMatch) {
+	a.openSearchMatchFromPaneMode(searchPaneRef, m, false)
+}
+
+func (a *app) openSearchMatchFromPaneMode(searchPaneRef *pane, m session.SearchMatch, split bool) {
 	if a.store == nil {
 		return
 	}
 	n := a.store.ByRelPath(filepath.FromSlash(m.Rel))
-	if n == nil || !a.loadNote(n) {
+	if n == nil {
+		return
+	}
+	if !a.isAsyncRemote() && !a.loadNote(n) {
+		return
+	}
+	a.recordNav()
+	if split {
+		a.openFileInSplit(n, nil, m.Line, m.Col)
+		if p := a.focusPane(); p != nil && p.Note == n && m.End > m.Col {
+			p.setPendingPos(m.Line, m.Col, m.End, 0)
+			if n.Loaded {
+				a.applyPendingPanePos(p)
+			}
+		}
 		return
 	}
 	t := a.tabOf(searchPaneRef)
@@ -531,7 +587,6 @@ func (a *app) openSearchMatchFromPane(searchPaneRef *pane, m session.SearchMatch
 			}
 		}
 	}
-	a.recordNav()
 	a.openNoteAt(filepath.FromSlash(m.Rel), m.Line, m.Col, m.End)
 }
 
@@ -542,7 +597,7 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 	}
 	st := a.syncModalSearchIn()
 	was := a.searchOpen
-	chosenMatch, chosenHeader := a.renderSearchUI(c, k, st, true, nil, true)
+	chosenMatch, chosenHeader, chosenSplit := a.renderSearchUI(c, k, st, true, nil, true)
 	a.syncModalSearchOut()
 
 	if chosenHeader != "" {
@@ -555,9 +610,22 @@ func (a *app) searchModal(c *ui.Context, k *colors) {
 	}
 	if chosenMatch != nil {
 		m := *chosenMatch
+		a.recordSearchHistory(st.query)
 		a.closeSearch()
 		a.later(func() {
 			a.recordNav()
+			if chosenSplit {
+				if n := a.store.ByRelPath(filepath.FromSlash(m.Rel)); n != nil {
+					a.openFileInSplit(n, nil, m.Line, m.Col)
+					if p := a.focusPane(); p != nil && p.Note == n && m.End > m.Col {
+						p.setPendingPos(m.Line, m.Col, m.End, 0)
+						if n.Loaded {
+							a.applyPendingPanePos(p)
+						}
+					}
+				}
+				return
+			}
 			a.openNoteAt(filepath.FromSlash(m.Rel), m.Line, m.Col, m.End)
 		})
 	}
@@ -582,8 +650,8 @@ func (a *app) searchPaneBody(c *ui.Context, k *colors, t *tab, p *pane, overlay 
 	if !overlay && a.focusReq == p {
 		a.focusReq = nil
 	}
-	ui.Column(c.Key("search-pane:"+p.ID)).Fill().Children(func() {
-		chosenMatch, chosenHeader := a.renderSearchUI(c, k, st, false, p, focusInput)
+	ui.Column(c.Key("search-pane:" + p.ID)).Fill().Children(func() {
+		chosenMatch, chosenHeader, chosenSplit := a.renderSearchUI(c, k, st, false, p, focusInput)
 		if chosenHeader != "" {
 			if st.collapsed == nil {
 				st.collapsed = map[string]bool{}
@@ -593,12 +661,13 @@ func (a *app) searchPaneBody(c *ui.Context, k *colors, t *tab, p *pane, overlay 
 		}
 		if chosenMatch != nil && !overlay {
 			m := *chosenMatch
-			a.later(func() { a.openSearchMatchFromPane(p, m) })
+			a.recordSearchHistory(st.query)
+			a.later(func() { a.openSearchMatchFromPaneMode(p, m, chosenSplit) })
 		}
 	})
 }
 
-func (a *app) renderSearchUI(c *ui.Context, k *colors, st *searchState, isModal bool, paneRef *pane, focusInput bool) (chosenMatch *session.SearchMatch, chosenHeader string) {
+func (a *app) renderSearchUI(c *ui.Context, k *colors, st *searchState, isModal bool, paneRef *pane, focusInput bool) (chosenMatch *session.SearchMatch, chosenHeader string, chosenSplit bool) {
 	if st.lastKey != st.key() {
 		a.startSearchFor(st)
 	}
@@ -606,6 +675,7 @@ func (a *app) renderSearchUI(c *ui.Context, k *colors, st *searchState, isModal 
 	st.sel = min(max(st.sel, 0), max(len(rows)-1, 0))
 	reveal := false
 	chosenIdx := -1
+	splitTrigger := false
 
 	renderInner := func() {
 		keyPrefix := "modal"
@@ -688,7 +758,34 @@ func (a *app) renderSearchUI(c *ui.Context, k *colors, st *searchState, isModal 
 				}
 			})
 		}
-		if listNav(in, &st.sel, len(rows), &reveal) {
+		if len(a.searchHistory) > 0 {
+			switch {
+			case in.Shortcut(ui.Alt, ui.KeyUp):
+				if a.searchHistIdx < 0 {
+					a.searchHistIdx = len(a.searchHistory) - 1
+				} else if a.searchHistIdx > 0 {
+					a.searchHistIdx--
+				}
+				st.query = a.searchHistory[a.searchHistIdx]
+				a.startSearchFor(st)
+			case in.Shortcut(ui.Alt, ui.KeyDown):
+				if a.searchHistIdx >= 0 {
+					a.searchHistIdx++
+					if a.searchHistIdx >= len(a.searchHistory) {
+						a.searchHistIdx = -1
+						st.query = ""
+					} else {
+						st.query = a.searchHistory[a.searchHistIdx]
+					}
+					a.startSearchFor(st)
+				}
+			}
+		}
+		submit, split := listNavSplit(in, &st.sel, len(rows), &reveal)
+		if split && len(rows) > 0 {
+			chosenIdx = st.sel
+			splitTrigger = true
+		} else if submit && len(rows) > 0 {
 			chosenIdx = st.sel
 		}
 		if st.query != "" || st.notice != "" {
@@ -748,7 +845,7 @@ func (a *app) renderSearchUI(c *ui.Context, k *colors, st *searchState, isModal 
 							SingleLine().TruncateStart().Shrink(1).MinWidth(0)
 					}
 					ui.Spacer(c)
-					ui.Text(c, strconv.Itoa(r.count)).FontSize(c.Theme().Rem(10.5 / 13)).
+					ui.Text(c, strconv.Itoa(r.count)).FontSize(c.Theme().Rem(10.5/13)).
 						TextColor(muted).Padding(1, 6).Radius(8).Background(k.Hover).Shrink(0)
 					if st.replaceOpen {
 						relCopy := r.rel
@@ -857,9 +954,10 @@ func (a *app) renderSearchUI(c *ui.Context, k *colors, st *searchState, isModal 
 		} else {
 			m := r.match
 			chosenMatch = &m
+			chosenSplit = splitTrigger
 		}
 	}
-	return chosenMatch, chosenHeader
+	return chosenMatch, chosenHeader, chosenSplit
 }
 
 func searchToggleChip(c *ui.Context, k *colors, text, label string, active bool) ui.Element {

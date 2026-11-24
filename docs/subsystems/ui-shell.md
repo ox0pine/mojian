@@ -65,7 +65,11 @@ window, the error banner and command dispatch from menu, palette and keyboard.
    `persistLayout` writes through `saveLayout` only after 550 ms without another change; file
    contents are written only by an explicit save.
 5. `a.invalidate()` requests a redraw of both windows after a state change made outside the view.
-6. `a.fail(err)` stores the message in `a.err`, which the root view renders as the error banner.
+- `a.fail(err)` stores the message in `a.err`, which the root view renders as the error banner.
+- Lightweight non-blocking confirmations (`notify`, `notifySuccess` in `internal/app/toast.go`) show an
+  auto-dismissing bottom-center Liquid Glass toast (`toastBanner`, hidden whenever `a.err != ""`) for
+  explicit saves, document formatting, LSP restarts, terminal reference sends, branch switches, and
+  Git page mutations (`Fetch`, `Pull`, `Push`, `Commit`, `Stash`).
 
 ## Contracts and failure behavior
 
@@ -168,8 +172,15 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   empty lines and empty pages. Settings keeps its own denser scale inside its own window.
 - The palette, quick open, project search, go to symbol and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
   below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
-  close button). Project search (`find-in-files`, `⇧⌘F` / `Ctrl+Shift+F`, `internal/app/search.go`)
-  supports Match Case (`Aa`), Whole Word (`ab`), Regular Expression (`.*`), Include/Exclude glob
+  close button). Quick Open (`open-file`, `⌘P`) and the Command Palette (`palette`, `⌘K`) rank
+  matches with boundary/contiguous/prefix fuzzy scoring (`internal/app/fuzzy.go`) combined with
+  per-workspace MRU recency (`workspace.mru`) and highlight matched characters inline via
+  `widgets.HighlightText` / `widgets.FileRowMatch`. Quick Open supports `:line` and `:line:col`
+  suffixes (including `:line` alone to jump in the focused editor), prefix mode switches (`>` Command
+  Palette, `@` Go to Symbol, `#` Workspace Symbols), and `⌘Enter` (`listNavSplit`) to open the
+  chosen file in a right split pane (`openFileInSplit`). Project search (`find-in-files`, `⇧⌘F` / `Ctrl+Shift+F`, `internal/app/search.go`)
+  auto-seeds single-line editor selections on open, supports `Alt+Up`/`Alt+Down` query history
+  cycling and `⌘Enter` split-open on matches, supports Match Case (`Aa`), Whole Word (`ab`), Regular Expression (`.*`), Include/Exclude glob
   filters, file-grouped collapsible results, inline replacement previews (`old → new`), per-file
   (`Replace File`), single-match (`Replace`), and Project `Replace All` (all editing buffers in
   memory so changes stay undoable and respect explicit `⌘S` save), plus **Open in Pane**

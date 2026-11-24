@@ -184,6 +184,8 @@ type app struct {
 	searchCancel      func()
 	searchCollapsed   map[string]bool
 	modalSearch       *searchState
+	searchHistory     []string
+	searchHistIdx     int
 
 	symbolsOpen  bool
 	symbolsQuery string
@@ -263,8 +265,12 @@ type app struct {
 	shortcutKeys    map[string]string
 	commands        *commands.Registry
 
-	err   string
-	title string
+	err        string
+	title      string
+	toastText  string
+	toastKind  toastKind
+	toastSeq   int
+	toastTimer *time.Timer
 
 	layoutDirty    bool
 	lastChange     time.Time

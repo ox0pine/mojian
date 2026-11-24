@@ -38,6 +38,8 @@ func (p *Page) openBranchMenu() {
 	p.BranchMenu = true
 	p.branchNew = false
 	p.branchName = ""
+	p.branchQuery = ""
+	p.branchSel = -1
 	p.branchErr = ""
 	p.loadBranches()
 	if p.h != nil {
@@ -50,6 +52,8 @@ func (p *Page) CloseBranchMenu() {
 	p.BranchMenu = false
 	p.branchNew = false
 	p.branchName = ""
+	p.branchQuery = ""
+	p.branchSel = -1
 	p.branchErr = ""
 	if p.h != nil {
 		p.h.Invalidate()
@@ -123,6 +127,32 @@ func menuItem(m ui.MenuParts, key any) ui.Element {
 	return m.Item().Key(key)
 }
 
+func filterPageBranches(branches []Branch, query string) []Branch {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return branches
+	}
+	want := []rune(q)
+	var out []Branch
+	for _, b := range branches {
+		low := strings.ToLower(b.Name)
+		if strings.Contains(low, q) {
+			out = append(out, b)
+			continue
+		}
+		qi := 0
+		for _, r := range low {
+			if qi < len(want) && r == want[qi] {
+				qi++
+			}
+		}
+		if qi == len(want) {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 // branchMenuBody draws the popover: the branches, the new branch field, or
 // the note explaining why the list is empty.
 func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
@@ -134,6 +164,11 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		ui.Text(c, "BRANCHES").FontSize(c.Theme().Rem(10.0 / 13)).FontWeight(650).TextColor(k.TextFaint)
 	})
 	d := p.Branches
+	filtered := filterPageBranches(d.Branches, p.branchQuery)
+	if p.branchSel >= len(filtered) {
+		p.branchSel = len(filtered) - 1
+	}
+	reveal := false
 	switch {
 	case p.branchLoad && len(d.Branches) == 0:
 		p.branchNote(c, k, "Reading branches…", false)
@@ -144,11 +179,52 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 		}
 		p.branchNote(c, k, msg, d.Err != "")
 	default:
-		ui.Scroll(c).MaxHeight(branchMaxH).Gap(4).Children(func() {
-			for _, b := range d.Branches {
-				p.branchMenuRow(c, k, m, b)
+		ui.Box(c).Padding(2, branchMenuInset, 6, branchMenuInset).Children(func() {
+			in := ui.SearchField(c.Key("git-branch-filter"), &p.branchQuery).FillWidth().
+				Height(30).Padding(0, 8).Gap(6).Radius(theme.Radius-2).Background(k.Hover).
+				Border(0, ui.Transparent).FontSize(c.Theme().Rem(12.0 / 13)).
+				Placeholder("Filter branches…").Label("Filter branches").AutoFocus()
+			if in.Changed() {
+				if len(filtered) > 0 {
+					p.branchSel = 0
+				} else {
+					p.branchSel = -1
+				}
+				reveal = true
+			}
+			switch {
+			case in.Shortcut(0, ui.KeyDown) && len(filtered) > 0:
+				if p.branchSel < 0 {
+					p.branchSel = 0
+				} else {
+					p.branchSel = min(p.branchSel+1, len(filtered)-1)
+				}
+				reveal = true
+			case in.Shortcut(0, ui.KeyUp) && len(filtered) > 0:
+				if p.branchSel > 0 {
+					p.branchSel--
+				} else {
+					p.branchSel = 0
+				}
+				reveal = true
+			}
+			if in.Submitted() && len(filtered) > 0 {
+				idx := p.branchSel
+				if idx < 0 || idx >= len(filtered) {
+					idx = 0
+				}
+				p.chooseBranch(filtered[idx].Name)
 			}
 		})
+		if len(filtered) == 0 {
+			p.branchNote(c, k, "No matching branches", false)
+		} else {
+			ui.Scroll(c).MaxHeight(branchMaxH).Gap(4).Children(func() {
+				for i, b := range filtered {
+					p.branchMenuRow(c, k, m, b, i == p.branchSel, reveal)
+				}
+			})
+		}
 	}
 	if p.branchErr != "" {
 		p.branchNote(c, k, p.branchErr, true)
@@ -174,13 +250,16 @@ func (p *Page) branchMenuBody(c *ui.Context, k *theme.Colors, m ui.MenuParts) {
 }
 
 // branchMenuRow is one branch, checked when it is the current one.
-func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b Branch) {
+func (p *Page) branchMenuRow(c *ui.Context, k *theme.Colors, m ui.MenuParts, b Branch, selected, reveal bool) {
 	row := menuItem(m, "branch:"+b.Name).Height(branchRowH).Padding(0, branchMenuInset).Gap(8).
 		Radius(theme.Radius).Justify(ui.Start).Cursor(ui.CursorPointer).Label(b.Name).KeepOpen()
 	if b.Current {
 		row.Background(k.PanelSel)
-	} else if row.Highlighted() {
+	} else if selected || row.Highlighted() {
 		row.Background(k.Hover)
+	}
+	if selected && reveal {
+		row.ScrollIntoView()
 	}
 	if row.Clicked() {
 		p.chooseBranch(b.Name)

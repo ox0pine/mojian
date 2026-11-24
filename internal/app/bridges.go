@@ -98,6 +98,14 @@ func listNav(in ui.Element, sel *int, n int, reveal *bool) bool {
 	return widgets.ListNav(in, sel, n, reveal)
 }
 
+func listNavSplit(in ui.Element, sel *int, n int, reveal *bool) (submit, split bool) {
+	return widgets.ListNavSplit(in, sel, n, reveal)
+}
+
+func highlightText(c *ui.Context, text string, positions []int, baseColor, hiColor ui.Color, baseWeight, hiWeight int, fontSize float32, underline bool) ui.Element {
+	return widgets.HighlightText(c, text, positions, baseColor, hiColor, baseWeight, hiWeight, fontSize, underline)
+}
+
 func (a *app) surface(e ui.Element, tint ui.Color) ui.Element {
 	return theme.Surface(e, tint)
 }
@@ -114,6 +122,10 @@ func sheetListHeight(c *ui.Context) float32 { return widgets.CommandListHeight(c
 
 func fileChoiceRow(c *ui.Context, k *colors, key any, ch fileChoice, selected bool) (ui.Element, bool) {
 	return widgets.FileRow(c, k, key, ch.title, ch.rel, selected)
+}
+
+func fileChoiceRowMatch(c *ui.Context, k *colors, key any, ch fileChoice, badge string, selected bool) (ui.Element, bool) {
+	return widgets.FileRowMatch(c, k, key, ch.title, ch.rel, ch.titlePos, ch.relPos, badge, selected)
 }
 
 func sectionLabel(c *ui.Context, k *colors, title string) ui.Element {

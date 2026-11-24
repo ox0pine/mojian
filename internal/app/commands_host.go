@@ -29,9 +29,14 @@ func (a *app) initCommands() {
 	r.Bind("new-tab", func() { a.newTab() })
 	r.Bind("reopen-closed", func() { a.reopenClosed() })
 	r.Bind("save", func() {
+		dirty, label := a.dirtySummary()
 		a.saveNowAsync(func(err error) {
 			if err != nil {
 				a.handleSaveError(err)
+				return
+			}
+			if dirty > 0 {
+				a.notifySuccess("Saved " + label)
 			}
 		})
 	})

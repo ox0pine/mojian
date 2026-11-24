@@ -1,7 +1,9 @@
 package project
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"mojian/internal/session"
 )
@@ -18,6 +20,35 @@ func (s *Store) LoadNote(n *Note) error {
 	}
 	n.load(string(data))
 	return nil
+}
+
+// ReadNoteContext reads rel from the backend without mutating any Note state,
+// so callers can run it off the UI thread with cancellation.
+func (s *Store) ReadNoteContext(ctx context.Context, rel string) (string, error) {
+	if s == nil || s.FS == nil {
+		return "", fmt.Errorf("no backend")
+	}
+	var data []byte
+	var err error
+	if backend, ok := s.FS.(interface {
+		ReadContext(context.Context, string) ([]byte, error)
+	}); ok {
+		data, err = backend.ReadContext(ctx, rel)
+	} else {
+		data, err = s.FS.Read(rel)
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// CommitLoadedNote installs body read by ReadNoteContext into n on the UI thread.
+func (s *Store) CommitLoadedNote(n *Note, body string) {
+	if n == nil || n.Loaded || n.Dirty() {
+		return
+	}
+	n.load(body)
 }
 
 // MaterializeAsset fetches a remote picture or PDF into the local cache
@@ -39,6 +70,33 @@ func (s *Store) MaterializeAsset(f *Asset) (string, error) {
 		f.Local = p
 	}
 	return p, nil
+}
+
+// FetchAssetContext fetches a remote picture or PDF off the UI thread without
+// mutating Asset fields.
+func (s *Store) FetchAssetContext(ctx context.Context, rel string, size int64, mod time.Time, hash string, isBinary bool, path string) (string, error) {
+	if isBinary {
+		return path, nil
+	}
+	if s == nil || s.FS == nil {
+		return "", fmt.Errorf("no backend")
+	}
+	if backend, ok := s.FS.(interface {
+		FetchContext(context.Context, string, int64, time.Time, string) (string, error)
+	}); ok {
+		return backend.FetchContext(ctx, rel, size, mod, hash)
+	}
+	return s.FS.Fetch(rel, size, mod, hash)
+}
+
+// CommitMaterializedAsset records a fetched local cache path on f on the UI thread.
+func (s *Store) CommitMaterializedAsset(f *Asset, localPath string) {
+	if f == nil || localPath == "" {
+		return
+	}
+	if s != nil && s.IsRemote() {
+		f.Local = localPath
+	}
 }
 
 // ExistsRel reports whether rel names a file or folder in the project.

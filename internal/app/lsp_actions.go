@@ -1105,14 +1105,19 @@ func (a *app) formatDocument() {
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		edits, err := cl.Formatting(ctx, uri, tabSize, insertSpaces)
 		cancel()
-		if err != nil || len(edits) == 0 {
+		if err != nil {
 			return
 		}
 		post(func() {
 			if a.windowSeq != winSeq || a.workspace != ws || n.Buffer().Version() != ver {
 				return
 			}
+			if len(edits) == 0 {
+				a.notify("Already formatted")
+				return
+			}
 			applyLSPTextEditsToNote(n, edits)
+			a.notifySuccess("Formatted " + n.Title)
 			a.invalidate()
 		})
 	}()
@@ -1125,6 +1130,7 @@ func (a *app) restartLSP() {
 		return
 	}
 	a.closeWorkspaceLSP(a.workspace)
+	a.notify("Restarting language servers…")
 	a.invalidate()
 }
 

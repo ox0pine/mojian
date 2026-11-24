@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	gitpage "mojian/internal/git"
@@ -26,6 +27,8 @@ type branchState struct {
 	shown     bool // the menu was drawn open on the last pass
 	creating  bool
 	name      string
+	query     string
+	sel       int
 	err       string
 }
 
@@ -87,6 +90,8 @@ func (a *app) openBranchPicker() {
 	a.closeModals()
 	a.branch.creating = false
 	a.branch.name = ""
+	a.branch.query = ""
+	a.branch.sel = -1
 	a.branch.err = ""
 	if a.branch.loaded && a.branch.data.Root == "" {
 		// There is no chip to open under; say why the command did
@@ -176,8 +181,36 @@ func (a *app) branchChip(c *ui.Context, k *colors, compact bool) {
 func (a *app) beginBranchMenu() {
 	a.branch.creating = false
 	a.branch.name = ""
+	a.branch.query = ""
+	a.branch.sel = -1
 	a.branch.err = ""
 	a.refreshBranch()
+}
+
+type branchChoice struct {
+	branch gitpage.Branch
+	score  int
+}
+
+func filterBranches(branches []gitpage.Branch, query string) []gitpage.Branch {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return branches
+	}
+	var scored []branchChoice
+	for _, b := range branches {
+		if sc, _, ok := fuzzyScore(b.Name, q); ok {
+			scored = append(scored, branchChoice{branch: b, score: sc})
+		}
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+	out := make([]gitpage.Branch, len(scored))
+	for i, s := range scored {
+		out[i] = s.branch
+	}
+	return out
 }
 
 // branchMenuBody draws the menu: the branches, or the new branch field.
@@ -210,6 +243,11 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 		keys = ""
 	}
 	menuHeader(c, k, "Branches", keys)
+	filtered := filterBranches(d.Branches, a.branch.query)
+	if a.branch.sel >= len(filtered) {
+		a.branch.sel = len(filtered) - 1
+	}
+	reveal := false
 	switch {
 	case a.branch.loading && len(d.Branches) == 0:
 		menuNote(c, k, "Reading branches…", false)
@@ -220,11 +258,52 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 		}
 		menuNote(c, k, msg, d.Err != "")
 	default:
-		menuList(c, func() {
-			for _, b := range d.Branches {
-				a.branchMenuRow(c, k, m, b)
+		ui.Box(c).Padding(2, menuInset, 6, menuInset).Children(func() {
+			in := ui.SearchField(c.Key("branch-filter"), &a.branch.query).FillWidth().
+				Height(30).Padding(0, 8).Gap(6).Radius(radius-2).Background(k.Hover).
+				Border(0, ui.Transparent).FontSize(c.Theme().Rem(12.0 / 13)).
+				Placeholder("Filter branches…").Label("Filter branches").AutoFocus()
+			if in.Changed() {
+				if len(filtered) > 0 {
+					a.branch.sel = 0
+				} else {
+					a.branch.sel = -1
+				}
+				reveal = true
+			}
+			switch {
+			case in.Shortcut(0, ui.KeyDown) && len(filtered) > 0:
+				if a.branch.sel < 0 {
+					a.branch.sel = 0
+				} else {
+					a.branch.sel = min(a.branch.sel+1, len(filtered)-1)
+				}
+				reveal = true
+			case in.Shortcut(0, ui.KeyUp) && len(filtered) > 0:
+				if a.branch.sel > 0 {
+					a.branch.sel--
+				} else {
+					a.branch.sel = 0
+				}
+				reveal = true
+			}
+			if in.Submitted() && len(filtered) > 0 {
+				idx := a.branch.sel
+				if idx < 0 || idx >= len(filtered) {
+					idx = 0
+				}
+				a.checkoutBranch(filtered[idx].Name)
 			}
 		})
+		if len(filtered) == 0 {
+			menuNote(c, k, "No matching branches", false)
+		} else {
+			menuList(c, func() {
+				for i, b := range filtered {
+					a.branchMenuRow(c, k, m, b, i == a.branch.sel, reveal)
+				}
+			})
+		}
 	}
 	if a.branch.err != "" {
 		menuNote(c, k, a.branch.err, true)
@@ -239,8 +318,16 @@ func (a *app) branchMenuBody(c *ui.Context, k *colors, m ui.MenuParts) {
 }
 
 // branchMenuRow is one branch in the menu, checked when it is current.
-func (a *app) branchMenuRow(c *ui.Context, k *colors, m ui.MenuParts, b gitpage.Branch) {
+func (a *app) branchMenuRow(c *ui.Context, k *colors, m ui.MenuParts, b gitpage.Branch, selected, reveal bool) {
 	row := menuChoice(c, k, m, "branch:"+b.Name, "git-branch", b.Name, b.Current).KeepOpen()
+	if selected {
+		if !b.Current {
+			row.Background(k.Hover)
+		}
+		if reveal {
+			row.ScrollIntoView()
+		}
+	}
 	if row.Clicked() {
 		a.checkoutBranch(b.Name)
 	}
@@ -313,6 +400,8 @@ func (a *app) runBranchChange(what string, fn func(gitpage.Runner) error) {
 	ws.branch.open = false
 	ws.branch.creating = false
 	ws.branch.name = ""
+	ws.branch.query = ""
+	ws.branch.sel = -1
 	a.invalidate()
 	apply := func(err error) {
 		if changeSeq != ws.branch.changeSeq {
@@ -340,6 +429,9 @@ func (a *app) runBranchChange(what string, fn func(gitpage.Runner) error) {
 			a.fail(reloadErr)
 		}
 		if current {
+			if reloadErr == nil {
+				a.notifySuccess(toastLabelForBranchChange(what))
+			}
 			if a.git.Open {
 				a.refreshGit()
 			}
@@ -356,6 +448,16 @@ func (a *app) runBranchChange(what string, fn func(gitpage.Runner) error) {
 		err := fn(runner)
 		win.Update(func() { apply(err) })
 	}()
+}
+
+func toastLabelForBranchChange(what string) string {
+	if name, ok := strings.CutPrefix(what, "switching to "); ok {
+		return "Switched to " + name
+	}
+	if name, ok := strings.CutPrefix(what, "creating "); ok {
+		return "Created and switched to " + name
+	}
+	return what
 }
 
 // dirtyNotes counts the notes whose text only exists in memory.

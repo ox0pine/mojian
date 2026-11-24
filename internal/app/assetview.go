@@ -71,7 +71,7 @@ func (a *app) assetBody(c *ui.Context, k *colors, p *pane) {
 	if p.Asset == nil {
 		return
 	}
-	if !a.loadAsset(p.Asset) {
+	if !a.isAsyncRemote() && !a.loadAsset(p.Asset) {
 		return
 	}
 	if a.focusReq == p {

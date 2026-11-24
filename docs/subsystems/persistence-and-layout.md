@@ -50,10 +50,11 @@ that produce both files, and the environment overrides that move them.
 ## Contracts and failure behavior
 
 - The layout JSON field names are compatibility surface: `tabs`, `active`, `name`, `root`, `focus`,
-  `zoom`, `vertical`, `share`, `a`, `b`, `pane`, `id`, `note`, `asset`, `preview`, `terminal`,
-  `sid`, `host`, `server`. Legacy `columns`/`panes` are still read through `restoreColumns` so old
-  layouts survive. Persistent Search panes (`pane.Search`) are transient in-memory workspaces and are
-  omitted from `layout.json`.
+  `zoom`, `vertical`, `share`, `a`, `b`, `pane`, `id`, `note`, `asset`, `preview`, `line`, `col`,
+  `scrollY`, `terminal`, `sid`, `host`, `server`. Legacy `columns`/`panes` are still read through
+  `restoreColumns` so old layouts survive. Editor panes persist cursor (`line`, `col`) and vertical
+  scroll (`scrollY`) and restore them after the note loads and lays out. Persistent Search panes
+  (`pane.Search`) are transient in-memory workspaces and are omitted from `layout.json`.
 - `settings.json` persists `prefs.Prefs` (including `editorWhitespace`, `editorWrapGuides`, and
   terminal status bar telemetry fields `statusBarCPU`, `statusBarMemory`, `statusBarGPU`,
   `statusBarInterval`) plus `shortcuts`, `project`, `projects`, `server`, `remotePath`,

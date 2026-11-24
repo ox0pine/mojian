@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -191,10 +193,47 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				return
 			}
 			if p.Asset != nil {
+				if p.loading {
+					a.paneLoadingBody(c, k, p, p.Asset.Name, false)
+					return
+				}
+				if p.loadErr != "" {
+					a.paneLoadErrorBody(c, k, p, p.loadErr, false)
+					return
+				}
+				if a.isAsyncRemote() && !p.Asset.IsBinary() && p.Asset.Local == "" {
+					if !overlay {
+						a.later(func() { a.startLoadAsset(p, p.Asset) })
+					}
+					a.paneLoadingBody(c, k, p, p.Asset.Name, false)
+					return
+				}
 				a.assetBody(c, k, p)
 				return
 			}
 			if p.Note == nil {
+				return
+			}
+			if p.loading {
+				a.paneLoadingBody(c, k, p, p.Note.Title, true)
+				return
+			}
+			if p.loadErr != "" {
+				a.paneLoadErrorBody(c, k, p, p.loadErr, true)
+				return
+			}
+			if !p.Note.Loaded {
+				if !overlay {
+					if a.isAsyncRemote() {
+						a.later(func() { a.startLoadNote(p, p.Note) })
+					} else {
+						a.later(func() {
+							_ = a.loadNote(p.Note)
+							a.invalidate()
+						})
+					}
+				}
+				a.paneLoadingBody(c, k, p, p.Note.Title, true)
 				return
 			}
 			if p.Preview && isMarkdownPath(p.Note.Path) {
@@ -206,6 +245,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				st = p.Note.NewState()
 				p.state = st
 			}
+			a.applyPendingPanePos(p)
 			st.Theme = a.editorTheme(c)
 			st.Font = a.editorFont()
 			st.LineHeight = float32(a.lineHeight())
@@ -246,9 +286,14 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 					return p.vim.Handle(st, ev, vim.Actions{
 						Save: func() {
 							a.later(func() {
+								dirty, label := a.dirtySummary()
 								a.saveNowAsync(func(err error) {
 									if err != nil {
 										a.handleSaveError(err)
+										return
+									}
+									if dirty > 0 {
+										a.notifySuccess("Saved " + label)
 									}
 								})
 							})
@@ -291,6 +336,23 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			}
 			tv := editor.View(c, st).Fill()
 			if !overlay {
+				if p.hasPendingScroll && st.ViewportHeight() > 0 {
+					st.SetScrollY(p.pendingScroll)
+					p.lastSavedScroll = st.ScrollY()
+					p.hasPendingScroll = false
+					a.invalidate()
+				} else if !p.hasPendingScroll {
+					pos := st.CursorPos()
+					sy := st.ScrollY()
+					if pos.Line != p.lastSavedLine || pos.Col != p.lastSavedCol || math.Abs(sy-p.lastSavedScroll) >= 1 {
+						p.lastSavedLine = pos.Line
+						p.lastSavedCol = pos.Col
+						p.lastSavedScroll = sy
+						a.changed()
+					}
+				}
+			}
+			if !overlay {
 				a.finishCompletionFrame(p, st)
 			}
 			if !overlay && focused && p.sigHelp != nil {
@@ -305,6 +367,9 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			}
 			if !overlay && tv.Focused() && t.Focus != p {
 				t.Focus = p
+				if p.Note != nil {
+					a.touchMRU(p.Note.Rel)
+				}
 				a.changed()
 			}
 		})
@@ -343,6 +408,11 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		clearPaneAttention(p)
 		if t.Focus != p {
 			t.Focus = p
+			if p.Note != nil {
+				a.touchMRU(p.Note.Rel)
+			} else if p.Asset != nil {
+				a.touchMRU(p.Asset.Rel)
+			}
 			if !p.Preview && (p.Note != nil || p.Term != nil) {
 				a.focusReq = p
 			}
@@ -350,6 +420,37 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		}
 	}
 	return card
+}
+
+func (a *app) paneLoadingBody(c *ui.Context, k *colors, p *pane, name string, isNote bool) {
+	ui.Column(c).Fill().Center().Padding(24).Gap(12).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Spinner(c).Size(14, 14).Label("Loading " + name)
+			ui.Text(c, "Loading "+name+"…").FontSize(rowTitle).TextColor(k.TextMuted)
+		})
+		if ui.Button(c, "Cancel").Clicked() {
+			a.later(func() {
+				p.cancelLoad()
+				p.loadErr = "Loading canceled."
+				a.invalidate()
+			})
+		}
+	})
+}
+
+func (a *app) paneLoadErrorBody(c *ui.Context, k *colors, p *pane, msg string, isNote bool) {
+	emptyState(c, k, "file-text", k.Danger, "Could not load file", msg, func() {
+		if ui.Button(c, "Retry").Clicked() {
+			a.later(func() {
+				p.loadErr = ""
+				if isNote && p.Note != nil {
+					a.startLoadNote(p, p.Note)
+				} else if !isNote && p.Asset != nil {
+					a.startLoadAsset(p, p.Asset)
+				}
+			})
+		}
+	})
 }
 
 // movePaneTo drops from on the named edge of to and inserts it there.
@@ -405,9 +506,11 @@ func (a *app) dropIndicator(c *ui.Context, k *colors, zone paneDrop) {
 // emptyPaneBody is the file picker inside a blank split: type to filter,
 // Enter or a click opens the file in this pane.
 func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
-	choices := a.paneChoices(p.emptyQuery)
+	fileQuery, line, col, hasLine := parseFileLineQuery(p.emptyQuery)
+	choices := a.paneChoices(fileQuery)
 	p.emptySel = min(max(p.emptySel, 0), max(len(choices)-1, 0))
 	reveal := false
+	badge := formatLineColBadge(line, col, hasLine)
 	ui.Column(c).Fill().Padding(14, 16).Gap(8).Children(func() {
 		ui.Text(c, "Open a file in this pane").FontSize(c.Theme().Rem(1)).
 			FontWeight(600).TextColor(k.Text)
@@ -423,9 +526,16 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 				t.Focus = p
 				a.changed()
 			}
-			if listNav(in, &p.emptySel, len(choices), &reveal) {
+			submit, split := listNavSplit(in, &p.emptySel, len(choices), &reveal)
+			if (submit || split) && len(choices) > 0 {
 				ch := choices[p.emptySel]
-				a.later(func() { a.openPaneChoice(t, p, ch) })
+				a.later(func() {
+					if split {
+						a.openFileInSplit(ch.note, ch.asset, line, max(col-1, 0))
+					} else {
+						a.openPaneChoiceAt(t, p, ch, line, max(col-1, 0))
+					}
+				})
 			}
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2).Gap(2).Children(func() {
@@ -436,7 +546,7 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 			for i, ch := range choices {
 				i, ch := i, ch
 				selected := i == p.emptySel
-				row, clicked := fileChoiceRow(c, k, "open:"+p.ID+":"+ch.rel, ch, selected)
+				row, clicked := fileChoiceRowMatch(c, k, "open:"+p.ID+":"+ch.rel, ch, badge, selected)
 				if selected {
 					row.Background(c.Theme().Accent)
 				}
@@ -444,7 +554,7 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 					row.ScrollIntoView()
 				}
 				if clicked {
-					a.later(func() { a.openPaneChoice(t, p, ch) })
+					a.later(func() { a.openPaneChoiceAt(t, p, ch, line, max(col-1, 0)) })
 				}
 			}
 		})
@@ -452,25 +562,38 @@ func (a *app) emptyPaneBody(c *ui.Context, k *colors, t *tab, p *pane) {
 }
 
 type fileChoice struct {
-	title string
-	rel   string
-	note  *note
-	asset *assetFile
+	title    string
+	rel      string
+	note     *note
+	asset    *assetFile
+	score    int
+	titlePos []int
+	relPos   []int
 }
 
-// paneChoices lists the files a blank pane can open, filtered by q.
-func (a *app) paneChoices(q string) []fileChoice {
+// paneChoices lists the files a blank pane can open, filtered and ranked by q.
+func (a *app) paneChoices(raw string) []fileChoice {
 	if a.store == nil {
 		return nil
 	}
-	q = strings.ToLower(strings.TrimSpace(q))
-	match := func(s string) bool { return q == "" || fuzzy(strings.ToLower(s), q) }
+	q, _, _, _ := parseFileLineQuery(raw)
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return a.mruFileChoices()
+	}
 	var out []fileChoice
 	for _, n := range a.store.Sorted() {
-		if !match(n.Title + " " + n.Rel) {
+		score, tPos, rPos, ok := scoreFileMatch(n.Title, n.Rel, q)
+		if !ok {
 			continue
 		}
-		out = append(out, fileChoice{title: n.Title, rel: n.Rel, note: n})
+		if rank := a.mruRank(n.Rel); rank >= 0 {
+			score += max(40-rank*2, 4)
+		}
+		out = append(out, fileChoice{
+			title: n.Title, rel: n.Rel, note: n,
+			score: score, titlePos: tPos, relPos: rPos,
+		})
 	}
 	var assets []*assetFile
 	for _, f := range a.store.Assets {
@@ -478,25 +601,97 @@ func (a *app) paneChoices(q string) []fileChoice {
 	}
 	sort.Slice(assets, func(i, j int) bool { return assets[i].Rel < assets[j].Rel })
 	for _, f := range assets {
-		if !match(f.Name + " " + f.Rel) {
+		score, tPos, rPos, ok := scoreFileMatch(f.Name, f.Rel, q)
+		if !ok {
 			continue
 		}
+		if rank := a.mruRank(f.Rel); rank >= 0 {
+			score += max(40-rank*2, 4)
+		}
+		out = append(out, fileChoice{
+			title: f.Name, rel: f.Rel, asset: f,
+			score: score, titlePos: tPos, relPos: rPos,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].score != out[j].score {
+			return out[i].score > out[j].score
+		}
+		return out[i].rel < out[j].rel
+	})
+	return out
+}
+
+func (a *app) mruFileChoices() []fileChoice {
+	if a.store == nil {
+		return nil
+	}
+	var out []fileChoice
+	seen := map[string]bool{}
+	if a.workspace != nil {
+		for _, rel := range a.workspace.mru {
+			if seen[rel] {
+				continue
+			}
+			if n := a.store.ByRelPath(rel); n != nil {
+				seen[rel] = true
+				out = append(out, fileChoice{title: n.Title, rel: n.Rel, note: n})
+			} else if f := a.store.AssetByRel(rel); f != nil {
+				seen[rel] = true
+				out = append(out, fileChoice{title: f.Name, rel: f.Rel, asset: f})
+			}
+		}
+	}
+	for _, n := range a.store.Sorted() {
+		if seen[n.Rel] {
+			continue
+		}
+		seen[n.Rel] = true
+		out = append(out, fileChoice{title: n.Title, rel: n.Rel, note: n})
+	}
+	var assets []*assetFile
+	for _, f := range a.store.Assets {
+		if seen[f.Rel] {
+			continue
+		}
+		assets = append(assets, f)
+	}
+	sort.Slice(assets, func(i, j int) bool { return assets[i].Rel < assets[j].Rel })
+	for _, f := range assets {
 		out = append(out, fileChoice{title: f.Name, rel: f.Rel, asset: f})
 	}
 	return out
 }
 
 func (a *app) openPaneChoice(t *tab, p *pane, ch fileChoice) {
+	a.openPaneChoiceAt(t, p, ch, 0, 0)
+}
+
+func (a *app) openPaneChoiceAt(t *tab, p *pane, ch fileChoice, line, col int) {
 	if t == nil || t != a.tab() || p == nil || !t.contains(p) {
 		return
 	}
 	t.Focus = p
 	switch {
 	case ch.note != nil:
-		a.openNote(ch.note)
+		if line > 0 {
+			a.openNoteAt(ch.note.Rel, line, col, col)
+		} else {
+			a.openNote(ch.note)
+		}
 	case ch.asset != nil:
 		a.openAsset(ch.asset)
 	}
+}
+
+func formatLineColBadge(line, col int, hasLine bool) string {
+	if !hasLine || line <= 0 {
+		return ""
+	}
+	if col > 0 {
+		return fmt.Sprintf(":%d:%d", line, col)
+	}
+	return fmt.Sprintf(":%d", line)
 }
 
 func paneName(p *pane) string {
