@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.3
+
+- Liquid Glass editor overlays & writing polish: wires `RenderFindBar`, `RenderGoToLine`,
+  `RenderCompletions`, and `RenderHover` onto Mojian's Liquid Glass surfaces; exposes **Render
+  whitespace** (`EditorWhitespace`) and **Column rulers** (`EditorWrapGuides`) in **Settings ›
+  Editor**; and adds multi-cursor/selection commands (`Add Next Occurrence`, `Select All
+  Occurrences`, `Add Cursor Above/Below`, `Split Selection into Lines`, `Expand Selection`,
+  `Shrink Selection`) to the Command Palette, **Edit › Selection**, and editor context menu.
+- Deeper LSP engineering workflow: broadcasts `workspace/didChangeWatchedFiles` across local and
+  remote watchers plus Explorer file operations, adds per-language `lspServers` overrides (`command`,
+  `disabled`, `initializationOptions`) in `settings.json`, expands auto-detection (`ruff`,
+  `marksman`, `taplo`, `kotlin-language-server`, `intelephense`/`phpactor`, `docker-langserver`),
+  adds the **LSP Status & Logs…** modal (`lsp-status`, clickable from the status bar) with captured
+  stderr and `window/logMessage` logs, supports `workspace/applyEdit`, `Go to Implementation`
+  (`⌘F12` / `Ctrl+F12`), `Go to Type Definition`, and lazy `completionItem/resolve` auto-imports via
+  targeted in-memory `additionalTextEdits`.
+- Upgraded Project Search & Replace: adds Whole Word (`ab`) matching locally and on remote
+  `mojian-server`, file-grouped collapsible results, inline replacement previews, per-file (`Replace
+  File`) and single-match (`Replace`) in-memory actions, and **Open in Pane** (`search-in-pane`)
+  for persistent split search panes.
+- Maintenance: removed the unused `github.com/coder/acp-go-sdk` dependency.
+
 ## 0.7.2
 
 - Pane drag-and-drop: restores moving panes by dropping them on another pane's top, bottom, left or
