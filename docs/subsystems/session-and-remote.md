@@ -23,9 +23,12 @@ its bundled `ssh.exe`.
 - [`internal/session/server.go`](../../internal/session/server.go) — `Serve`, `serveConn` and
   `dispatch`, `session` and `attached` streams, `listTree`.
 - [`internal/session/client.go`](../../internal/session/client.go) — `NewClient`, `Connect`,
-  `ConnectAt`, `Ready`, `Client`, `Stream`, `StartLSP`, `Watch`, `Stop`, and the file operations
-  (`ListTree`, `Search`, `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`, `Copy`, `Exec`,
-  `ExecStdin`, `Stat`).
+  `ConnectAt`, `Ready`, `Client`, `Stream`, `StartLSP`, `Watch`, `Stop`, `SysStatsContext`, and
+  the file operations (`ListTree`, `Search`, `ReadFile`, `WriteFile`, `Mkdir`, `Rename`, `Remove`,
+  `Copy`, `Exec`, `ExecStdin`, `Stat`).
+- [`internal/sysstat/`](../../internal/sysstat) — pure-Go hardware telemetry sampler (`CPU`,
+  `Memory`, `GPU`) shared by the local app (macOS Mach/IOKit via `purego`, Linux `/proc` &
+  DRM/NVML, Windows `kernel32`/`pdh`) and the Linux `mojian-server` (`sysStats` control RPC).
 - [`internal/session/lsp_unix.go`](../../internal/session/lsp_unix.go) and
   [`internal/session/watch.go`](../../internal/session/watch.go) — multiplexed streams on
   `mojian-server` for running remote LSP servers over stdio and pushing remote project file-change

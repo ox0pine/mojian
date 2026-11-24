@@ -38,9 +38,14 @@ type Prefs struct {
 	EditorWrapGuides    string  `json:"editorWrapGuides,omitempty"`
 	EditorGitBlame      bool    `json:"editorGitBlame,omitempty"`
 	NoInlayHints       bool `json:"noInlayHints,omitempty"`
-	EditorVimMode      bool `json:"editorVimMode,omitempty"`
-	EditorFormatOnSave bool `json:"editorFormatOnSave,omitempty"`
-	ShowStatusBar       bool    `json:"showStatusBar,omitempty"`
+	EditorVimMode       bool `json:"editorVimMode,omitempty"`
+	EditorFormatOnSave  bool `json:"editorFormatOnSave,omitempty"`
+	ShowStatusBar       bool `json:"showStatusBar,omitempty"`
+	StatusBarSysMode    int  `json:"statusBarSysMode,omitempty"`  // 0 = terminal panes only, 1 = always
+	StatusBarCPU        bool `json:"statusBarCPU,omitempty"`      // default false
+	StatusBarMemory     bool `json:"statusBarMemory,omitempty"`   // default false
+	StatusBarGPU        bool `json:"statusBarGPU,omitempty"`      // default false
+	StatusBarInterval   int  `json:"statusBarInterval,omitempty"` // 2, 5, 10 seconds; default 2
 	TerminalFontFamily  string  `json:"terminalFontFamily,omitempty"`
 	TerminalFontSize    float64 `json:"terminalFontSize,omitempty"`
 	ShellPath           string  `json:"shellPath,omitempty"`
@@ -66,6 +71,7 @@ var defaults = Prefs{
 	Theme:          "petal",
 	EditorFontSize: 12.5, EditorLineHeight: 1.55, EditorTabSize: 4,
 	EditorScrollMargin: 3,
+	StatusBarInterval:  2,
 	TerminalFontSize:   12.5, TerminalLineHeight: 1, TerminalScrollback: 10,
 	NotifyBell: true, NotifyExit: true,
 }
@@ -124,6 +130,14 @@ func (p *Prefs) Sanitize() {
 		p.EditorWhitespace = 0
 	}
 	p.EditorWrapGuides = strings.TrimSpace(p.EditorWrapGuides)
+	if p.StatusBarSysMode < 0 || p.StatusBarSysMode > 1 {
+		p.StatusBarSysMode = 0
+	}
+	switch p.StatusBarInterval {
+	case 2, 5, 10:
+	default:
+		p.StatusBarInterval = 2
+	}
 }
 
 // ParseWrapGuides parses comma- or space-separated column numbers in [20, 400],

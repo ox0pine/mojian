@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"mojian/internal/sysstat"
 )
 
 // Client is a framed, multiplexed connection to the session server: one
@@ -726,5 +728,10 @@ func (c *Client) Search(root string, opts SearchOptions) (out SearchResult, err 
 }
 func (c *Client) SearchContext(ctx context.Context, root string, opts SearchOptions) (out SearchResult, err error) {
 	err = c.callContext(ctx, Request{Op: "search", Path: root, Search: &opts}, &out)
+	return
+}
+
+func (c *Client) SysStatsContext(ctx context.Context, opts sysstat.Options) (out sysstat.Snapshot, err error) {
+	err = c.callContext(ctx, Request{Op: "sysStats", SysStats: &opts}, &out)
 	return
 }

@@ -199,6 +199,7 @@ func (a *app) activateWorkspace(ws *workspace) {
 // stays for a later reconnect.
 func (a *app) abandonActiveWorkspace() {
 	a.stopProjectWatcher()
+	a.stopSysStats()
 	if a.workspace == nil {
 		return
 	}
@@ -298,6 +299,7 @@ func (a *app) registerActiveWorkspace() {
 // connection, as quitting the app does. The servers keep running.
 func (a *app) closeWorkspaces() {
 	a.stopProjectWatcher()
+	a.stopSysStats()
 	a.cancelRemoteReconnect("")
 	a.initWorkspaces()
 	a.remoteClosing = true

@@ -184,11 +184,16 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through `iconBtnLg` (30), rather than
   a pair per call site.
 - An optional quiet 24-pixel bottom status bar (`internal/app/statusbar.go`, controlled by
-  `prefs.ShowStatusBar`, off by default) shows the active Vim mode badge, active/starting/failed/disabled
-  LSP server status (clickable to open the LSP Status & Logs modal) and
-  diagnostic counts, SSH reconnect status, clickable cursor `Ln/Col` (opens Go to Line), clickable
-  indentation menu (`Spaces`/`Tabs` and width override, layered over `.editorconfig` and global
-  preferences), clickable line ending toggle (`LF`/`CRLF`) and language name.
+  `prefs.ShowStatusBar`, off by default) is context-aware: on editor panes it shows Vim mode badge,
+  LSP server status (clickable to open the LSP Status & Logs modal) and diagnostic counts, SSH
+  reconnect status, clickable cursor `Ln/Col` (opens Go to Line), clickable indentation menu
+  (`Spaces`/`Tabs` and width override, layered over `.editorconfig` and global preferences),
+  clickable line ending toggle (`LF`/`CRLF`) and language name. When a terminal pane is focused (or
+  across all panes when `StatusBarSysMode` is Always), `internal/app/sysstat.go` polls the targeted
+  local or remote host via `internal/sysstat` / `mojian-server` (`sysStats` RPC) to display the
+  host/directory badge, active `CPU`, `MEM`, and `GPU` metrics, and terminal `cols×rows`. In
+  **Settings › Editor**, enabling `Status bar` expands a collapsible sub-settings block (`System
+  status`, `CPU usage`, `Memory usage`, `GPU usage` — all off by default — and `Refresh interval`).
 - Optional Vim modal editing (`internal/app/vim/`, controlled by `prefs.EditorVimMode`) intercepts
   editor key events through `editor.State.OnInput`, sets `NoInputMethod` in Normal/Visual/Command
   modes so CJK IMEs never hijack motions, switches `CursorShape` (`Block`/`Bar`/`Underline`), uses

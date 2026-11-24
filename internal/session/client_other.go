@@ -6,6 +6,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"mojian/internal/sysstat"
 )
 
 // Client is unavailable on this platform.
@@ -59,6 +61,9 @@ func (c *Client) Search(string, SearchOptions) (SearchResult, error) {
 }
 func (c *Client) SearchContext(context.Context, string, SearchOptions) (SearchResult, error) {
 	return SearchResult{}, errUnsupported
+}
+func (c *Client) SysStatsContext(context.Context, sysstat.Options) (sysstat.Snapshot, error) {
+	return sysstat.Snapshot{}, errUnsupported
 }
 func (c *Client) ReadFile(string) ([]byte, error) { return nil, errUnsupported }
 func (c *Client) ReadFileContext(context.Context, string) ([]byte, error) {

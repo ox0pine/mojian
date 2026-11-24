@@ -51,6 +51,7 @@ type Row struct {
 	ID      string
 	Cat     int
 	Section string
+	Parent  string
 	Title   string
 	Detail  string
 	Words   string
@@ -150,9 +151,24 @@ var Rows = []Row{
 	{ID: "editor-format-on-save", Cat: Editor, Section: "WRITING", Title: "Format on save",
 		Detail: "Format dirty files with their active language server when saving.", Words: "format on save lsp auto gofmt prettier indent",
 		Kind: Toggle, Pref: "EditorFormatOnSave"},
-	{ID: "show-status-bar", Cat: Editor, Section: "WRITING", Title: "Status bar",
-		Detail: "Show a quiet bar with cursor position, indentation, diagnostics and Vim mode.", Words: "status bar footer cursor line column diagnostics lsp vim",
+	{ID: "show-status-bar", Cat: Editor, Section: "STATUS BAR", Title: "Status bar",
+		Detail: "Show a quiet bar with cursor position, diagnostics, Vim mode and optional system telemetry.", Words: "status bar footer cursor line column diagnostics lsp vim cpu memory gpu system telemetry",
 		Kind: Toggle, Pref: "ShowStatusBar"},
+	{ID: "status-bar-sys-mode", Cat: Editor, Section: "STATUS BAR", Parent: "show-status-bar", Title: "System status",
+		Detail: "When to show CPU, Memory and GPU metrics on the status bar.", Words: "system status terminal pane always host machine metrics",
+		Kind: Choice, Pref: "StatusBarSysMode", Options: []string{"Terminal panes", "Always"}, Values: []int{0, 1}},
+	{ID: "status-bar-cpu", Cat: Editor, Section: "STATUS BAR", Parent: "show-status-bar", Title: "CPU usage",
+		Detail: "Sample processor utilization percentage (local or remote Linux host).", Words: "cpu processor usage load telemetry status bar",
+		Kind: Toggle, Pref: "StatusBarCPU"},
+	{ID: "status-bar-memory", Cat: Editor, Section: "STATUS BAR", Parent: "show-status-bar", Title: "Memory usage",
+		Detail: "Show used and total physical memory (local or remote Linux host).", Words: "memory ram usage telemetry status bar",
+		Kind: Toggle, Pref: "StatusBarMemory"},
+	{ID: "status-bar-gpu", Cat: Editor, Section: "STATUS BAR", Parent: "show-status-bar", Title: "GPU usage",
+		Detail: "Sample graphics processor utilization when supported on this machine or remote host.", Words: "gpu graphics vram usage metal iokit drm nvidia pdh telemetry",
+		Kind: Toggle, Pref: "StatusBarGPU"},
+	{ID: "status-bar-interval", Cat: Editor, Section: "STATUS BAR", Parent: "show-status-bar", Title: "Refresh interval",
+		Detail: "How often active status bar metrics are sampled.", Words: "refresh interval polling rate seconds cpu gpu memory",
+		Kind: Choice, Pref: "StatusBarInterval", Options: []string{"2s", "5s", "10s"}, Values: []int{2, 5, 10}},
 
 	// Terminal
 	{ID: "terminal-font", Cat: Terminal, Section: "TYPE", Title: "Terminal font",

@@ -26,6 +26,7 @@ import (
 	"mojian/internal/prefs"
 	"mojian/internal/remote/remotehost"
 	"mojian/internal/session"
+	"mojian/internal/sysstat"
 	"mojian/internal/update"
 
 	"github.com/egoist/mygo"
@@ -290,6 +291,17 @@ type app struct {
 	edID    string
 	edDark  bool
 	edTheme *editor.Theme
+
+	sysSampler           *sysstat.Sampler
+	sysCancel            context.CancelFunc
+	sysSeq               int
+	sysKey               string
+	sysSnap              sysstat.Snapshot
+	sysSnapHost          string
+	sysSnapOK            bool
+	sysRemoteUnsupported map[*session.Client]bool
+	sysGPUCapSet         bool
+	sysGPUCap            sysstat.Capabilities
 }
 
 func Run(startup Startup) {

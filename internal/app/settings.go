@@ -323,8 +323,23 @@ func (h settingsHost) UpdateState() settingsui.UpdateState {
 	return st
 }
 
+func (h settingsHost) GPUDetail() string {
+	return h.a.gpuCapabilityDetail()
+}
+
 func (h settingsHost) SettingsHostsPage(c *ui.Context, k *theme.Colors) {
 	h.a.settingsHostsPage(c, k)
+}
+
+func (a *app) statusBarInterval() time.Duration {
+	switch a.StatusBarInterval {
+	case 5:
+		return 5 * time.Second
+	case 10:
+		return 10 * time.Second
+	default:
+		return 2 * time.Second
+	}
 }
 
 // settingsWindowView renders Settings with the app as its host.

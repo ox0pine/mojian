@@ -182,6 +182,7 @@ func (a *app) windowClosed() {
 	a.cancelRemoteSave()
 	a.reloadStore = nil
 	a.reloadSeq++
+	a.stopSysStats()
 	// A connection task belongs to the window that opened it: its result
 	// would update a closed window, so cancel it or the next window opens
 	// on a loading card that never clears.

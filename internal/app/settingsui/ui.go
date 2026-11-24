@@ -44,6 +44,7 @@ type UI struct {
 	Query        string
 
 	shellCmd shellCommandState
+	Collapsed map[string]bool
 
 	FontPick    bool
 	FontPickFor int
@@ -113,6 +114,7 @@ type Host interface {
 	InstallAvailableUpdate()
 	RestartForUpdate()
 
+	GPUDetail() string
 	SettingsHostsPage(*ui.Context, *colors)
 }
 
@@ -207,6 +209,7 @@ func (u *UI) updateSummary() string                      { return u.UpdateState(
 func (u *UI) checkForUpdates()                           { u.CheckForUpdates() }
 func (u *UI) installAvailableUpdate()                    { u.InstallAvailableUpdate() }
 func (u *UI) restartForUpdate()                          { u.RestartForUpdate() }
+func (u *UI) gpuDetail() string                            { return u.GPUDetail() }
 func (u *UI) settingsHostsPage(c *ui.Context, k *colors) { u.SettingsHostsPage(c, k) }
 
 // Section and Note are the primitives the app's Hosts page uses while it

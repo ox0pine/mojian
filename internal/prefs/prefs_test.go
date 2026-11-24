@@ -34,3 +34,34 @@ func TestSanitizeWhitespaceAndWrapGuides(t *testing.T) {
 		t.Fatalf("valid EditorWhitespace = %d, want 4", p.EditorWhitespace)
 	}
 }
+
+func TestSanitizeStatusBarPrefs(t *testing.T) {
+	def := Default()
+	if def.ShowStatusBar || def.StatusBarCPU || def.StatusBarMemory || def.StatusBarGPU {
+		t.Fatalf("status bar and CPU/Mem/GPU toggles must default to false: %+v", def)
+	}
+	if def.StatusBarSysMode != 0 {
+		t.Fatalf("default StatusBarSysMode = %d, want 0 (Terminal panes)", def.StatusBarSysMode)
+	}
+	if def.StatusBarInterval != 2 {
+		t.Fatalf("default StatusBarInterval = %d, want 2", def.StatusBarInterval)
+	}
+
+	p := def
+	p.StatusBarSysMode = 7
+	p.StatusBarInterval = 99
+	p.Sanitize()
+	if p.StatusBarSysMode != 0 {
+		t.Fatalf("sanitized StatusBarSysMode = %d, want 0", p.StatusBarSysMode)
+	}
+	if p.StatusBarInterval != 2 {
+		t.Fatalf("sanitized StatusBarInterval = %d, want 2", p.StatusBarInterval)
+	}
+
+	p.StatusBarSysMode = 1
+	p.StatusBarInterval = 10
+	p.Sanitize()
+	if p.StatusBarSysMode != 1 || p.StatusBarInterval != 10 {
+		t.Fatalf("valid status bar prefs clobbered: mode=%d interval=%d", p.StatusBarSysMode, p.StatusBarInterval)
+	}
+}

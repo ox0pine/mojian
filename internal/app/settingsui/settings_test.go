@@ -32,6 +32,18 @@ func TestSettingsRowAvailabilityMatchesPlatform(t *testing.T) {
 	}
 }
 
+func TestStatusBarChildRowsHiddenOnWeb(t *testing.T) {
+	child := settings.Row{ID: "status-bar-cpu", Parent: "show-status-bar"}
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		if !settingsRowAvailable(child, goos) {
+			t.Fatalf("expected %s available on %s", child.ID, goos)
+		}
+	}
+	if settingsRowAvailable(child, "js") {
+		t.Fatal("expected status-bar-cpu hidden on js build")
+	}
+}
+
 func TestSettingsCategoryMetadataMatchesPlatform(t *testing.T) {
 	for _, goos := range []string{"darwin", "linux"} {
 		if got := settingsCategory(settingsAdvanced, goos); got != settings.Categories[settingsAdvanced] {

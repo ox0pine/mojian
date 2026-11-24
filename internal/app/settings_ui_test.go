@@ -734,7 +734,10 @@ func TestCheckHostsProbesEveryHostOnLaunch(t *testing.T) {
 func TestSettingsTableRendersEveryGenericRow(t *testing.T) {
 	registerFonts()
 	a := newProjectApp(t)
-	tt := ui.NewTester(a.settingsWindowView, 900, 1600)
+	// Expand collapsible status-bar child rows so every declared row renders;
+	// collapsed state is covered by TestSettingsStatusBarCollapsibleChildren.
+	a.ShowStatusBar = true
+	tt := ui.NewTester(a.settingsWindowView, 900, 1800)
 	for _, cat := range []int{settingsGeneral, settingsEditor, settingsTerminal} {
 		a.settings.Cat = cat
 		tt.Frame()

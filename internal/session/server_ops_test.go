@@ -5,6 +5,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"mojian/internal/filekind"
+	"mojian/internal/sysstat"
 )
 
 func startOpsServer(t *testing.T) (*Client, string) {
@@ -526,6 +528,22 @@ func TestCopyTreePreservesSymlinks(t *testing.T) {
 		}
 		if target != link.target {
 			t.Fatalf("%s target = %q, want %q", link.name, target, link.target)
+		}
+	}
+}
+
+func TestSysStatsRPC(t *testing.T) {
+	c, _ := startOpsServer(t)
+	snap, err := c.SysStatsContext(t.Context(), sysstat.Options{CPU: true, Memory: true, GPU: true})
+	if err != nil {
+		t.Fatalf("SysStatsContext: %v", err)
+	}
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		if !snap.HasCPU {
+			t.Fatalf("expected HasCPU in snapshot: %+v", snap)
+		}
+		if !snap.HasMem || snap.MemTotalBytes == 0 {
+			t.Fatalf("expected HasMem with non-zero total: %+v", snap)
 		}
 	}
 }

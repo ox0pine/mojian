@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"mojian/internal/filekind"
+	"mojian/internal/sysstat"
 
 	"github.com/egoist/mygo/plugins/terminal"
 )
@@ -50,7 +51,9 @@ type Server struct {
 	kills    sync.WaitGroup
 	// trees caches listTree results; a file operation clears it and a
 	// short TTL picks up changes made outside the server.
-	trees map[string]treeCacheEntry
+	trees      map[string]treeCacheEntry
+	sysMu      sync.Mutex
+	sysSampler *sysstat.Sampler
 }
 
 // treeCacheTTL bounds how long a listing is reused. The app's explicit
@@ -355,6 +358,20 @@ func (s *Server) do(req Request) (any, error) {
 		out, err := execCommand(req)
 		s.invalidateTrees()
 		return out, err
+	case "sysStats":
+		opts := sysstat.Options{CPU: true, Memory: true, GPU: true}
+		if req.SysStats != nil {
+			opts = *req.SysStats
+		}
+		s.sysMu.Lock()
+		if s.sysSampler == nil {
+			s.sysSampler = sysstat.NewSampler()
+		}
+		sampler := s.sysSampler
+		s.sysMu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Millisecond)
+		defer cancel()
+		return sampler.Sample(ctx, opts), nil
 	case "mkdir":
 		err := os.MkdirAll(req.Path, 0o755)
 		if err == nil {

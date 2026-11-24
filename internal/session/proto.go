@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"mojian/internal/filekind"
+	"mojian/internal/sysstat"
 )
 
 // ProtocolVersion changes when the wire protocol does. Version 4 framed
@@ -164,8 +165,9 @@ type Request struct {
 	Env   []string `json:"env,omitempty"`
 	Stdin string   `json:"stdin,omitempty"`
 	// Timeout is how long a command may run, in milliseconds.
-	Timeout int            `json:"timeout,omitempty"`
-	Search  *SearchOptions `json:"search,omitempty"`
+	Timeout  int              `json:"timeout,omitempty"`
+	Search   *SearchOptions   `json:"search,omitempty"`
+	SysStats *sysstat.Options `json:"sysStats,omitempty"`
 }
 
 // SearchOptions describes a project-wide text search.
