@@ -41,7 +41,6 @@ type Prefs struct {
 	EditorVimMode       bool `json:"editorVimMode,omitempty"`
 	EditorFormatOnSave  bool `json:"editorFormatOnSave,omitempty"`
 	ShowStatusBar       bool `json:"showStatusBar,omitempty"`
-	StatusBarSysMode    int  `json:"statusBarSysMode,omitempty"`  // 0 = terminal panes only, 1 = always
 	StatusBarCPU        bool `json:"statusBarCPU,omitempty"`      // default false
 	StatusBarMemory     bool `json:"statusBarMemory,omitempty"`   // default false
 	StatusBarGPU        bool `json:"statusBarGPU,omitempty"`      // default false
@@ -130,9 +129,6 @@ func (p *Prefs) Sanitize() {
 		p.EditorWhitespace = 0
 	}
 	p.EditorWrapGuides = strings.TrimSpace(p.EditorWrapGuides)
-	if p.StatusBarSysMode < 0 || p.StatusBarSysMode > 1 {
-		p.StatusBarSysMode = 0
-	}
 	switch p.StatusBarInterval {
 	case 2, 5, 10:
 	default:

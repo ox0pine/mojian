@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"runtime"
 
-	"mojian/internal/icons"
-	"mojian/internal/motion"
 	"mojian/internal/settings"
 
 	"github.com/egoist/mygo/ui"
@@ -15,10 +13,9 @@ import (
 // settingsRowAvailable is the one platform filter used by both the page
 // and its search index, so search never reveals a row that is not drawn.
 func settingsRowAvailable(row settings.Row, goos string) bool {
-	if goos == "js" && row.Parent == "show-status-bar" {
-		return false
-	}
 	switch row.ID {
+	case "status-bar-cpu", "status-bar-memory", "status-bar-gpu", "status-bar-interval":
+		return goos != "js"
 	case "option-alt":
 		return goos == "darwin"
 	case "shell-command":
@@ -41,21 +38,7 @@ func (u *UI) settingsGenericPage(c *ui.Context, k *colors, cat int) {
 			return
 		}
 		u.settingsSection(c, k, section, func() {
-			for i := 0; i < len(rows); i++ {
-				row := rows[i]
-				if row.Parent != "" {
-					u.settingsRowSpec(c, k, row)
-					continue
-				}
-				var children []settings.Row
-				for j := i + 1; j < len(rows) && rows[j].Parent == row.ID; j++ {
-					children = append(children, rows[j])
-				}
-				if len(children) > 0 {
-					u.settingsCollapsibleGroup(c, k, row, children)
-					i += len(children)
-					continue
-				}
+			for _, row := range rows {
 				u.settingsRowSpec(c, k, row)
 			}
 		})
@@ -71,85 +54,6 @@ func (u *UI) settingsGenericPage(c *ui.Context, k *colors, cat int) {
 		rows = append(rows, row)
 	}
 	flush()
-}
-
-func (u *UI) settingsCollapsibleGroup(c *ui.Context, k *colors, parent settings.Row, children []settings.Row) {
-	parentOn := u.prefBool(parent.Pref)
-	if parent.Invert {
-		parentOn = !parentOn
-	}
-	childHit := false
-	for _, ch := range children {
-		if u.Hits[ch.Title] {
-			childHit = true
-			break
-		}
-	}
-	expanded := parentOn && (u.Collapsed == nil || !u.Collapsed[parent.ID])
-	if childHit {
-		expanded = true
-	}
-
-	u.settingRow(c, k, parent.Title, parent.Detail, func() {
-		if parentOn {
-			iconName := "chevron-right"
-			tip := "Expand status bar options"
-			if expanded {
-				iconName = "chevron-down"
-				tip = "Collapse status bar options"
-			}
-			chev := ui.ButtonBase(c.Key("collapse-"+parent.ID)).Size(24, 24).Radius(6).
-				AlignItems(ui.Center).Justify(ui.Center).
-				Cursor(ui.CursorPointer).Tooltip(tip).Label(tip)
-			if chev.Hovered() {
-				chev.Background(k.Hover)
-			}
-			if chev.Clicked() {
-				if u.Collapsed == nil {
-					u.Collapsed = map[string]bool{}
-				}
-				u.Collapsed[parent.ID] = expanded
-				u.invalidate()
-			}
-			chev.Children(func() {
-				ui.Icon(c, icons.Icon(iconName)).Size(14, 14).TextColor(k.TextMuted)
-			})
-		}
-		on := parentOn
-		sw := ui.Switch(c, &on).Label(parent.Title + " toggle")
-		if sw.Changed() {
-			val := on
-			if parent.Invert {
-				val = !val
-			}
-			u.setPrefBool(parent.Pref, val)
-			if on && u.Collapsed != nil {
-				delete(u.Collapsed, parent.ID)
-			}
-			u.saveSettings()
-			u.invalidate()
-		}
-	})
-
-	if !expanded {
-		return
-	}
-	ui.Divider(c).Margin(0, 16)
-	box := ui.Column(c.Key("children-"+parent.ID)).FillWidth().
-		Margin(4, 16, 10, 28).Padding(2, 0, 2, 12).
-		BorderWidth(0, 0, 0, 2).BorderColor(k.PanelBorder).
-		Clip().Transition(motion.Tree(c.Preferences().ReduceMotion))
-	if !parentOn {
-		box.Disabled(true).Opacity(0.55)
-	}
-	box.Children(func() {
-		savedRows := u.Rows
-		u.Rows = 0
-		for _, ch := range children {
-			u.settingsRowSpec(c, k, ch)
-		}
-		u.Rows = savedRows
-	})
 }
 
 // settingsRowSpec draws one declared row with the control its Kind names.

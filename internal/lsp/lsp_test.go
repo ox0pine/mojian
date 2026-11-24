@@ -6,7 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -463,5 +467,45 @@ func TestResolveServerAndExpandedLanguages(t *testing.T) {
 	spec, _, disabled, ok = ResolveServer("elixir", overrides)
 	if !ok || disabled || spec.Name != "elixir-ls" {
 		t.Fatalf("ResolveServer(elixir) = spec=%+v disabled=%v ok=%v", spec, disabled, ok)
+	}
+}
+
+func TestLookupExecutableFindsGOBINAndAugmentsPATH(t *testing.T) {
+	binDir := t.TempDir()
+	name := "mojian-test-lsp"
+	binName := name
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(binDir, binName)
+	if err := os.WriteFile(binPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GOBIN", binDir)
+	t.Setenv("PATH", t.TempDir())
+
+	got, ok := LookupExecutable(name)
+	if !ok || got != binPath {
+		t.Fatalf("LookupExecutable(%q) = (%q, %v), want (%q, true)", name, got, ok, binPath)
+	}
+
+	env := WithAugmentedPATH([]string{"FOO=bar", "PATH=" + string(filepath.Separator) + "usr" + string(filepath.Separator) + "bin"})
+	env = WithAugmentedPATH(env)
+	var pathVal string
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			pathVal = strings.TrimPrefix(kv, "PATH=")
+			break
+		}
+	}
+	count := 0
+	for _, entry := range filepath.SplitList(pathVal) {
+		if entry == binDir {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected %q once in augmented PATH %q, found %d times", binDir, pathVal, count)
 	}
 }

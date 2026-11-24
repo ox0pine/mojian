@@ -32,15 +32,17 @@ func TestSettingsRowAvailabilityMatchesPlatform(t *testing.T) {
 	}
 }
 
-func TestStatusBarChildRowsHiddenOnWeb(t *testing.T) {
-	child := settings.Row{ID: "status-bar-cpu", Parent: "show-status-bar"}
-	for _, goos := range []string{"darwin", "linux", "windows"} {
-		if !settingsRowAvailable(child, goos) {
-			t.Fatalf("expected %s available on %s", child.ID, goos)
+func TestStatusBarRowsHiddenOnWeb(t *testing.T) {
+	for _, id := range []string{"status-bar-cpu", "status-bar-memory", "status-bar-gpu", "status-bar-interval"} {
+		row := settings.Row{ID: id}
+		for _, goos := range []string{"darwin", "linux", "windows"} {
+			if !settingsRowAvailable(row, goos) {
+				t.Fatalf("expected %s available on %s", row.ID, goos)
+			}
 		}
-	}
-	if settingsRowAvailable(child, "js") {
-		t.Fatal("expected status-bar-cpu hidden on js build")
+		if settingsRowAvailable(row, "js") {
+			t.Fatalf("expected %s hidden on js build", row.ID)
+		}
 	}
 }
 

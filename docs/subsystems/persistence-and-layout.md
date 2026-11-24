@@ -55,12 +55,12 @@ that produce both files, and the environment overrides that move them.
   layouts survive. Persistent Search panes (`pane.Search`) are transient in-memory workspaces and are
   omitted from `layout.json`.
 - `settings.json` persists `prefs.Prefs` (including `editorWhitespace`, `editorWrapGuides`, and
-  status bar telemetry fields `statusBarSysMode`, `statusBarCPU`, `statusBarMemory`, `statusBarGPU`,
+  terminal status bar telemetry fields `statusBarCPU`, `statusBarMemory`, `statusBarGPU`,
   `statusBarInterval`) plus `shortcuts`, `project`, `projects`, `server`, `remotePath`,
   `remoteProjects`, `hosts`, and `lspServers` (`map[string]prefs.LSPServerOverride` for custom
   `command`, `disabled`, and `initializationOptions`). `StatusBarCPU`, `StatusBarMemory`, and
-  `StatusBarGPU` default to `false`, `StatusBarSysMode` defaults to `0` (`Terminal panes`), and
-  `StatusBarInterval` defaults to `2` seconds (`2`, `5`, `10`).
+  `StatusBarGPU` default to `false`, and `StatusBarInterval` defaults to `2` seconds (`2`, `5`,
+  `10`).
 - A missing layout is not a failure: the window falls back to the first note. A valid layout whose
   nonempty tabs all lose their panes does the same. A platform without terminals drops every
   terminal pane; a build without remote support drops SSH and remote-server panes but keeps local

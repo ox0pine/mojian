@@ -29,6 +29,7 @@ type lspServerState struct {
 	client    *lsp.Client
 	starting  bool
 	failed    bool
+	notFound  bool
 	disabled  bool
 	errMsg    string
 	startedAt time.Time
@@ -157,7 +158,7 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 				return nil
 			}
 		}
-		if st.starting || st.failed {
+		if st.starting || st.failed || st.notFound {
 			return nil
 		}
 	}
@@ -194,6 +195,7 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 	go func() {
 		var rwc io.ReadWriteCloser
 		var chosen []string
+		var notFound bool
 		var err error
 		if remote {
 			if remoteClient == nil {
@@ -210,7 +212,7 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 		} else {
 			argv, found := lsp.LookupLocalCommands(spec.Commands)
 			if !found {
-				err = fmt.Errorf("%s not found on PATH", spec.Name)
+				notFound = true
 			} else {
 				chosen = append([]string(nil), argv...)
 				rwc, err = lsp.StartLocalWithLog(dir, argv, func(line string) {
@@ -222,6 +224,20 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 					})
 				})
 			}
+		}
+		if notFound {
+			post(func() {
+				if a.windowSeq != winSeq || ws.lsp != mgr {
+					return
+				}
+				st.starting = false
+				st.notFound = true
+				st.failed = false
+				st.errMsg = ""
+				a.appendLSPLog(ws, st, "[info] "+spec.Name+" not found in PATH or standard tool directories")
+				a.invalidate()
+			})
+			return
 		}
 		if err != nil || rwc == nil {
 			msg := "failed to start"

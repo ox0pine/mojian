@@ -57,11 +57,10 @@ func (a *app) resolveSysTarget(p *pane) sysTarget {
 	if !a.StatusBarCPU && !a.StatusBarMemory && !a.StatusBarGPU {
 		return sysTarget{}
 	}
-	isTerm := p != nil && p.Term != nil
-	if a.StatusBarSysMode == 0 && !isTerm {
+	if p == nil || p.Term == nil {
 		return sysTarget{}
 	}
-	if isTerm && p.Term.Spec.Server != "" && p.Term.Spec.Server != localServerID {
+	if p.Term.Spec.Server != "" && p.Term.Spec.Server != localServerID {
 		alias := p.Term.Spec.Server
 		client := p.Term.Client
 		if client == nil {
@@ -81,22 +80,6 @@ func (a *app) resolveSysTarget(p *pane) sysTarget {
 			remote:    true,
 			hostAlias: alias,
 			client:    client,
-		}
-	}
-	if !isTerm && a.serverAlias != "" {
-		rc := a.remoteConn(a.serverAlias)
-		if rc == nil || !rc.Healthy() || rc.Client == nil {
-			return sysTarget{}
-		}
-		if a.sysRemoteUnsupported != nil && a.sysRemoteUnsupported[rc.Client] {
-			return sysTarget{}
-		}
-		return sysTarget{
-			key:       "remote:" + a.serverAlias,
-			label:     a.hostLabel(a.serverAlias),
-			remote:    true,
-			hostAlias: a.serverAlias,
-			client:    rc.Client,
 		}
 	}
 	return sysTarget{

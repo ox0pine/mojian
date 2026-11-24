@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"syscall"
+
+	"mojian/internal/lsp"
 )
 
 // serveLSP spawns a language server process in o.Dir and bridges its stdio
@@ -17,12 +20,13 @@ func (s *Server) serveLSP(ms *muxStream, o openRequest) {
 	if len(o.Args) == 0 {
 		return
 	}
-	bin, err := exec.LookPath(o.Args[0])
-	if err != nil {
+	bin, ok := lsp.LookupExecutable(o.Args[0])
+	if !ok {
 		return
 	}
 	cmd := exec.Command(bin, o.Args[1:]...)
 	cmd.Dir = o.Dir
+	cmd.Env = lsp.WithAugmentedPATH(os.Environ())
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

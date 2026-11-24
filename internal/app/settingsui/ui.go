@@ -44,7 +44,6 @@ type UI struct {
 	Query        string
 
 	shellCmd shellCommandState
-	Collapsed map[string]bool
 
 	FontPick    bool
 	FontPickFor int

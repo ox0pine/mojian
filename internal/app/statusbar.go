@@ -64,7 +64,7 @@ func (a *app) statusBar(c *ui.Context, k *colors) {
 						FontWeight(650).TextColor(fg).Padding(1, 6).Radius(4).Background(bg).Shrink(0)
 				}
 				if p != nil && p.Note != nil {
-					if st := a.lspServerStateFor(p.Note.Rel); st != nil {
+					if st := a.lspServerStateFor(p.Note.Rel); st != nil && !st.notFound {
 						label := st.name
 						fg := k.TextMuted
 						tip := "LSP: " + st.name + " (click for status & logs)"
@@ -133,9 +133,8 @@ func (a *app) statusBar(c *ui.Context, k *colors) {
 
 			ui.Spacer(c)
 
-			a.statusSysMetrics(c, k, p)
-
 			if isTerm {
+				a.statusSysMetrics(c, k, p)
 				if p.Term.Term != nil {
 					if cols, rows := p.Term.Term.Size(); cols > 0 && rows > 0 {
 						ui.Text(c, fmt.Sprintf("%d×%d", cols, rows)).Font(noteFont.Family).

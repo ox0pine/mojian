@@ -58,6 +58,8 @@ func lspStateLabel(st *lspServerState) (label string, status int) {
 	switch {
 	case st.disabled:
 		return "Disabled", 3
+	case st.notFound:
+		return "Not installed", 3
 	case st.starting:
 		return "Starting…", 1
 	case st.failed:
@@ -178,6 +180,8 @@ func (a *app) lspStatusModal(c *ui.Context, k *colors) {
 						sub := strings.Join(st.command, " ")
 						if st.errMsg != "" {
 							sub = st.errMsg
+						} else if st.notFound && sub == "" {
+							sub = "Not installed — install or configure lspServers in settings.json"
 						}
 						if sub != "" {
 							col := muted
