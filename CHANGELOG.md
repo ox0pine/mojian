@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.4
+
+- Collapsible **Settings › Editor › Status bar** controls: adds a collapsible sub-settings group
+  for **System status** (`Terminal panes` / `Always`), **CPU usage**, **Memory usage**, **GPU
+  usage** (all defaulting to off), and **Refresh interval** (`2s` / `5s` / `10s`), auto-expanding
+  when **Status bar** is turned on or when search matches a child setting, with local GPU
+  capability details.
+- Context-aware Status Bar: displays the focused terminal's host badge (`local` or `ssh`), working
+  directory, enabled hardware metrics, and terminal dimensions (`cols×rows`) when a terminal pane
+  is focused (or across all panes when **System status** is set to `Always`), while keeping cursor
+  position, indentation, line ending, and language controls on editor panes.
+- Cross-platform zero-cgo hardware telemetry (`internal/sysstat`) & remote Linux support: samples
+  macOS (Mach / IOKit via `purego`), Linux (`/proc`, sysfs DRM, `nvidia-smi`), and Windows
+  (`kernel32`, `pdh.dll` WDDM GPU, `nvidia-smi`), plus remote Linux host telemetry over the
+  `mojian-server` `sysStats` RPC with updated embedded Linux server binaries.
+
 ## 0.7.3
 
 - Liquid Glass editor overlays & writing polish: wires `RenderFindBar`, `RenderGoToLine`,
