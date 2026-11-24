@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.5
+
+- Flattened Settings & separated Status Bar: removes the collapsible status-bar group that
+  misaligned Settings rows, removes `System status` (`Always`), moves **CPU usage**, **Memory
+  usage**, **GPU usage**, and **Refresh interval** into standard flat rows under **Settings ›
+  Terminal › STATUS BAR**, and keeps hardware telemetry strictly on focused terminal panes while
+  editor panes show only editor controls.
+- LSP binary discovery & quiet missing-server handling: searches standard tool directories
+  (`$GOBIN`, `$GOPATH/bin`, `~/go/bin`, `~/.local/bin`, `~/.cargo/bin`, `~/.bun/bin`, Homebrew,
+  `/usr/local/bin`) and passes the augmented `PATH` to local and remote `mojian-server` LSP child
+  processes; classifies absent optional servers as `Not installed` instead of logging `[error]` or
+  showing a red status bar badge.
+
 ## 0.7.4
 
 - Collapsible **Settings › Editor › Status bar** controls: adds a collapsible sub-settings group
