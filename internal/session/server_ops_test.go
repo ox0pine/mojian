@@ -267,22 +267,25 @@ func TestSlowAttachedStreamIsRemoved(t *testing.T) {
 	ma, mb := newTestMuxes(t)
 	serverStream := ma.openStream(1)
 	_ = mb.openStream(1)
-	go ss.attach(serverStream, 40, 10)
+	attachDone := make(chan struct{})
+	go func() {
+		ss.attach(serverStream, 40, 10)
+		close(attachDone)
+	}()
 
-	deadline := time.Now().Add(3 * time.Second)
-	attached := false
-	for {
+	select {
+	case <-attachDone:
+	case <-time.After(3 * time.Second):
 		ss.mu.Lock()
 		clients := len(ss.clients)
 		ss.mu.Unlock()
-		attached = attached || clients > 0
-		if attached && clients == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("slow attachment leaked %d client references", clients)
-		}
-		time.Sleep(time.Millisecond)
+		t.Fatalf("slow attachment did not detach (clients=%d)", clients)
+	}
+	ss.mu.Lock()
+	clients := len(ss.clients)
+	ss.mu.Unlock()
+	if clients != 0 {
+		t.Fatalf("slow attachment leaked %d client references", clients)
 	}
 	select {
 	case <-ma.quit:
