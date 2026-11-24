@@ -172,6 +172,7 @@ type Request struct {
 type SearchOptions struct {
 	Query         string `json:"query"`
 	CaseSensitive bool   `json:"caseSensitive,omitempty"`
+	WholeWord     bool   `json:"wholeWord,omitempty"`
 	Regex         bool   `json:"regex,omitempty"`
 	Include       string `json:"include,omitempty"`
 	Exclude       string `json:"exclude,omitempty"`

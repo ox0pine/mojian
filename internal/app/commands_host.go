@@ -6,6 +6,7 @@ import (
 	"mojian/internal/app/commands"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 // openSettingsCommand opens Settings, assigned after the view is built:
@@ -54,9 +55,12 @@ func (a *app) initCommands() {
 	r.Bind("prev-tab", func() { a.cycleTab(-1) })
 	r.Bind("palette", func() { a.openPalette() })
 	r.Bind("find-in-files", func() { a.openSearch() })
+	r.Bind("search-in-pane", func() { a.openSearchInPane(nil) })
 	r.Bind("goto-symbol", func() { a.openSymbols() })
 	r.Bind("workspace-symbols", func() { a.openWorkspaceSymbols() })
 	r.Bind("find-references", func() { a.openReferences() })
+	r.Bind("goto-implementation", func() { a.gotoImplementation() })
+	r.Bind("goto-type-definition", func() { a.gotoTypeDefinition() })
 	r.Bind("show-problems", func() { a.openProblems() })
 	r.Bind("next-diagnostic", func() { a.jumpDiagnostic(1) })
 	r.Bind("prev-diagnostic", func() { a.jumpDiagnostic(-1) })
@@ -71,7 +75,15 @@ func (a *app) initCommands() {
 	r.Bind("fold-all", func() { a.editorFoldAll() })
 	r.Bind("unfold-all", func() { a.editorUnfoldAll() })
 	r.Bind("fold-imports", func() { a.editorFoldImports() })
+	r.Bind("select-next-match", func() { a.runEditorCommand(editor.SelectNext) })
+	r.Bind("select-all-matches", func() { a.runEditorCommand(editor.SelectAllMatches) })
+	r.Bind("add-cursor-above", func() { a.runEditorCommand(editor.AddCursorAbove) })
+	r.Bind("add-cursor-below", func() { a.runEditorCommand(editor.AddCursorBelow) })
+	r.Bind("split-selection-lines", func() { a.runEditorCommand(editor.SplitSelectionIntoLines) })
+	r.Bind("expand-selection", func() { a.runEditorCommand(editor.SelectLarger) })
+	r.Bind("shrink-selection", func() { a.runEditorCommand(editor.SelectSmaller) })
 	r.Bind("markdown-preview-side", func() { a.openMarkdownPreviewSide() })
+	r.Bind("lsp-status", func() { a.openLSPStatus() })
 	r.Bind("restart-lsp", func() { a.restartLSP() })
 	r.Bind("nav-back", func() { a.navBack() })
 	r.Bind("nav-forward", func() { a.navForward() })

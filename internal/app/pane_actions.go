@@ -137,7 +137,7 @@ func (a *app) openNote(n *note) {
 		return
 	}
 	p := t.Focus
-	if p != nil && p.Term != nil {
+	if p != nil && (p.Term != nil || p.Search != nil) {
 		p = t.firstEditorPane()
 		if p == nil {
 			a.openNoteInTab(n)
@@ -147,9 +147,9 @@ func (a *app) openNote(n *note) {
 	if p == nil {
 		p = firstPane(t.Root)
 	}
-	if p != nil && p.Term != nil {
-		// A tab can hold only terminals and agents. A note needs an
-		// editor pane, so give it a tab instead of replacing a shell.
+	if p != nil && (p.Term != nil || p.Search != nil) {
+		// A tab can hold only terminals or search panes. A note needs an
+		// editor pane, so give it a tab instead of replacing one.
 		if editor := t.firstEditorPane(); editor != nil {
 			p = editor
 		} else {
@@ -272,16 +272,15 @@ func (a *app) openAsset(f *assetFile) {
 		return
 	}
 	p := t.Focus
-	if p != nil && p.Term != nil {
+	if p != nil && (p.Term != nil || p.Search != nil) {
 		p = t.firstEditorPane()
 	}
 	if p == nil {
 		p = firstPane(t.Root)
 	}
-	if p != nil && p.Term != nil {
-		// A tab can hold only terminals and agents. A picture or PDF
-		// needs a viewer pane, so give it a tab instead of replacing a
-		// shell.
+	if p != nil && (p.Term != nil || p.Search != nil) {
+		// A tab can hold only terminals or search panes. A picture or PDF
+		// needs a viewer pane, so give it a tab instead of replacing one.
 		if editor := t.firstEditorPane(); editor != nil {
 			p = editor
 		} else {

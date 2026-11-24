@@ -53,6 +53,7 @@ func (u *UI) Duplicate(rel string) {
 		u.fail(err)
 		return
 	}
+	u.NotifyFileChange(newRel, 1)
 	u.SelectRel(newRel)
 }
 
@@ -76,6 +77,8 @@ func (u *UI) MoveEntry(srcRel, destDirRel string) {
 		return
 	}
 	u.resetRenamedStates(affected, before)
+	u.NotifyFileChange(srcRel, 3)
+	u.NotifyFileChange(newRel, 1)
 	u.SelectRel(newRel)
 	if u.gitOpen() && u.autoRefreshGit() {
 		u.refreshGit()
@@ -116,6 +119,7 @@ func (u *UI) Trash(rel string) {
 		u.fail(err)
 		return
 	}
+	u.NotifyFileChange(rel, 3)
 	u.closeNotes(func(n *note) bool {
 		return n.Rel == rel || strings.HasPrefix(n.Rel, rel+string(filepath.Separator))
 	})

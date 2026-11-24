@@ -39,17 +39,38 @@ func (a *app) statusBar(c *ui.Context, k *colors) {
 					FontWeight(650).TextColor(fg).Padding(1, 6).Radius(4).Background(bg).Shrink(0)
 			}
 			if p != nil && p.Note != nil {
-				if srv := a.lspServerName(p.Note.Rel); srv != "" {
+				if st := a.lspServerStateFor(p.Note.Rel); st != nil {
+					label := st.name
+					fg := k.TextMuted
+					tip := "LSP: " + st.name + " (click for status & logs)"
+					switch {
+					case st.disabled:
+						label = st.name + " (off)"
+						fg = k.TextFaint
+						tip = "LSP disabled in settings.json (click for status)"
+					case st.starting:
+						label = st.name + "…"
+						fg = k.Attention
+						tip = "Starting " + st.name + "… (click for status)"
+					case st.failed:
+						label = st.name + " !"
+						fg = k.Danger
+						if st.errMsg != "" {
+							tip = st.name + " failed: " + st.errMsg + " (click for logs)"
+						} else {
+							tip = st.name + " failed (click for logs)"
+						}
+					}
 					btn := ui.ButtonBase(c.Key("status-lsp")).Padding(1, 5).Radius(4).
-						Cursor(ui.CursorPointer).Tooltip("Click to restart " + srv).Label("Restart " + srv)
+						Cursor(ui.CursorPointer).Tooltip(tip).Label("LSP Status " + st.name)
 					if btn.Hovered() {
 						btn.Background(k.Hover)
 					}
 					if btn.Clicked() {
-						a.later(func() { a.restartLSP() })
+						a.later(func() { a.openLSPStatus() })
 					}
 					btn.Children(func() {
-						ui.Text(c, srv).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(k.TextMuted).Shrink(0)
+						ui.Text(c, label).FontSize(c.Theme().Rem(11.0 / 13)).TextColor(fg).Shrink(0)
 					})
 				}
 			}

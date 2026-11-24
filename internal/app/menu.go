@@ -93,7 +93,7 @@ func (a *app) menu() *mygo.Menu {
 	if terminalsSupported() {
 		viewItems = append(viewItems, item(cmdTerminal), item(cmdSendToTerminal), item(cmdFindInTerminal), item(cmdAttachSession))
 	}
-	viewItems = append(viewItems, item(cmdShowProblems), item(cmdJumpAttention), item(cmdGit), item(cmdBranch), item(cmdPalette), mygo.Separator(), item(cmdSettings),
+	viewItems = append(viewItems, item(cmdShowProblems), item(cmdLSPStatus), item(cmdJumpAttention), item(cmdGit), item(cmdBranch), item(cmdPalette), mygo.Separator(), item(cmdSettings),
 		&mygo.MenuItem{Label: "Appearance", Submenu: []*mygo.MenuItem{
 			appearance("System", 0),
 			appearance("Light", 1),
@@ -118,11 +118,24 @@ func (a *app) menu() *mygo.Menu {
 			item(cmdSymbols),
 			item(cmdWorkspaceSymbols),
 			item(cmdFindReferences),
+			item(cmdGotoImplementation),
+			item(cmdGotoTypeDefinition),
 			item(cmdRenameSymbol),
 			item(cmdCodeActions),
 			item(cmdSignatureHelp),
 			item(cmdToggleInlayHints),
 			item(cmdFormatDocument),
+			{Label: "Selection", Submenu: []*mygo.MenuItem{
+				item(cmdSelectNextMatch),
+				item(cmdSelectAllMatches),
+				mygo.Separator(),
+				item(cmdAddCursorAbove),
+				item(cmdAddCursorBelow),
+				item(cmdSplitSelectionLines),
+				mygo.Separator(),
+				item(cmdExpandSelection),
+				item(cmdShrinkSelection),
+			}},
 			{Label: "Folding", Submenu: []*mygo.MenuItem{
 				item(cmdFold),
 				item(cmdUnfold),

@@ -7,7 +7,6 @@ tool github.com/egoist/mygo/cmd/mygo
 require (
 	github.com/Microsoft/go-winio v0.6.4
 	github.com/auron-labs/mygo-mcp v0.1.0
-	github.com/coder/acp-go-sdk v0.13.5
 	github.com/creack/pty v1.1.21
 	github.com/egoist/mygo v0.10.0
 	golang.org/x/net v0.59.0

@@ -165,6 +165,7 @@ type app struct {
 	searchOpen        bool
 	searchQuery       string
 	searchCase        bool
+	searchWholeWord   bool
 	searchRegex       bool
 	searchInclude     string
 	searchExclude     string
@@ -180,6 +181,8 @@ type app struct {
 	searchList        ui.ListState
 	searchSeq         int
 	searchCancel      func()
+	searchCollapsed   map[string]bool
+	modalSearch       *searchState
 
 	symbolsOpen  bool
 	symbolsQuery string
@@ -227,6 +230,11 @@ type app struct {
 	codeActionsSeq   int
 	codeActionsNote  *note
 	codeActionsWS    *workspace
+
+	refsTitle     string
+	lspStatusOpen bool
+	lspStatusSel  string
+	lspServers    map[string]prefs.LSPServerOverride
 
 	indentMenuOpen bool
 	conflict       *saveConflict

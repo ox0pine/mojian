@@ -152,6 +152,9 @@ func (u *UI) PasteInto(rel string) {
 		if first == "" {
 			first = newRel
 		}
+		if newRel != "" {
+			u.NotifyFileChange(newRel, 1)
+		}
 	}
 	if src.move || !src.remote {
 		// A move consumed the cut; a local copy also settles a cut that

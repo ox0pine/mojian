@@ -40,9 +40,12 @@ var (
 	cmdPrevTab             = commands.ByID("prev-tab")
 	cmdPalette             = commands.ByID("palette")
 	cmdSearch              = commands.ByID("find-in-files")
+	cmdSearchInPane        = commands.ByID("search-in-pane")
 	cmdSymbols             = commands.ByID("goto-symbol")
 	cmdWorkspaceSymbols    = commands.ByID("workspace-symbols")
 	cmdFindReferences      = commands.ByID("find-references")
+	cmdGotoImplementation  = commands.ByID("goto-implementation")
+	cmdGotoTypeDefinition  = commands.ByID("goto-type-definition")
 	cmdShowProblems        = commands.ByID("show-problems")
 	cmdNextDiagnostic      = commands.ByID("next-diagnostic")
 	cmdPrevDiagnostic      = commands.ByID("prev-diagnostic")
@@ -57,7 +60,15 @@ var (
 	cmdFoldAll             = commands.ByID("fold-all")
 	cmdUnfoldAll           = commands.ByID("unfold-all")
 	cmdFoldImports         = commands.ByID("fold-imports")
+	cmdSelectNextMatch     = commands.ByID("select-next-match")
+	cmdSelectAllMatches    = commands.ByID("select-all-matches")
+	cmdAddCursorAbove      = commands.ByID("add-cursor-above")
+	cmdAddCursorBelow      = commands.ByID("add-cursor-below")
+	cmdSplitSelectionLines = commands.ByID("split-selection-lines")
+	cmdExpandSelection     = commands.ByID("expand-selection")
+	cmdShrinkSelection     = commands.ByID("shrink-selection")
 	cmdMarkdownPreviewSide = commands.ByID("markdown-preview-side")
+	cmdLSPStatus           = commands.ByID("lsp-status")
 	cmdRestartLSP          = commands.ByID("restart-lsp")
 	cmdNavBack             = commands.ByID("nav-back")
 	cmdNavForward          = commands.ByID("nav-forward")
@@ -282,7 +293,7 @@ func (a *app) filteredFiles() ([]*note, []*assetFile) {
 // the same commands in the view.
 func (a *app) shortcuts(c *ui.Context) {
 	if (runtime.GOOS != "js" && !a.harness) ||
-		a.paletteOpen || a.quickOpen || a.symbolsOpen || a.wsSymbolsOpen || a.refsOpen || a.problemsOpen || a.symRenameOpen || a.searchOpen || a.sessionPick || a.sshPick || a.projectPicker || a.remotePicker {
+		a.paletteOpen || a.quickOpen || a.symbolsOpen || a.wsSymbolsOpen || a.refsOpen || a.problemsOpen || a.symRenameOpen || a.codeActionsOpen || a.lspStatusOpen || a.searchOpen || a.sessionPick || a.sshPick || a.projectPicker || a.remotePicker {
 		return
 	}
 	// Fixed tab switching takes precedence when a custom command has the

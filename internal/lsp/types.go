@@ -232,6 +232,28 @@ type DocumentHighlight struct {
 	Kind  int   `json:"kind,omitempty"`
 }
 
+// LSP FileChangeType values for workspace/didChangeWatchedFiles.
+const (
+	FileCreated = 1
+	FileChanged = 2
+	FileDeleted = 3
+)
+
+// FileEvent describes a file creation, modification, or deletion for LSP.
+type FileEvent struct {
+	URI  string `json:"uri"`
+	Type int    `json:"type"`
+}
+
+// CompletionResult pairs a converted editor completion with any LSP
+// additionalTextEdits and raw payload needed for completionItem/resolve.
+type CompletionResult struct {
+	Item                editor.Completion
+	AdditionalTextEdits []TextEdit
+	Raw                 json.RawMessage
+	HasData             bool
+}
+
 // NormalizeWorkspaceEdit extracts all per-URI text edits from changes and
 // documentChanges into a single map.
 func NormalizeWorkspaceEdit(we WorkspaceEdit) map[string][]TextEdit {
@@ -339,20 +361,22 @@ func SymbolKindName(kind int) string {
 }
 
 type completionItem struct {
-	Label            string          `json:"label"`
-	Kind             int             `json:"kind,omitempty"`
-	Detail           string          `json:"detail,omitempty"`
-	Documentation    json.RawMessage `json:"documentation,omitempty"`
-	FilterText       string          `json:"filterText,omitempty"`
-	InsertText       string          `json:"insertText,omitempty"`
-	InsertTextFormat int             `json:"insertTextFormat,omitempty"`
-	TextEdit         *struct {
+	Label               string          `json:"label"`
+	Kind                int             `json:"kind,omitempty"`
+	Detail              string          `json:"detail,omitempty"`
+	Documentation       json.RawMessage `json:"documentation,omitempty"`
+	FilterText          string          `json:"filterText,omitempty"`
+	InsertText          string          `json:"insertText,omitempty"`
+	InsertTextFormat    int             `json:"insertTextFormat,omitempty"`
+	AdditionalTextEdits []TextEdit      `json:"additionalTextEdits,omitempty"`
+	Data                json.RawMessage `json:"data,omitempty"`
+	TextEdit            *struct {
 		NewText string `json:"newText"`
 	} `json:"textEdit,omitempty"`
 }
 
 type completionList struct {
-	Items []completionItem `json:"items"`
+	Items []json.RawMessage `json:"items"`
 }
 
 type hoverResult struct {

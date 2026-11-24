@@ -139,6 +139,9 @@ its bundled `ssh.exe`.
   `Send Reference to Terminal` (`⌥⌘L` / `Ctrl+Alt+L`) pastes `@rel/path:line[-end]` into the active
   tab's terminal (opening one if needed); and `⌘F` (macOS) / `Ctrl+Shift+F` (Linux/Windows) inside a
   terminal opens a floating scrollback find bar backed by MyGo's `Terminal.Search`.
+- Project-wide search (`opSearch` / `session.SearchOptions`) supports `CaseSensitive`, `WholeWord`,
+  `Regex`, `Include`/`Exclude` globs, and `Limit`, executed directly on the local project or remote
+  `mojian-server`.
 - Remote connections are pooled by host and kept while a loaded project uses them, and after
   `Set Up Server` until the last project on that host is removed (`closeRemoteProject`); `CloseAll`
   ends them at quit. Choosing a server that is not the one on screen resumes its most recently

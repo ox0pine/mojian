@@ -52,7 +52,12 @@ that produce both files, and the environment overrides that move them.
 - The layout JSON field names are compatibility surface: `tabs`, `active`, `name`, `root`, `focus`,
   `zoom`, `vertical`, `share`, `a`, `b`, `pane`, `id`, `note`, `asset`, `preview`, `terminal`,
   `sid`, `host`, `server`. Legacy `columns`/`panes` are still read through `restoreColumns` so old
-  layouts survive.
+  layouts survive. Persistent Search panes (`pane.Search`) are transient in-memory workspaces and are
+  omitted from `layout.json`.
+- `settings.json` persists `prefs.Prefs` (including `editorWhitespace` and `editorWrapGuides`) plus
+  `shortcuts`, `project`, `projects`, `server`, `remotePath`, `remoteProjects`, `hosts`, and
+  `lspServers` (`map[string]prefs.LSPServerOverride` for custom `command`, `disabled`, and
+  `initializationOptions`).
 - A missing layout is not a failure: the window falls back to the first note. A valid layout whose
   nonempty tabs all lose their panes does the same. A platform without terminals drops every
   terminal pane; a build without remote support drops SSH and remote-server panes but keeps local

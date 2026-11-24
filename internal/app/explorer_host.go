@@ -52,6 +52,10 @@ func (h explorerHost) ResetRenamedStates(notes []*note, before map[*note]string)
 	h.a.resetRenamedStates(notes, before)
 }
 
+func (h explorerHost) NotifyFileChange(rel string, changeType int) {
+	h.a.notifyLSPFileChange(rel, changeType)
+}
+
 func (h explorerHost) SystemClipboardFiles() ([]string, error) {
 	return h.a.systemClipboardFiles()
 }
@@ -188,8 +192,13 @@ func (a *app) finishReload(s *store, seq int, entries []session.FileEntry, bodie
 		a.invalidate()
 		return
 	}
+	beforePaths, beforeVers := snapshotStoreState(s)
 	s.Apply(entries, bodies)
 	a.explorerUI().RefreshApplied()
+	if a.store == s {
+		changes := a.diffStoreLSPChanges(a.workspace, beforePaths, beforeVers, nil)
+		a.notifyLSPWatchedFiles(a.workspace, changes)
+	}
 }
 func (a *app) revealInTree(n *note)                      { a.explorerUI().RevealInTree(n) }
 func (a *app) revealRel(rel string)                      { a.explorerUI().RevealRel(rel) }

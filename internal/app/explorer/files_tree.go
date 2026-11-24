@@ -136,6 +136,10 @@ func (u *UI) submitTreeDraft(d *Draft) {
 	}
 	if d.Kind == DraftRename {
 		u.resetRenamedStates(changed, before)
+		u.NotifyFileChange(d.Target, 3)
+		u.NotifyFileChange(rel, 1)
+	} else if d.Kind == DraftFile && rel != "" {
+		u.NotifyFileChange(rel, 1)
 	}
 	u.changed()
 	u.invalidate()

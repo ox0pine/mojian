@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"mojian/internal/filekind"
@@ -27,6 +28,32 @@ type searchMatcher struct {
 	query         string
 	lower         string
 	caseSensitive bool
+	wholeWord     bool
+}
+
+func isWordRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func wordBoundaryOK(s string, start, end int) bool {
+	if start < 0 || end > len(s) || start >= end {
+		return false
+	}
+	first, _ := utf8.DecodeRuneInString(s[start:])
+	if isWordRune(first) && start > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(s[:start])
+		if isWordRune(prev) {
+			return false
+		}
+	}
+	last, _ := utf8.DecodeLastRuneInString(s[:end])
+	if isWordRune(last) && end < len(s) {
+		next, _ := utf8.DecodeRuneInString(s[end:])
+		if isWordRune(next) {
+			return false
+		}
+	}
+	return true
 }
 
 // CompileSearch validates opts and builds a reusable line matcher.
@@ -43,42 +70,68 @@ func compileSearch(opts SearchOptions) (*searchMatcher, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid regular expression: %w", err)
 		}
-		return &searchMatcher{re: re, query: opts.Query, caseSensitive: opts.CaseSensitive}, nil
+		return &searchMatcher{re: re, query: opts.Query, caseSensitive: opts.CaseSensitive, wholeWord: opts.WholeWord}, nil
 	}
 	return &searchMatcher{
 		query:         opts.Query,
 		lower:         strings.ToLower(opts.Query),
 		caseSensitive: opts.CaseSensitive,
+		wholeWord:     opts.WholeWord,
 	}, nil
 }
 
 func (m *searchMatcher) find(line string) (start, end int, ok bool) {
-	if m.re != nil {
-		loc := m.re.FindStringIndex(line)
-		if loc == nil {
-			return 0, 0, false
+	return m.findFrom(line, 0)
+}
+
+func (m *searchMatcher) findFrom(s string, from int) (start, end int, ok bool) {
+	for pos := from; pos <= len(s); {
+		var sOff, eOff int
+		var matched bool
+		if m.re != nil {
+			loc := m.re.FindStringIndex(s[pos:])
+			if loc == nil {
+				return 0, 0, false
+			}
+			sOff, eOff, matched = pos+loc[0], pos+loc[1], true
+		} else if m.caseSensitive {
+			i := strings.Index(s[pos:], m.query)
+			if i < 0 {
+				return 0, 0, false
+			}
+			sOff, eOff, matched = pos+i, pos+i+len(m.query), true
+		} else {
+			sOff, eOff, matched = findCaseInsensitive(s[pos:], m.lower)
+			if !matched {
+				return 0, 0, false
+			}
+			sOff += pos
+			eOff += pos
 		}
-		return loc[0], loc[1], true
-	}
-	if m.caseSensitive {
-		i := strings.Index(line, m.query)
-		if i < 0 {
-			return 0, 0, false
+		if !m.wholeWord || wordBoundaryOK(s, sOff, eOff) {
+			return sOff, eOff, true
 		}
-		return i, i + len(m.query), true
+		if sOff >= len(s) {
+			break
+		}
+		_, sz := utf8.DecodeRuneInString(s[sOff:])
+		pos = sOff + max(sz, 1)
 	}
-	// Map byte offsets safely when lowercasing changes UTF-8 byte lengths.
+	return 0, 0, false
+}
+
+func findCaseInsensitive(line, lowerQuery string) (start, end int, ok bool) {
 	low := strings.ToLower(line)
-	i := strings.Index(low, m.lower)
+	i := strings.Index(low, lowerQuery)
 	if i < 0 {
 		return 0, 0, false
 	}
 	if len(low) == len(line) {
-		return i, i + len(m.lower), true
+		return i, i + len(lowerQuery), true
 	}
 	// Fallback: match by rune index to keep byte offsets valid on line.
 	rStart := utf8.RuneCountInString(low[:i])
-	rLen := utf8.RuneCountInString(m.lower)
+	rLen := utf8.RuneCountInString(lowerQuery)
 	byteStart, byteEnd := 0, len(line)
 	rIdx := 0
 	for off := range line {
@@ -186,36 +239,147 @@ func ReplaceAllText(text, replacement string, opts SearchOptions) (string, int, 
 		return text, 0, err
 	}
 	if m.re != nil {
-		count := len(m.re.FindAllStringIndex(text, -1))
+		if !m.wholeWord {
+			count := len(m.re.FindAllStringIndex(text, -1))
+			if count == 0 {
+				return text, 0, nil
+			}
+			return m.re.ReplaceAllString(text, replacement), count, nil
+		}
+		locs := m.re.FindAllStringSubmatchIndex(text, -1)
+		if len(locs) == 0 {
+			return text, 0, nil
+		}
+		var b strings.Builder
+		b.Grow(len(text))
+		last := 0
+		count := 0
+		for _, loc := range locs {
+			if !wordBoundaryOK(text, loc[0], loc[1]) {
+				continue
+			}
+			b.WriteString(text[last:loc[0]])
+			b.Write(m.re.ExpandString(nil, replacement, text, loc))
+			last = loc[1]
+			count++
+		}
 		if count == 0 {
 			return text, 0, nil
 		}
-		return m.re.ReplaceAllString(text, replacement), count, nil
+		b.WriteString(text[last:])
+		return b.String(), count, nil
 	}
-	if m.caseSensitive {
+	if m.caseSensitive && !m.wholeWord {
 		count := strings.Count(text, m.query)
 		if count == 0 {
 			return text, 0, nil
 		}
 		return strings.ReplaceAll(text, m.query, replacement), count, nil
 	}
-	// Case-insensitive literal replacement line by line so byte spans stay valid.
 	var b strings.Builder
 	b.Grow(len(text))
 	count := 0
-	rem := text
-	for len(rem) > 0 {
-		start, end, ok := m.find(rem)
+	last := 0
+	pos := 0
+	for pos <= len(text) {
+		start, end, ok := m.findFrom(text, pos)
 		if !ok || end <= start {
-			b.WriteString(rem)
 			break
 		}
-		b.WriteString(rem[:start])
+		b.WriteString(text[last:start])
 		b.WriteString(replacement)
-		rem = rem[end:]
+		last = end
+		pos = end
 		count++
 	}
+	if count == 0 {
+		return text, 0, nil
+	}
+	b.WriteString(text[last:])
 	return b.String(), count, nil
+}
+
+// ReplaceOneInText replaces the single match described by m in text, returning
+// the updated text and whether the match was replaced.
+func ReplaceOneInText(text string, match SearchMatch, replacement string, opts SearchOptions) (string, bool, error) {
+	m, err := compileSearch(opts)
+	if err != nil || m == nil {
+		return text, false, err
+	}
+	lineStart, lineEnd, ok := lineByteSpan(text, match.Line)
+	if !ok {
+		return text, false, nil
+	}
+	line := strings.TrimSuffix(text[lineStart:lineEnd], "\r")
+	if match.Col < 0 || match.End <= match.Col || match.End > len(line) {
+		return text, false, nil
+	}
+	if m.wholeWord && !wordBoundaryOK(line, match.Col, match.End) {
+		return text, false, nil
+	}
+	seg := line[match.Col:match.End]
+	rep := replacement
+	if m.re != nil {
+		loc := m.re.FindStringSubmatchIndex(seg)
+		if loc == nil || loc[0] != 0 || loc[1] != len(seg) {
+			return text, false, nil
+		}
+		rep = string(m.re.ExpandString(nil, replacement, seg, loc))
+	} else if m.caseSensitive {
+		if seg != m.query {
+			return text, false, nil
+		}
+	} else if !strings.EqualFold(seg, m.query) {
+		return text, false, nil
+	}
+	absStart := lineStart + match.Col
+	absEnd := lineStart + match.End
+	return text[:absStart] + rep + text[absEnd:], true, nil
+}
+
+// PreviewMatchReplacement returns the before, old, replacement, and after slices
+// of a match excerpt for rendering inline replacement previews.
+func PreviewMatchReplacement(match SearchMatch, replacement string, opts SearchOptions) (before, oldText, newText, after string, ok bool) {
+	m, err := compileSearch(opts)
+	if err != nil || m == nil {
+		return "", "", "", "", false
+	}
+	s, e, found := m.find(match.Text)
+	if !found || e <= s {
+		return "", "", "", "", false
+	}
+	seg := match.Text[s:e]
+	rep := replacement
+	if m.re != nil {
+		if loc := m.re.FindStringSubmatchIndex(seg); loc != nil && loc[0] == 0 && loc[1] == len(seg) {
+			rep = string(m.re.ExpandString(nil, replacement, seg, loc))
+		}
+	}
+	return match.Text[:s], seg, rep, match.Text[e:], true
+}
+
+func lineByteSpan(text string, line1 int) (start, end int, ok bool) {
+	if line1 <= 0 {
+		return 0, 0, false
+	}
+	cur := 1
+	off := 0
+	for cur < line1 && off < len(text) {
+		nl := strings.IndexByte(text[off:], '\n')
+		if nl < 0 {
+			return 0, 0, false
+		}
+		off += nl + 1
+		cur++
+	}
+	if cur != line1 {
+		return 0, 0, false
+	}
+	end = len(text)
+	if nl := strings.IndexByte(text[off:], '\n'); nl >= 0 {
+		end = off + nl
+	}
+	return off, end, true
 }
 
 // searchPathFilter filters slash-separated relative paths using comma-separated

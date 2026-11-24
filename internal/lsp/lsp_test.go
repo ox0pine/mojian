@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
+
+	"mojian/internal/prefs"
 )
 
 type pipePair struct {
@@ -274,5 +277,191 @@ func TestFallbackSymbols(t *testing.T) {
 	mdSyms := FallbackSymbols("README.md", mdSrc)
 	if len(mdSyms) != 2 || mdSyms[0].Name != "Title" || mdSyms[1].Name != "Section" {
 		t.Fatalf("md symbols = %+v", mdSyms)
+	}
+}
+
+func TestClientExtendedCapabilitiesAndHandlers(t *testing.T) {
+	c2sR, c2sW := io.Pipe()
+	s2cR, s2cW := io.Pipe()
+	clientSide := &pipePair{r: s2cR, w: c2sW}
+	serverSide := &pipePair{r: c2sR, w: s2cW}
+	defer serverSide.Close()
+
+	writeServer := func(v any) {
+		b, _ := json.Marshal(v)
+		fmt.Fprintf(serverSide, "Content-Length: %d\r\n\r\n%s", len(b), b)
+	}
+
+	initSeen := make(chan map[string]any, 1)
+	watchedSeen := make(chan []FileEvent, 1)
+	applyReply := make(chan bool, 1)
+
+	go func() {
+		br := bufio.NewReader(serverSide)
+		for {
+			body, err := readFrame(br)
+			if err != nil {
+				return
+			}
+			var msg rpcMessage
+			if json.Unmarshal(body, &msg) != nil {
+				continue
+			}
+			switch msg.Method {
+			case "initialize":
+				var p map[string]any
+				_ = json.Unmarshal(msg.Params, &p)
+				initSeen <- p
+				writeServer(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(`{"capabilities":{}}`)})
+			case "initialized":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					Method:  "window/logMessage",
+					Params:  json.RawMessage(`{"type":3,"message":"server booted"}`),
+				})
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      json.RawMessage(`99`),
+					Method:  "workspace/applyEdit",
+					Params:  json.RawMessage(`{"edit":{"changes":{"file:///proj/main.go":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"// applied\n"}]}}}`),
+				})
+			case "textDocument/implementation":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`[{"targetUri":"file:///proj/impl.go","targetRange":{"start":{"line":10,"character":0},"end":{"line":12,"character":1}},"targetSelectionRange":{"start":{"line":10,"character":5},"end":{"line":10,"character":9}}}]`),
+				})
+			case "textDocument/typeDefinition":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"uri":"file:///proj/types.go","range":{"start":{"line":3,"character":5},"end":{"line":3,"character":11}}}`),
+				})
+			case "textDocument/completion":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"items":[{"label":"Now","kind":3,"data":{"pkg":"time"}}]}`),
+				})
+			case "completionItem/resolve":
+				writeServer(rpcMessage{
+					JSONRPC: "2.0",
+					ID:      msg.ID,
+					Result:  json.RawMessage(`{"label":"Now","kind":3,"detail":"func() Time","documentation":"Now returns the current local time.","additionalTextEdits":[{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":0}},"newText":"import \"time\"\n"}]}`),
+				})
+			case "workspace/didChangeWatchedFiles":
+				var p struct {
+					Changes []FileEvent `json:"changes"`
+				}
+				_ = json.Unmarshal(msg.Params, &p)
+				watchedSeen <- p.Changes
+			default:
+				if string(msg.ID) == "99" {
+					var res struct {
+						Applied bool `json:"applied"`
+					}
+					_ = json.Unmarshal(msg.Result, &res)
+					applyReply <- res.Applied
+				}
+			}
+		}
+	}()
+
+	logCh := make(chan string, 1)
+	editCh := make(chan WorkspaceEdit, 1)
+	cl := NewClient(clientSide, nil)
+	cl.SetLogHandler(func(level int, msg string) {
+		logCh <- fmt.Sprintf("%d:%s", level, msg)
+	})
+	cl.SetApplyEditHandler(func(we WorkspaceEdit) bool {
+		editCh <- we
+		return true
+	})
+	defer cl.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := cl.Initialize(ctx, FileURI("/proj"), map[string]any{"staticcheck": true}); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	initParams := <-initSeen
+	if opts, ok := initParams["initializationOptions"].(map[string]any); !ok || opts["staticcheck"] != true {
+		t.Fatalf("initializationOptions = %#v", initParams["initializationOptions"])
+	}
+
+	if got := <-logCh; got != "3:server booted" {
+		t.Fatalf("log = %q", got)
+	}
+	we := <-editCh
+	if len(we.Changes["file:///proj/main.go"]) != 1 {
+		t.Fatalf("applyEdit changes = %+v", we.Changes)
+	}
+	if !<-applyReply {
+		t.Fatal("expected applied=true reply")
+	}
+
+	uri := FileURI("/proj/main.go")
+	impls, err := cl.Implementation(ctx, uri, Position{Line: 1, Character: 2})
+	if err != nil || len(impls) != 1 || impls[0].URI != "file:///proj/impl.go" || impls[0].Range.Start.Line != 10 {
+		t.Fatalf("Implementation = %+v err=%v", impls, err)
+	}
+	tdefs, err := cl.TypeDefinition(ctx, uri, Position{Line: 1, Character: 2})
+	if err != nil || len(tdefs) != 1 || tdefs[0].URI != "file:///proj/types.go" || tdefs[0].Range.Start.Line != 3 {
+		t.Fatalf("TypeDefinition = %+v err=%v", tdefs, err)
+	}
+
+	detailed, err := cl.CompletionDetailed(ctx, uri, Position{Line: 2, Character: 4})
+	if err != nil || len(detailed) != 1 || !detailed[0].HasData {
+		t.Fatalf("CompletionDetailed = %+v err=%v", detailed, err)
+	}
+	resolved, err := cl.ResolveCompletion(ctx, detailed[0].Raw)
+	if err != nil || resolved.Item.Detail != "func() Time" || len(resolved.AdditionalTextEdits) != 1 {
+		t.Fatalf("ResolveCompletion = %+v err=%v", resolved, err)
+	}
+
+	if err := cl.DidChangeWatchedFiles([]FileEvent{{URI: uri, Type: FileChanged}}); err != nil {
+		t.Fatalf("DidChangeWatchedFiles: %v", err)
+	}
+	ev := <-watchedSeen
+	if len(ev) != 1 || ev[0].URI != uri || ev[0].Type != FileChanged {
+		t.Fatalf("watched events = %+v", ev)
+	}
+}
+
+func TestResolveServerAndExpandedLanguages(t *testing.T) {
+	for path, want := range map[string]string{
+		"README.md":      "markdown",
+		"Cargo.toml":     "toml",
+		"Main.kt":        "kotlin",
+		"index.php":      "php",
+		"Dockerfile":     "dockerfile",
+		"dev.dockerfile": "dockerfile",
+	} {
+		if got := LanguageForPath(path); got != want {
+			t.Fatalf("LanguageForPath(%q) = %q, want %q", path, got, want)
+		}
+	}
+
+	overrides := map[string]prefs.LSPServerOverride{
+		"go": {
+			Command:               []string{"custom-gopls", "-remote=auto"},
+			InitializationOptions: map[string]any{"gofumpt": true},
+		},
+		"python": {Disabled: true},
+		"elixir": {Command: []string{"elixir-ls"}},
+	}
+
+	spec, initOpts, disabled, ok := ResolveServer("go", overrides)
+	if !ok || disabled || !slices.Equal(spec.Commands[0], []string{"custom-gopls", "-remote=auto"}) || initOpts["gofumpt"] != true {
+		t.Fatalf("ResolveServer(go) = spec=%+v init=%v disabled=%v ok=%v", spec, initOpts, disabled, ok)
+	}
+	_, _, disabled, ok = ResolveServer("python", overrides)
+	if !ok || !disabled {
+		t.Fatalf("ResolveServer(python) expected disabled=true ok=true, got disabled=%v ok=%v", disabled, ok)
+	}
+	spec, _, disabled, ok = ResolveServer("elixir", overrides)
+	if !ok || disabled || spec.Name != "elixir-ls" {
+		t.Fatalf("ResolveServer(elixir) = spec=%+v disabled=%v ok=%v", spec, disabled, ok)
 	}
 }

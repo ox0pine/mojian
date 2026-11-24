@@ -11,13 +11,14 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 )
 
-// pane is one editor view of a file, a picture, or a terminal.
+// pane is one editor view of a file, a picture, a terminal, or a search.
 type pane struct {
-	ID    string
-	Note  *note
-	Asset *assetFile
-	Term  *termTab
-	state *editor.State
+	ID     string
+	Note   *note
+	Asset  *assetFile
+	Term   *termTab
+	Search *searchPane
+	state  *editor.State
 
 	// Preview shows Markdown rendered rather than as source; assetView
 	// holds what a picture or a PDF viewer has loaded.
@@ -63,6 +64,15 @@ type pane struct {
 	hlVer           uint64
 	hlSeq           int
 	hlRanges        []editor.TextBackground
+	compResults     []lsp.CompletionResult
+	compResolved    map[int]lsp.CompletionResult
+	compInFlight    map[int]bool
+	compSeq         int
+	compOpen        bool
+	compPrevOpen    bool
+	compSelectedIdx int
+	compStartVer    uint64
+	compAcceptHint  bool
 	indentOverride  editor.IndentStyle
 	tabSizeOverride int
 	lastScrollY     float64
@@ -128,6 +138,10 @@ func newAssetPane(f *assetFile) *pane {
 	return &pane{ID: nextID("p"), Asset: f, assetView: &assetView{}}
 }
 
+func newSearchPane(st *searchState) *pane {
+	return &pane{ID: nextID("p"), Search: &searchPane{state: st, focusInput: true}}
+}
+
 // panes returns the panes of the tab, in layout order.
 func (t *tab) panes() []*pane {
 	var out []*pane
@@ -183,7 +197,7 @@ func (t *tab) editorPane() *pane {
 	return firstPane(t.Root)
 }
 
-// firstEditorPane returns the first pane that shows a file, not a shell.
+// firstEditorPane returns the first pane that shows a file, not a shell or search.
 func (t *tab) firstEditorPane() *pane {
 	for _, p := range t.panes() {
 		if p.Note != nil || p.Asset != nil {

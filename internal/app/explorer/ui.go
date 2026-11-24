@@ -71,6 +71,7 @@ type Host interface {
 	RemotePath() string
 	ServerAlias() string
 	ResetRenamedStates([]*project.Note, map[*project.Note]string)
+	NotifyFileChange(rel string, changeType int)
 
 	TreeOpen() bool
 	SetTreeOpen(bool)

@@ -90,3 +90,48 @@ func TestSearchLongLineExcerpt(t *testing.T) {
 		t.Fatalf("unexpected excerpt: len=%d text=%q", len(ms[0].Text), ms[0].Text)
 	}
 }
+
+func TestSearchWholeWordAndTargetedReplace(t *testing.T) {
+	text := "foo foobar bar_foo (foo) foo\nFOO foo2\n"
+	ms, _, err := SearchText("a.go", text, SearchOptions{Query: "foo", WholeWord: true, CaseSensitive: true}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].Line != 1 || ms[0].Col != 0 || ms[0].End != 3 {
+		t.Fatalf("wholeWord case-sensitive line 1 = %+v", ms)
+	}
+
+	msCI, _, err := SearchText("a.go", text, SearchOptions{Query: "foo", WholeWord: true}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msCI) != 2 || msCI[0].Line != 1 || msCI[1].Line != 2 || msCI[1].Col != 0 {
+		t.Fatalf("wholeWord case-insensitive = %+v", msCI)
+	}
+
+	replacedAll, n, err := ReplaceAllText(text, "baz", SearchOptions{Query: "foo", WholeWord: true, CaseSensitive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 || replacedAll != "baz foobar bar_foo (baz) baz\nFOO foo2\n" {
+		t.Fatalf("ReplaceAllText wholeWord = n=%d text=%q", n, replacedAll)
+	}
+
+	// Regex whole-word with capture group expansion.
+	reOut, reCount, err := ReplaceAllText("val_1 val_2 xval_3", "item$1", SearchOptions{Query: `val_(\d+)`, Regex: true, WholeWord: true})
+	if err != nil || reCount != 2 || reOut != "item1 item2 xval_3" {
+		t.Fatalf("regex wholeWord replace = count=%d out=%q err=%v", reCount, reOut, err)
+	}
+
+	// ReplaceOneInText replaces only the targeted match.
+	targetMatch := SearchMatch{Rel: "a.go", Line: 1, Col: 20, End: 23, Text: text[:28]}
+	one, ok, err := ReplaceOneInText(text, targetMatch, "QUX", SearchOptions{Query: "foo", WholeWord: true, CaseSensitive: true})
+	if err != nil || !ok || one != "foo foobar bar_foo (QUX) foo\nFOO foo2\n" {
+		t.Fatalf("ReplaceOneInText = ok=%v out=%q err=%v", ok, one, err)
+	}
+
+	before, oldT, newT, after, ok := PreviewMatchReplacement(SearchMatch{Text: "call(foo) + 1"}, "bar", SearchOptions{Query: "foo", WholeWord: true})
+	if !ok || before != "call(" || oldT != "foo" || newT != "bar" || after != ") + 1" {
+		t.Fatalf("PreviewMatchReplacement = (%q,%q,%q,%q,%v)", before, oldT, newT, after, ok)
+	}
+}

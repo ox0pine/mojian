@@ -48,6 +48,7 @@ func (a *app) view(c *ui.Context) {
 	a.problemsModal(c, k)
 	a.renameSymbolModal(c, k)
 	a.codeActionsModal(c, k)
+	a.lspStatusModal(c, k)
 	a.conflictModal(c, k)
 	a.searchModal(c, k)
 	a.remoteBusyView(c, k)

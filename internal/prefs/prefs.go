@@ -2,6 +2,19 @@
 // The Settings window edits these fields, and settings.json stores them.
 package prefs
 
+import (
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// LSPServerOverride customizes or disables a language server in settings.json.
+type LSPServerOverride struct {
+	Command               []string       `json:"command,omitempty"`
+	Disabled              bool           `json:"disabled,omitempty"`
+	InitializationOptions map[string]any `json:"initializationOptions,omitempty"`
+}
+
 // Prefs is the set of preferences the Settings window edits. The app and
 // its settings file embed it, so loading, saving, resetting and the JSON
 // keys all come from this one declaration.
@@ -21,7 +34,9 @@ type Prefs struct {
 	// EditorScrollMargin is how many lines the editor keeps between the
 	// caret and the edge of the pane; -1 keeps none, as Vim's scrolloff.
 	EditorScrollMargin  int     `json:"editorScrollMargin,omitempty"`
-	EditorGitBlame     bool `json:"editorGitBlame,omitempty"`
+	EditorWhitespace    int     `json:"editorWhitespace,omitempty"`
+	EditorWrapGuides    string  `json:"editorWrapGuides,omitempty"`
+	EditorGitBlame      bool    `json:"editorGitBlame,omitempty"`
 	NoInlayHints       bool `json:"noInlayHints,omitempty"`
 	EditorVimMode      bool `json:"editorVimMode,omitempty"`
 	EditorFormatOnSave bool `json:"editorFormatOnSave,omitempty"`
@@ -105,4 +120,31 @@ func (p *Prefs) Sanitize() {
 	default:
 		p.ShellCommand = ""
 	}
+	if p.EditorWhitespace < 0 || p.EditorWhitespace > 4 {
+		p.EditorWhitespace = 0
+	}
+	p.EditorWrapGuides = strings.TrimSpace(p.EditorWrapGuides)
+}
+
+// ParseWrapGuides parses comma- or space-separated column numbers in [20, 400],
+// returning sorted, deduplicated ruler columns.
+func ParseWrapGuides(raw string) []int {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\t'
+	})
+	seen := map[int]bool{}
+	var out []int
+	for _, f := range fields {
+		n, err := strconv.Atoi(strings.TrimSpace(f))
+		if err != nil || n < 20 || n > 400 || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	sort.Ints(out)
+	return out
 }

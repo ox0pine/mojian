@@ -52,8 +52,11 @@ type Client struct {
 	closed  chan struct{}
 	closeFn sync.Once
 
-	onDiags func(PublishDiagnosticsParams)
-	ready   atomic.Bool
+	onDiags     func(PublishDiagnosticsParams)
+	onLog       func(level int, msg string)
+	onApplyEdit func(we WorkspaceEdit) bool
+	initOpts    map[string]any
+	ready       atomic.Bool
 }
 
 // NewClient wraps rwc as an LSP client and starts its reader goroutine.
@@ -66,6 +69,20 @@ func NewClient(rwc io.ReadWriteCloser, onDiags func(PublishDiagnosticsParams)) *
 	}
 	go c.readLoop()
 	return c
+}
+
+// SetLogHandler sets a callback invoked on window/logMessage and window/showMessage.
+func (c *Client) SetLogHandler(fn func(level int, msg string)) {
+	c.mu.Lock()
+	c.onLog = fn
+	c.mu.Unlock()
+}
+
+// SetApplyEditHandler sets a callback invoked when the server requests workspace/applyEdit.
+func (c *Client) SetApplyEditHandler(fn func(we WorkspaceEdit) bool) {
+	c.mu.Lock()
+	c.onApplyEdit = fn
+	c.mu.Unlock()
 }
 
 // Closed is closed when the underlying transport ends.
@@ -212,16 +229,45 @@ func (c *Client) readLoop() {
 }
 
 func (c *Client) handleServerRequest(msg rpcMessage) {
-	// Answer common capability/config requests so servers never block.
+	// Answer common capability/config/edit requests so servers never block.
 	var result any
 	switch msg.Method {
 	case "workspace/configuration":
 		var params struct {
-			Items []json.RawMessage `json:"items"`
+			Items []struct {
+				Section string `json:"section"`
+			} `json:"items"`
 		}
 		_ = json.Unmarshal(msg.Params, &params)
+		c.mu.Lock()
+		opts := c.initOpts
+		c.mu.Unlock()
 		res := make([]any, len(params.Items))
+		for i, item := range params.Items {
+			if len(opts) == 0 {
+				continue
+			}
+			if item.Section == "" {
+				res[i] = opts
+			} else if v, ok := opts[item.Section]; ok {
+				res[i] = v
+			}
+		}
 		result = res
+	case "workspace/applyEdit":
+		var params struct {
+			Edit WorkspaceEdit `json:"edit"`
+		}
+		applied := false
+		if json.Unmarshal(msg.Params, &params) == nil {
+			c.mu.Lock()
+			fn := c.onApplyEdit
+			c.mu.Unlock()
+			if fn != nil {
+				applied = fn(params.Edit)
+			}
+		}
+		result = map[string]any{"applied": applied}
 	default:
 		result = nil
 	}
@@ -230,12 +276,29 @@ func (c *Client) handleServerRequest(msg rpcMessage) {
 }
 
 func (c *Client) handleNotification(msg rpcMessage) {
-	if msg.Method != "textDocument/publishDiagnostics" || c.onDiags == nil {
-		return
-	}
-	var params PublishDiagnosticsParams
-	if json.Unmarshal(msg.Params, &params) == nil {
-		c.onDiags(params)
+	switch msg.Method {
+	case "textDocument/publishDiagnostics":
+		if c.onDiags == nil {
+			return
+		}
+		var params PublishDiagnosticsParams
+		if json.Unmarshal(msg.Params, &params) == nil {
+			c.onDiags(params)
+		}
+	case "window/logMessage", "window/showMessage":
+		c.mu.Lock()
+		fn := c.onLog
+		c.mu.Unlock()
+		if fn == nil {
+			return
+		}
+		var params struct {
+			Type    int    `json:"type"`
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(msg.Params, &params) == nil && params.Message != "" {
+			fn(params.Type, params.Message)
+		}
 	}
 }
 
@@ -268,7 +331,14 @@ func readFrame(r *bufio.Reader) ([]byte, error) {
 }
 
 // Initialize performs the LSP initialize + initialized handshake for rootURI.
-func (c *Client) Initialize(ctx context.Context, rootURI string) error {
+func (c *Client) Initialize(ctx context.Context, rootURI string, initOpts ...map[string]any) error {
+	var opts map[string]any
+	if len(initOpts) > 0 && len(initOpts[0]) > 0 {
+		opts = initOpts[0]
+		c.mu.Lock()
+		c.initOpts = opts
+		c.mu.Unlock()
+	}
 	params := map[string]any{
 		"processId": nil,
 		"rootUri":   rootURI,
@@ -284,12 +354,21 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 					"completionItem": map[string]any{
 						"snippetSupport":      true,
 						"documentationFormat": []string{"plaintext", "markdown"},
+						"resolveSupport": map[string]any{
+							"properties": []string{"documentation", "detail", "additionalTextEdits"},
+						},
 					},
 				},
 				"hover": map[string]any{
 					"contentFormat": []string{"plaintext", "markdown"},
 				},
 				"definition": map[string]any{
+					"linkSupport": true,
+				},
+				"implementation": map[string]any{
+					"linkSupport": true,
+				},
+				"typeDefinition": map[string]any{
 					"linkSupport": true,
 				},
 				"references": map[string]any{},
@@ -322,9 +401,16 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 				"publishDiagnostics": map[string]any{},
 			},
 			"workspace": map[string]any{
-				"symbol": map[string]any{},
+				"applyEdit": true,
+				"symbol":    map[string]any{},
+				"didChangeWatchedFiles": map[string]any{
+					"dynamicRegistration": false,
+				},
 			},
 		},
+	}
+	if len(opts) > 0 {
+		params["initializationOptions"] = opts
 	}
 	if _, err := c.call(ctx, "initialize", params); err != nil {
 		return err
@@ -334,6 +420,16 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 	}
 	c.ready.Store(true)
 	return nil
+}
+
+// DidChangeWatchedFiles notifies the server of external/workspace file changes.
+func (c *Client) DidChangeWatchedFiles(changes []FileEvent) error {
+	if len(changes) == 0 {
+		return nil
+	}
+	return c.notify("workspace/didChangeWatchedFiles", map[string]any{
+		"changes": changes,
+	})
 }
 
 func (c *Client) DidOpen(uri, languageID string, version int, text string) error {
@@ -373,6 +469,19 @@ func (c *Client) DidClose(uri string) error {
 
 // Completion queries textDocument/completion and converts items to editor.Completion.
 func (c *Client) Completion(ctx context.Context, uri string, pos Position) ([]editor.Completion, error) {
+	detailed, err := c.CompletionDetailed(ctx, uri, pos)
+	if err != nil || len(detailed) == 0 {
+		return nil, err
+	}
+	out := make([]editor.Completion, len(detailed))
+	for i, d := range detailed {
+		out[i] = d.Item
+	}
+	return out, nil
+}
+
+// CompletionDetailed queries textDocument/completion and preserves raw items and additionalTextEdits.
+func (c *Client) CompletionDetailed(ctx context.Context, uri string, pos Position) ([]CompletionResult, error) {
 	raw, err := c.call(ctx, "textDocument/completion", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -380,38 +489,71 @@ func (c *Client) Completion(ctx context.Context, uri string, pos Position) ([]ed
 	if err != nil || len(raw) == 0 || string(raw) == "null" {
 		return nil, err
 	}
-	var items []completionItem
+	var rawItems []json.RawMessage
 	var list completionList
 	if json.Unmarshal(raw, &list) == nil && len(list.Items) > 0 {
-		items = list.Items
+		rawItems = list.Items
 	} else {
-		_ = json.Unmarshal(raw, &items)
+		_ = json.Unmarshal(raw, &rawItems)
 	}
-	if len(items) > 120 {
-		items = items[:120]
+	if len(rawItems) > 120 {
+		rawItems = rawItems[:120]
 	}
-	out := make([]editor.Completion, 0, len(items))
-	for _, it := range items {
-		ins := it.InsertText
-		if it.TextEdit != nil && it.TextEdit.NewText != "" {
-			ins = it.TextEdit.NewText
+	out := make([]CompletionResult, 0, len(rawItems))
+	for _, itemRaw := range rawItems {
+		res, ok := parseCompletionResult(itemRaw)
+		if ok {
+			out = append(out, res)
 		}
-		comp := editor.Completion{
-			Label:         it.Label,
-			Detail:        it.Detail,
-			Kind:          mapCompletionKind(it.Kind),
-			Insert:        ins,
-			FilterText:    it.FilterText,
-			Documentation: extractMarkup(it.Documentation),
-		}
-		if it.InsertTextFormat == 2 && ins != "" {
-			if sn, err := editor.ParseSnippet(ins); err == nil && sn != nil {
-				comp.Snippet = sn
-			}
-		}
-		out = append(out, comp)
 	}
 	return out, nil
+}
+
+// ResolveCompletion resolves a completion item via completionItem/resolve.
+func (c *Client) ResolveCompletion(ctx context.Context, rawItem json.RawMessage) (CompletionResult, error) {
+	if len(rawItem) == 0 {
+		return CompletionResult{}, errors.New("lsp: empty completion item")
+	}
+	raw, err := c.call(ctx, "completionItem/resolve", rawItem)
+	if err != nil {
+		return CompletionResult{}, err
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return CompletionResult{}, nil
+	}
+	res, _ := parseCompletionResult(raw)
+	return res, nil
+}
+
+func parseCompletionResult(raw json.RawMessage) (CompletionResult, bool) {
+	var it completionItem
+	if json.Unmarshal(raw, &it) != nil {
+		return CompletionResult{}, false
+	}
+	ins := it.InsertText
+	if it.TextEdit != nil && it.TextEdit.NewText != "" {
+		ins = it.TextEdit.NewText
+	}
+	comp := editor.Completion{
+		Label:         it.Label,
+		Detail:        it.Detail,
+		Kind:          mapCompletionKind(it.Kind),
+		Insert:        ins,
+		FilterText:    it.FilterText,
+		Documentation: extractMarkup(it.Documentation),
+	}
+	if it.InsertTextFormat == 2 && ins != "" {
+		if sn, err := editor.ParseSnippet(ins); err == nil && sn != nil {
+			comp.Snippet = sn
+		}
+	}
+	hasData := len(it.Data) > 0 && string(it.Data) != "null"
+	return CompletionResult{
+		Item:                comp,
+		AdditionalTextEdits: it.AdditionalTextEdits,
+		Raw:                 raw,
+		HasData:             hasData,
+	}, true
 }
 
 // Hover queries textDocument/hover and returns the rendered text and optional range.
@@ -430,32 +572,67 @@ func (c *Client) Hover(ctx context.Context, uri string, pos Position) (string, *
 	return extractMarkup(res.Contents), res.Range, nil
 }
 
-// Definition queries textDocument/definition and returns the first target location.
-func (c *Client) Definition(ctx context.Context, uri string, pos Position) (Location, bool, error) {
-	raw, err := c.call(ctx, "textDocument/definition", map[string]any{
+func (c *Client) queryLocations(ctx context.Context, method, uri string, pos Position) ([]Location, error) {
+	raw, err := c.call(ctx, method, map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
 	})
 	if err != nil || len(raw) == 0 || string(raw) == "null" {
-		return Location{}, false, err
+		return nil, err
 	}
 	var single Location
 	if json.Unmarshal(raw, &single) == nil && single.URI != "" {
-		return single, true, nil
+		return []Location{single}, nil
 	}
 	var locs []Location
-	if json.Unmarshal(raw, &locs) == nil && len(locs) > 0 && locs[0].URI != "" {
-		return locs[0], true, nil
+	if json.Unmarshal(raw, &locs) == nil && len(locs) > 0 {
+		out := make([]Location, 0, len(locs))
+		for _, loc := range locs {
+			if loc.URI != "" {
+				out = append(out, loc)
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
 	}
 	var links []LocationLink
-	if json.Unmarshal(raw, &links) == nil && len(links) > 0 && links[0].TargetURI != "" {
-		r := links[0].TargetSelectionRange
-		if r == (Range{}) {
-			r = links[0].TargetRange
+	if json.Unmarshal(raw, &links) == nil && len(links) > 0 {
+		out := make([]Location, 0, len(links))
+		for _, link := range links {
+			if link.TargetURI == "" {
+				continue
+			}
+			r := link.TargetSelectionRange
+			if r == (Range{}) {
+				r = link.TargetRange
+			}
+			out = append(out, Location{URI: link.TargetURI, Range: r})
 		}
-		return Location{URI: links[0].TargetURI, Range: r}, true, nil
+		if len(out) > 0 {
+			return out, nil
+		}
 	}
-	return Location{}, false, nil
+	return nil, nil
+}
+
+// Definition queries textDocument/definition and returns the first target location.
+func (c *Client) Definition(ctx context.Context, uri string, pos Position) (Location, bool, error) {
+	locs, err := c.queryLocations(ctx, "textDocument/definition", uri, pos)
+	if err != nil || len(locs) == 0 {
+		return Location{}, false, err
+	}
+	return locs[0], true, nil
+}
+
+// Implementation queries textDocument/implementation and returns target locations.
+func (c *Client) Implementation(ctx context.Context, uri string, pos Position) ([]Location, error) {
+	return c.queryLocations(ctx, "textDocument/implementation", uri, pos)
+}
+
+// TypeDefinition queries textDocument/typeDefinition and returns target locations.
+func (c *Client) TypeDefinition(ctx context.Context, uri string, pos Position) ([]Location, error) {
+	return c.queryLocations(ctx, "textDocument/typeDefinition", uri, pos)
 }
 
 // DocumentSymbols queries textDocument/documentSymbol and returns flattened symbols.

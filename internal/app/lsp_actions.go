@@ -61,6 +61,7 @@ func (a *app) openReferences() {
 	}
 	a.closeModals()
 	a.refsOpen = true
+	a.refsTitle = "References"
 	a.refsQuery = ""
 	a.refsSel = 0
 	a.refsList = ui.ListState{}
@@ -137,7 +138,11 @@ func (a *app) refsModal(c *ui.Context, k *colors) {
 	reveal := false
 	chosen := -1
 	a.commandDialog(c, k, &a.refsOpen, func() {
-		in := sheetHeader(c, k, &a.refsQuery, "Filter references…", "References", &a.refsOpen)
+		title := a.refsTitle
+		if title == "" {
+			title = "References"
+		}
+		in := sheetHeader(c, k, &a.refsQuery, "Filter "+strings.ToLower(title)+"…", title, &a.refsOpen)
 		if listNav(in, &a.refsSel, len(filtered), &reveal) && len(filtered) > 0 {
 			chosen = a.refsSel
 		}
@@ -195,6 +200,93 @@ func (a *app) refsModal(c *ui.Context, k *colors) {
 	if was && !a.refsOpen {
 		a.restoreModalFocus()
 	}
+}
+
+func (a *app) gotoImplementation() {
+	a.openLocationQuery("Implementations", func(ctx context.Context, cl *lsp.Client, uri string, pos lsp.Position) ([]lsp.Location, error) {
+		return cl.Implementation(ctx, uri, pos)
+	})
+}
+
+func (a *app) gotoTypeDefinition() {
+	a.openLocationQuery("Type Definitions", func(ctx context.Context, cl *lsp.Client, uri string, pos lsp.Position) ([]lsp.Location, error) {
+		return cl.TypeDefinition(ctx, uri, pos)
+	})
+}
+
+func (a *app) openLocationQuery(title string, query func(context.Context, *lsp.Client, string, lsp.Position) ([]lsp.Location, error)) {
+	p := a.focusPane()
+	if p == nil || p.Note == nil || p.state == nil || a.workspace == nil {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	cl := a.lspClientForNote(ws, n)
+	if cl == nil {
+		a.fail(fmt.Errorf("no language server active for %s", n.Title))
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	rel := filepath.ToSlash(n.Rel)
+	text := n.Text()
+	pos := lsp.OffsetToPosition(text, p.state.Cursor())
+	uri := a.lspURIForRel(ws, rel)
+	a.refsSeq++
+	seq := a.refsSeq
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		locs, err := query(ctx, cl, uri, pos)
+		cancel()
+		post(func() {
+			if a.windowSeq != winSeq || a.refsSeq != seq || a.workspace != ws {
+				return
+			}
+			if err != nil {
+				a.fail(err)
+				return
+			}
+			var items []refItem
+			for _, loc := range locs {
+				targetRel, ok := a.lspRelFromURI(ws, loc.URI)
+				if !ok {
+					continue
+				}
+				preview := ""
+				if tn := ws.store.ByRelPath(filepath.FromSlash(targetRel)); tn != nil && tn.Loaded {
+					preview = lineSnippet(tn.Text(), loc.Range.Start.Line)
+				}
+				items = append(items, refItem{
+					Rel:     targetRel,
+					Line:    loc.Range.Start.Line + 1,
+					Col:     loc.Range.Start.Character,
+					Preview: preview,
+				})
+			}
+			if len(items) == 0 {
+				a.fail(fmt.Errorf("no %s found", strings.ToLower(title)))
+				return
+			}
+			if len(items) == 1 {
+				a.recordNav()
+				a.openNoteAt(filepath.FromSlash(items[0].Rel), items[0].Line, items[0].Col, items[0].Col)
+				return
+			}
+			a.closeModals()
+			a.refsOpen = true
+			a.refsTitle = title
+			a.refsQuery = ""
+			a.refsSel = 0
+			a.refsList = ui.ListState{}
+			a.refsItems = items
+			a.refsErr = ""
+			a.refsBusy = false
+			a.invalidate()
+		})
+	}()
 }
 
 // openWorkspaceSymbols opens the project-wide symbol search sheet.

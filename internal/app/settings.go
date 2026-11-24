@@ -57,8 +57,9 @@ type settingsFile struct {
 	NotifiedUpdate string            `json:"notifiedUpdate,omitempty"`
 	Server         string            `json:"server,omitempty"`
 	RemotePath     string            `json:"remotePath,omitempty"`
-	RemoteProjects []remoteProject   `json:"remoteProjects,omitempty"`
-	Hosts          []hostConfig      `json:"hosts,omitempty"`
+	RemoteProjects []remoteProject              `json:"remoteProjects,omitempty"`
+	Hosts          []hostConfig                 `json:"hosts,omitempty"`
+	LSPServers     map[string]prefs.LSPServerOverride `json:"lspServers,omitempty"`
 }
 
 // loadSettings reads the preferences and the project the app was left in.
@@ -94,6 +95,7 @@ func (a *app) loadSettings() {
 	a.remotePath = s.RemotePath
 	a.hostService().SetProjects(s.RemoteProjects)
 	a.hostService().SetHosts(s.Hosts)
+	a.lspServers = s.LSPServers
 }
 
 // saveSettingsSoon debounces a write while a slider is dragged: the
@@ -141,6 +143,7 @@ func (a *app) saveSettings() {
 		RemotePath:     remotePath,
 		RemoteProjects: remoteProjects,
 		Hosts:          hosts,
+		LSPServers:     a.lspServers,
 	}, "", "  ")
 	a.settings.IndexDirty = true
 	if err := fs.WriteFileAtomic(a.settingsPath, data); err != nil {

@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"context"
 	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"mojian/internal/filekind"
+	"mojian/internal/lsp"
 
 	"github.com/egoist/mygo"
 )
@@ -95,11 +98,12 @@ func (a *app) syncProjectWatcher() {
 			if len(events) == 0 {
 				continue
 			}
+			eventsCopy := append([]mygo.FileEvent(nil), events...)
 			post(func() {
 				if a.windowSeq != winSeq || a.watchSeq != seq || a.store != s {
 					return
 				}
-				a.handleWatchEvents()
+				a.handleWatchEvents(eventsCopy)
 			})
 		}
 	}()
@@ -168,16 +172,23 @@ func (a *app) stopProjectWatcher() {
 }
 
 // handleWatchEvents reconciles external edits to the local project:
-// reloads clean open notes, refreshes the Explorer tree, and updates
-// Git state when open.
-func (a *app) handleWatchEvents() {
+// reloads clean open notes, refreshes the Explorer tree, notifies LSP
+// servers of watched file changes, and updates Git state when open.
+func (a *app) handleWatchEvents(events ...[]mygo.FileEvent) {
 	s := a.store
 	if s == nil || s.IsMemory() || s.IsRemote() {
 		return
 	}
+	beforePaths, beforeVers := snapshotStoreState(s)
 	if err := s.Reload(); err == nil {
 		a.invalidateEditorConfig()
 		a.explorerUI().RefreshApplied()
+		var flat []mygo.FileEvent
+		for _, batch := range events {
+			flat = append(flat, batch...)
+		}
+		changes := a.diffStoreLSPChanges(a.workspace, beforePaths, beforeVers, flat)
+		a.notifyLSPWatchedFiles(a.workspace, changes)
 		a.invalidateDiffBases()
 		a.refreshGitStatus()
 		if a.git.Open && !a.NoGitAutoRefresh {
@@ -185,6 +196,86 @@ func (a *app) handleWatchEvents() {
 		}
 		a.invalidate()
 	}
+}
+
+func snapshotStoreState(s *store) (paths map[string]bool, vers map[string]uint64) {
+	paths = map[string]bool{}
+	vers = map[string]uint64{}
+	if s == nil {
+		return paths, vers
+	}
+	for _, n := range s.Notes {
+		rel := filepath.ToSlash(n.Rel)
+		paths[rel] = true
+		if n.Loaded {
+			vers[rel] = n.Buffer().Version()
+		}
+	}
+	for rel := range s.Assets {
+		paths[filepath.ToSlash(rel)] = true
+	}
+	return paths, vers
+}
+
+func (a *app) diffStoreLSPChanges(ws *workspace, beforePaths map[string]bool, beforeVers map[string]uint64, events []mygo.FileEvent) []lsp.FileEvent {
+	if ws == nil || ws.store == nil {
+		return nil
+	}
+	afterPaths, afterVers := snapshotStoreState(ws.store)
+	byURI := map[string]int{}
+	set := func(rel string, typ int) {
+		rel = strings.TrimPrefix(filepath.ToSlash(rel), "./")
+		if rel == "" || rel == "." {
+			return
+		}
+		uri := a.lspURIForRel(ws, rel)
+		if uri == "" {
+			return
+		}
+		if prev, ok := byURI[uri]; ok && (prev == lsp.FileCreated || prev == lsp.FileDeleted) && typ == lsp.FileChanged {
+			return
+		}
+		byURI[uri] = typ
+	}
+	for rel := range afterPaths {
+		if !beforePaths[rel] {
+			set(rel, lsp.FileCreated)
+		} else if bVer, ok := beforeVers[rel]; ok && afterVers[rel] != bVer {
+			set(rel, lsp.FileChanged)
+		}
+	}
+	for rel := range beforePaths {
+		if !afterPaths[rel] {
+			set(rel, lsp.FileDeleted)
+		}
+	}
+	for _, ev := range events {
+		if ev.IsDir {
+			continue
+		}
+		switch ev.Op {
+		case mygo.FileCreate:
+			set(ev.Path, lsp.FileCreated)
+		case mygo.FileRemove:
+			set(ev.Path, lsp.FileDeleted)
+		case mygo.FileRename:
+			if ev.OldPath != "" && ev.OldPath != "." {
+				set(ev.OldPath, lsp.FileDeleted)
+			}
+			set(ev.Path, lsp.FileCreated)
+		default:
+			set(ev.Path, lsp.FileChanged)
+		}
+	}
+	if len(byURI) == 0 {
+		return nil
+	}
+	out := make([]lsp.FileEvent, 0, len(byURI))
+	for uri, typ := range byURI {
+		out = append(out, lsp.FileEvent{URI: uri, Type: typ})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].URI < out[j].URI })
+	return out
 }
 
 // handleRemoteWatchEvents refreshes the remote project listing and reloads

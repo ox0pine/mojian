@@ -222,6 +222,7 @@ func (a *app) closeModals() {
 	a.problemsOpen = false
 	a.symRenameOpen = false
 	a.codeActionsOpen = false
+	a.lspStatusOpen = false
 	a.indentMenuOpen = false
 	a.conflict = nil
 	a.closeSearch()

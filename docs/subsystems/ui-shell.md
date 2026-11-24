@@ -149,7 +149,17 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   rows). Headers and notes are plain children between the items, which is why the menus keep their
   exact look; a menu adds its own rows only, and a new menu takes the same pieces rather than a
   fourth set of metrics.
-- A pane's body is one of three kinds, chosen by `paneCardMode`: a note, an asset, or a terminal.
+- A pane's body is one of four kinds, chosen by `paneCardMode`: a note, an asset, a terminal, or a
+  persistent search pane (`searchPane` in `internal/app/search.go`).
+- Floating editor overlays (`RenderFindBar`, `RenderGoToLine`, `RenderCompletions`, `RenderHover`,
+  wired in `internal/app/editor_parts.go`) use Mojian's Liquid Glass material (`a.surface(...,
+  k.Panel)`) so the inline find/replace bar, Go to Line bar, completion popup and hover card match
+  the rest of the window's floating surfaces. Editors also honor `prefs.EditorWhitespace` (`Render
+  whitespace`: Selection/None/Boundary/Trailing/All), `prefs.EditorWrapGuides` (`Column rulers`,
+  parsed by `prefs.ParseWrapGuides`), and expose multi-cursor/selection commands (`Add Next
+  Occurrence`, `Select All Occurrences`, `Add Cursor Above/Below`, `Split Selection into Lines`,
+  `Expand Selection`, `Shrink Selection`) in the Command Palette, Edit › Selection menu, and editor
+  context menu.
 - Every list row in a window is one row: `internal/app/widgets` holds `RowH` (34), `RowPadX`
   (10), `RowGap` (10), `RowTitle` (13), `RowDetail` (12), aliased into `app` in
   `internal/app/bridges.go`, and draws the one file row the pickers use. Quick open, a blank pane's
@@ -159,10 +169,12 @@ window, the error banner and command dispatch from menu, palette and keyboard.
 - The palette, quick open, project search, go to symbol and the SSH picker are one sheet: `CommandDialog` (560 wide, pinned 78
   below the title bar, `k.ShadowDialog`) with `sheetHeader` (48-tall search row, magnifier, field,
   close button). Project search (`find-in-files`, `⇧⌘F` / `Ctrl+Shift+F`, `internal/app/search.go`)
-  adds Match Case (`Aa`), Regular Expression (`.*`), Include/Exclude glob filters and Project Replace All
-  (which edits buffers in memory so changes stay undoable and respect explicit `⌘S` save), runs
-  `project.Search` off the UI thread with dirty-buffer overrides, and jumps the focused pane directly
-  to the matched line and span. Go to Symbol (`go-to-symbol`, `⇧⌘O` / `Ctrl+Alt+O`,
+  supports Match Case (`Aa`), Whole Word (`ab`), Regular Expression (`.*`), Include/Exclude glob
+  filters, file-grouped collapsible results, inline replacement previews (`old → new`), per-file
+  (`Replace File`), single-match (`Replace`), and Project `Replace All` (all editing buffers in
+  memory so changes stay undoable and respect explicit `⌘S` save), plus **Open in Pane**
+  (`search-in-pane`) to move results into a persistent split pane whose matches open in a sibling
+  editor pane. Search runs `project.Search` off the UI thread with dirty-buffer overrides. Go to Symbol (`go-to-symbol`, `⇧⌘O` / `Ctrl+Alt+O`,
   `internal/app/symbols.go`) shows instant regex fallback symbols (`internal/lsp/fallback.go`) and
   upgrades asynchronously to LSP `textDocument/documentSymbol` when a language server is active. The
   panel is at most 440 tall and leaves 24 below it; on shorter windows it uses
@@ -172,7 +184,8 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   overlays. Icon buttons come in four sizes, `iconBtnXs` (18) through `iconBtnLg` (30), rather than
   a pair per call site.
 - An optional quiet 24-pixel bottom status bar (`internal/app/statusbar.go`, controlled by
-  `prefs.ShowStatusBar`, off by default) shows the active Vim mode badge, active LSP server and
+  `prefs.ShowStatusBar`, off by default) shows the active Vim mode badge, active/starting/failed/disabled
+  LSP server status (clickable to open the LSP Status & Logs modal) and
   diagnostic counts, SSH reconnect status, clickable cursor `Ln/Col` (opens Go to Line), clickable
   indentation menu (`Spaces`/`Tabs` and width override, layered over `.editorconfig` and global
   preferences), clickable line ending toggle (`LF`/`CRLF`) and language name.
@@ -182,24 +195,31 @@ window, the error banner and command dispatch from menu, palette and keyboard.
   relative line numbers in Normal/Visual modes, and supports `.` repeat-last-edit (including Insert
   sessions), system clipboard registers (`"+y`/`"+p`/`"+P`/`"*`), whole-word cursor search (`*`/`#`
   with `n`/`N`), and Ex commands (`:w`, `:q`, `:wq`, `:sp`, `:vs`, `:e`, `:tabnew`, `:tabc`, `:<line>`).
-- Zero-config lightweight LSP (`internal/lsp/` + `internal/app/lsp.go` + `internal/app/lsp_actions.go`)
-  auto-detects installed language servers (`gopls`, `typescript-language-server`, `pyright-langserver`,
+- Zero-config lightweight LSP (`internal/lsp/` + `internal/app/lsp.go` + `internal/app/lsp_actions.go` + `internal/app/lsp_status.go`)
+  auto-detects installed language servers (`gopls`, `typescript-language-server`, `basedpyright`/`pyright`/`ruff`,
   `rust-analyzer`, `clangd`, `zls`, `lua-language-server`, `bash-language-server`, `yaml-language-server`,
-  `vscode-json/css/html-language-server`, `sourcekit-lsp`, `ruby-lsp`) locally or on a remote SSH host
-  via `mojian-server`'s `StartLSP` stream. It wires `OnCompletion`, `OnHover`, `OnDefinition`,
-  `SetDiagnostics`, `textDocument/didOpen`/`didChange`/`didSave`, `textDocument/documentHighlight`
+  `vscode-json/css/html-language-server`, `sourcekit-lsp`, `ruby-lsp`, `marksman`, `taplo`,
+  `kotlin-language-server`, `intelephense`/`phpactor`, `docker-langserver`) locally or on a remote SSH host
+  via `mojian-server`'s `StartLSP` stream, and supports per-language overrides (`lspServers` in
+  `settings.json`: custom `command`, `disabled`, `initializationOptions`). It wires `OnCompletion`
+  (with lazy `completionItem/resolve` and targeted `additionalTextEdits` auto-imports), `OnHover`,
+  `OnDefinition`, `SetDiagnostics`, `textDocument/didOpen`/`didChange`/`didSave`,
+  `workspace/didChangeWatchedFiles` (fed by local watcher, remote watch reload, and Explorer file
+  operations), `workspace/applyEdit`, `textDocument/documentHighlight`
   (`TextBackgrounds`), `textDocument/inlayHint` (merged cooperatively with trailing inline Git blame
   via `applyPaneInlays` / `editor.State.SetInlays`, toggleable via `prefs.NoInlayHints` and
   `Toggle Inlay Hints`), `textDocument/signatureHelp` (auto-triggered inside call parentheses or
   explicitly via `⇧⌘Space`, rendered in a quiet Liquid Glass floating card with active-parameter
   accent highlighting), plus `CommandDialog` pickers for Quick Fix / Code Actions (`⌘.` / `Ctrl+.`),
-  Find References (`⇧F12`), Workspace Symbols (`⌥⌘O` / `Alt+Shift+O`), Workspace Problems (`⇧⌘M`,
+  Find References (`⇧F12`), Go to Implementation (`⌘F12` / `Ctrl+F12`), Go to Type Definition,
+  Workspace Symbols (`⌥⌘O` / `Alt+Shift+O`), Workspace Problems (`⇧⌘M`,
   also reachable by clicking status-bar diagnostic counts, plus `F8`/`⇧F8` Next/Previous Problem),
   in-memory Rename Symbol (`⇧F2`), Format Document (`⌥⇧F`), optional Format on Save
   (`prefs.EditorFormatOnSave`, running bounded LSP formatting before explicit `⌘S` saves), editor
-  right-click context menu items (including a `Folding` submenu), code folding commands (`Fold`
-  `⌥⌘[`, `Unfold` `⌥⌘]`, `Toggle Fold`, `Fold All`, `Unfold All`, `Fold Imports`), and Restart
-  Language Server.
+  right-click context menu items (including `Selection` and `Folding` submenus), code folding commands (`Fold`
+  `⌥⌘[`, `Unfold` `⌥⌘]`, `Toggle Fold`, `Fold All`, `Unfold All`, `Fold Imports`), LSP Status & Logs
+  modal (`lsp-status`, showing server states, stderr/`window/logMessage` logs, and per-server restart),
+  and Restart Language Server.
 - Pane headers disambiguate duplicate file names across panes in the active tab with the shortest
   distinguishing parent directory suffix (`paneSubtitle` in `internal/app/pane.go`) and show the
   current enclosing symbol breadcrumb (`› Symbol`, seeded instantly from `FallbackSymbols` and

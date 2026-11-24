@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,13 +19,20 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 )
 
+const maxLSPLogLines = 200
+
 // lspServerState holds one language server session for a workspace language group.
 type lspServerState struct {
-	group    string
-	name     string
-	client   *lsp.Client
-	starting bool
-	failed   bool
+	group     string
+	name      string
+	command   []string
+	client    *lsp.Client
+	starting  bool
+	failed    bool
+	disabled  bool
+	errMsg    string
+	startedAt time.Time
+	logs      []string
 }
 
 type lspDocDiag struct {
@@ -152,15 +161,28 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 			return nil
 		}
 	}
-	spec, ok := lsp.SpecForLanguage(lang)
+	spec, initOpts, disabled, ok := lsp.ResolveServer(lang, a.lspServers)
 	if !ok {
+		return nil
+	}
+	if disabled {
+		mgr.servers[group] = &lspServerState{
+			group:    group,
+			name:     spec.Name,
+			disabled: true,
+		}
 		return nil
 	}
 	post := a.uiPoster()
 	if post == nil {
 		return nil
 	}
-	st = &lspServerState{group: group, name: spec.Name, starting: true}
+	st = &lspServerState{
+		group:     group,
+		name:      spec.Name,
+		starting:  true,
+		startedAt: time.Now(),
+	}
 	mgr.servers[group] = st
 
 	dir := ws.store.Dir
@@ -171,6 +193,7 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 
 	go func() {
 		var rwc io.ReadWriteCloser
+		var chosen []string
 		var err error
 		if remote {
 			if remoteClient == nil {
@@ -179,25 +202,42 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 				for _, argv := range spec.Commands {
 					rwc, err = remoteClient.StartLSP(dir, argv)
 					if err == nil {
+						chosen = append([]string(nil), argv...)
 						break
 					}
 				}
 			}
 		} else {
-			argv, _, found := lsp.LookupLocal(lang)
+			argv, found := lsp.LookupLocalCommands(spec.Commands)
 			if !found {
-				err = io.EOF
+				err = fmt.Errorf("%s not found on PATH", spec.Name)
 			} else {
-				rwc, err = lsp.StartLocal(dir, argv)
+				chosen = append([]string(nil), argv...)
+				rwc, err = lsp.StartLocalWithLog(dir, argv, func(line string) {
+					post(func() {
+						if a.windowSeq != winSeq || ws.lsp != mgr {
+							return
+						}
+						a.appendLSPLog(ws, st, "[stderr] "+line)
+					})
+				})
 			}
 		}
 		if err != nil || rwc == nil {
+			msg := "failed to start"
+			if err != nil {
+				msg = err.Error()
+			}
 			post(func() {
 				if a.windowSeq != winSeq || ws.lsp != mgr {
 					return
 				}
 				st.starting = false
 				st.failed = true
+				st.command = chosen
+				st.errMsg = msg
+				a.appendLSPLog(ws, st, "[error] "+msg)
+				a.invalidate()
 			})
 			return
 		}
@@ -209,17 +249,48 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 				a.applyLSPDiagnostics(ws, params)
 			})
 		})
+		cl.SetLogHandler(func(level int, msg string) {
+			post(func() {
+				if a.windowSeq != winSeq || ws.lsp != mgr {
+					return
+				}
+				a.appendLSPLog(ws, st, fmt.Sprintf("[lsp:%d] %s", level, msg))
+			})
+		})
+		cl.SetApplyEditHandler(func(we lsp.WorkspaceEdit) bool {
+			done := make(chan bool, 1)
+			post(func() {
+				if a.windowSeq != winSeq || a.workspace != ws {
+					done <- false
+					return
+				}
+				a.applyLSPWorkspaceEdit(ws, lsp.NormalizeWorkspaceEdit(we))
+				a.invalidate()
+				done <- true
+			})
+			select {
+			case ok := <-done:
+				return ok
+			case <-time.After(2 * time.Second):
+				return false
+			}
+		})
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		initErr := cl.Initialize(ctx, rootURI)
+		initErr := cl.Initialize(ctx, rootURI, initOpts)
 		cancel()
 		if initErr != nil {
 			_ = cl.Close()
+			msg := initErr.Error()
 			post(func() {
 				if a.windowSeq != winSeq || ws.lsp != mgr {
 					return
 				}
 				st.starting = false
 				st.failed = true
+				st.command = chosen
+				st.errMsg = msg
+				a.appendLSPLog(ws, st, "[init error] "+msg)
+				a.invalidate()
 			})
 			return
 		}
@@ -229,11 +300,28 @@ func (a *app) lspClientForNote(ws *workspace, n *note) *lsp.Client {
 				return
 			}
 			st.starting = false
+			st.failed = false
+			st.errMsg = ""
+			st.command = chosen
 			st.client = cl
+			a.appendLSPLog(ws, st, "[ready] "+strings.Join(chosen, " "))
 			a.invalidate()
 		})
 	}()
 	return nil
+}
+
+func (a *app) appendLSPLog(ws *workspace, st *lspServerState, line string) {
+	if st == nil || line == "" {
+		return
+	}
+	st.logs = append(st.logs, line)
+	if len(st.logs) > maxLSPLogLines {
+		st.logs = append([]string(nil), st.logs[len(st.logs)-maxLSPLogLines:]...)
+	}
+	if a.workspace == ws && a.lspStatusOpen {
+		a.invalidate()
+	}
 }
 
 func (a *app) applyLSPDiagnostics(ws *workspace, params lsp.PublishDiagnosticsParams) {
@@ -306,10 +394,14 @@ func (a *app) syncEditorLSP(p *pane, st *editor.State) {
 		winSeq := a.windowSeq
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			items, err := cl.Completion(ctx, uri, pos)
+			detailed, err := cl.CompletionDetailed(ctx, uri, pos)
 			cancel()
-			if err != nil || len(items) == 0 {
+			if err != nil || len(detailed) == 0 {
 				return
+			}
+			items := make([]editor.Completion, len(detailed))
+			for i, d := range detailed {
+				items[i] = d.Item
 			}
 			post(func() {
 				if a.windowSeq != winSeq || p.state != st || p.Note != n {
@@ -318,6 +410,13 @@ func (a *app) syncEditorLSP(p *pane, st *editor.State) {
 				if n.Buffer().Version() != req.Version {
 					return
 				}
+				p.compSeq++
+				p.compResults = detailed
+				p.compResolved = nil
+				p.compInFlight = nil
+				p.compStartVer = req.Version
+				p.compSelectedIdx = 0
+				p.compAcceptHint = false
 				st.ShowCompletions(req.Offset-len(req.Prefix), items)
 				a.invalidate()
 			})
@@ -415,6 +514,190 @@ func (a *app) notifyLSPSaved(n *note) {
 	go func() { _ = cl.DidSave(uri) }()
 }
 
+// notifyLSPWatchedFiles broadcasts workspace/didChangeWatchedFiles to every
+// ready language server in ws.
+func (a *app) notifyLSPWatchedFiles(ws *workspace, changes []lsp.FileEvent) {
+	if ws == nil || ws.lsp == nil || len(changes) == 0 {
+		return
+	}
+	var clients []*lsp.Client
+	for _, st := range ws.lsp.servers {
+		if st != nil && st.client != nil && st.client.Ready() {
+			clients = append(clients, st.client)
+		}
+	}
+	if len(clients) == 0 {
+		return
+	}
+	evCopy := append([]lsp.FileEvent(nil), changes...)
+	go func() {
+		for _, cl := range clients {
+			_ = cl.DidChangeWatchedFiles(evCopy)
+		}
+	}()
+}
+
+// notifyLSPFileChange notifies active workspace language servers of a single
+// relative path change (typ: lsp.FileCreated, FileChanged, or FileDeleted).
+func (a *app) notifyLSPFileChange(rel string, typ int) {
+	ws := a.workspace
+	if ws == nil || ws.store == nil || rel == "" {
+		return
+	}
+	uri := a.lspURIForRel(ws, filepath.ToSlash(rel))
+	if uri == "" {
+		return
+	}
+	a.notifyLSPWatchedFiles(ws, []lsp.FileEvent{{URI: uri, Type: typ}})
+}
+
+func (a *app) resolveCompletionItemAsync(p *pane, origIdx int, raw json.RawMessage) {
+	if p == nil || p.Note == nil || a.workspace == nil || len(raw) == 0 {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	cl := a.lspClientForNote(ws, n)
+	if cl == nil {
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	if p.compInFlight == nil {
+		p.compInFlight = map[int]bool{}
+	}
+	if p.compInFlight[origIdx] {
+		return
+	}
+	p.compInFlight[origIdx] = true
+	seq := p.compSeq
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
+		res, err := cl.ResolveCompletion(ctx, raw)
+		cancel()
+		post(func() {
+			if a.windowSeq != winSeq || p.compSeq != seq || p.Note != n {
+				return
+			}
+			delete(p.compInFlight, origIdx)
+			if err != nil {
+				return
+			}
+			if p.compResolved == nil {
+				p.compResolved = map[int]lsp.CompletionResult{}
+			}
+			p.compResolved[origIdx] = res
+			a.invalidate()
+		})
+	}()
+}
+
+// finishCompletionFrame detects when a completion menu just closed due to
+// acceptance and applies any auto-import additionalTextEdits in memory.
+func (a *app) finishCompletionFrame(p *pane, st *editor.State) {
+	if p == nil || st == nil || p.Note == nil {
+		return
+	}
+	wasOpen := p.compPrevOpen
+	isOpen := p.compOpen
+	p.compPrevOpen = isOpen
+	p.compOpen = false
+
+	if !wasOpen || isOpen {
+		return
+	}
+	accepted := p.compAcceptHint
+	p.compAcceptHint = false
+	if !accepted || p.Note.Buffer().Version() == p.compStartVer {
+		return
+	}
+	idx := p.compSelectedIdx
+	if idx < 0 || idx >= len(p.compResults) {
+		return
+	}
+	if res, ok := p.compResolved[idx]; ok && len(res.AdditionalTextEdits) > 0 {
+		applyTargetedLSPEdits(p.Note, res.AdditionalTextEdits)
+		a.invalidate()
+		return
+	}
+	base := p.compResults[idx]
+	if len(base.AdditionalTextEdits) > 0 {
+		applyTargetedLSPEdits(p.Note, base.AdditionalTextEdits)
+		a.invalidate()
+		return
+	}
+	if !base.HasData || len(base.Raw) == 0 || a.workspace == nil {
+		return
+	}
+	ws := a.workspace
+	n := p.Note
+	cl := a.lspClientForNote(ws, n)
+	if cl == nil {
+		return
+	}
+	post := a.uiPoster()
+	if post == nil {
+		return
+	}
+	verAfterAccept := n.Buffer().Version()
+	winSeq := a.windowSeq
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+		res, err := cl.ResolveCompletion(ctx, base.Raw)
+		cancel()
+		if err != nil || len(res.AdditionalTextEdits) == 0 {
+			return
+		}
+		post(func() {
+			if a.windowSeq != winSeq || p.Note != n || n.Buffer().Version() != verAfterAccept {
+				return
+			}
+			applyTargetedLSPEdits(n, res.AdditionalTextEdits)
+			a.invalidate()
+		})
+	}()
+}
+
+// applyTargetedLSPEdits applies targeted LSP TextEdits (such as auto-imports)
+// atomically via buf.Edit without replacing the whole document, preserving the
+// user's cursor position and ⌘Z undo history.
+func applyTargetedLSPEdits(n *note, edits []lsp.TextEdit) {
+	if n == nil || len(edits) == 0 {
+		return
+	}
+	text := n.Text()
+	edEdits := make([]editor.Edit, 0, len(edits))
+	for _, e := range edits {
+		s := lsp.PositionToOffset(text, e.Range.Start)
+		end := lsp.PositionToOffset(text, e.Range.End)
+		if end < s {
+			end = s
+		}
+		edEdits = append(edEdits, editor.Edit{Start: s, End: end, Text: e.NewText})
+	}
+	sort.SliceStable(edEdits, func(i, j int) bool {
+		if edEdits[i].Start != edEdits[j].Start {
+			return edEdits[i].Start < edEdits[j].Start
+		}
+		return edEdits[i].End < edEdits[j].End
+	})
+	filtered := edEdits[:0]
+	lastEnd := 0
+	for _, e := range edEdits {
+		if e.Start < lastEnd {
+			continue
+		}
+		filtered = append(filtered, e)
+		lastEnd = e.End
+	}
+	if len(filtered) > 0 {
+		n.Buffer().Edit(filtered...)
+	}
+}
+
 // lspDiagCounts returns error and warning counts for rel (or whole workspace if rel == "").
 func (a *app) lspDiagCounts(rel string) (errs, warns int) {
 	if a.workspace == nil || a.workspace.lsp == nil {
@@ -444,18 +727,22 @@ func (a *app) lspDiagCounts(rel string) (errs, warns int) {
 
 // lspServerName returns the active LSP server name for rel, or "".
 func (a *app) lspServerName(rel string) string {
-	if a.workspace == nil || a.workspace.lsp == nil || rel == "" {
-		return ""
-	}
-	lang := lsp.LanguageForPath(rel)
-	if lang == "" {
-		return ""
-	}
-	st := a.workspace.lsp.servers[lsp.ServerGroup(lang)]
+	st := a.lspServerStateFor(rel)
 	if st == nil || st.client == nil || !st.client.Ready() {
 		return ""
 	}
 	return st.name
+}
+
+func (a *app) lspServerStateFor(rel string) *lspServerState {
+	if a.workspace == nil || a.workspace.lsp == nil || rel == "" {
+		return nil
+	}
+	lang := lsp.LanguageForPath(rel)
+	if lang == "" {
+		return nil
+	}
+	return a.workspace.lsp.servers[lsp.ServerGroup(lang)]
 }
 
 // syncEditorHighlights queries LSP textDocument/documentHighlight for the

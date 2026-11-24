@@ -9,6 +9,7 @@ import (
 	"mojian/internal/app/vim"
 	"mojian/internal/icons"
 	"mojian/internal/motion"
+	"mojian/internal/prefs"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -142,8 +143,12 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 		a.paneHeader(c, k, t, p, width, overlay)
 		body := ui.Box(c).Grow(1).MinHeight(0).Padding(0, 0, 6, 0)
 		body.Children(func() {
-			if p.Note == nil && p.Asset == nil && p.Term == nil {
+			if p.Note == nil && p.Asset == nil && p.Term == nil && p.Search == nil {
 				a.emptyPaneBody(c, k, t, p)
+				return
+			}
+			if p.Search != nil {
+				a.searchPaneBody(c, k, t, p, overlay)
 				return
 			}
 			if p.Term != nil {
@@ -211,6 +216,8 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			st.NoAutoClose = a.NoAutoClose
 			st.NoScrollPastEnd = a.NoScrollPastEnd
 			st.ScrollMargin = a.EditorScrollMargin
+			st.Whitespace = editorWhitespaceFor(a.EditorWhitespace)
+			st.WrapGuides = prefs.ParseWrapGuides(a.EditorWrapGuides)
 			st.DiffBase = a.noteDiffBase(p.Note)
 			st.Label = p.Note.Title
 			if a.HideLineNumbers {
@@ -223,6 +230,7 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 			a.syncEditorBlame(p, st, focused && !overlay)
 			a.syncEditorHighlights(p, st, focused && !overlay, k)
 			a.syncEditorSignatureHelp(p, st, focused && !overlay)
+			a.configureEditorOverlays(p, st, k)
 			st.ContextMenu = func(m *ui.Menu) {
 				a.editorContextMenu(m, p)
 			}
@@ -232,6 +240,9 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				}
 				p.vim.Configure(st, a.HideLineNumbers)
 				st.OnInput = func(ev ui.InputEvent) bool {
+					if p.compPrevOpen && ev.Kind == ui.InputKeyDown && (ev.Key == ui.KeyEnter || ev.Key == ui.KeyTab) {
+						p.compAcceptHint = true
+					}
 					return p.vim.Handle(st, ev, vim.Actions{
 						Save: func() {
 							a.later(func() {
@@ -268,6 +279,9 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				st.NoInputMethod = false
 				st.CursorShape = editor.CursorBar
 				st.OnInput = func(ev ui.InputEvent) bool {
+					if p.compPrevOpen && ev.Kind == ui.InputKeyDown && (ev.Key == ui.KeyEnter || ev.Key == ui.KeyTab) {
+						p.compAcceptHint = true
+					}
 					if p.sigHelp != nil && ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
 						a.dismissSignatureHelp(p)
 						return true
@@ -276,6 +290,9 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 				}
 			}
 			tv := editor.View(c, st).Fill()
+			if !overlay {
+				a.finishCompletionFrame(p, st)
+			}
 			if !overlay && focused && p.sigHelp != nil {
 				a.signatureHelpOverlay(c, k, p)
 			}
@@ -492,6 +509,11 @@ func paneName(p *pane) string {
 		return p.Asset.Name
 	case p.Term != nil:
 		return p.Term.displayTitle()
+	case p.Search != nil:
+		if p.Search.state != nil && strings.TrimSpace(p.Search.state.query) != "" {
+			return "Search · " + strings.TrimSpace(p.Search.state.query)
+		}
+		return "Search"
 	default:
 		return "New Pane"
 	}
@@ -517,6 +539,9 @@ func (a *app) paneHeader(c *ui.Context, k *colors, t *tab, p *pane, width float3
 	case p.Term != nil:
 		name, ic = p.Term.displayTitle(), icons.Icon("square-terminal")
 		tooltip = name
+	case p.Search != nil:
+		name, ic = paneName(p), icons.Icon("search")
+		tooltip = "Search in Project"
 	}
 	subtitle := ""
 	if !compact {
@@ -700,6 +725,12 @@ func (a *app) editorContextMenu(m *ui.Menu, p *pane) {
 	if m.Item("Find References").Chosen() {
 		a.later(func() { a.openReferences() })
 	}
+	if m.Item("Go to Implementation").Chosen() {
+		a.later(func() { a.gotoImplementation() })
+	}
+	if m.Item("Go to Type Definition").Chosen() {
+		a.later(func() { a.gotoTypeDefinition() })
+	}
 	if m.Item("Quick Fix / Code Actions…").Chosen() {
 		a.later(func() { a.openCodeActions() })
 	}
@@ -713,6 +744,31 @@ func (a *app) editorContextMenu(m *ui.Menu, p *pane) {
 		a.later(func() { a.formatDocument() })
 	}
 	m.Separator()
+	m.Submenu("Selection", func(sub *ui.Menu) {
+		if sub.Item("Add Next Occurrence").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.SelectNext) })
+		}
+		if sub.Item("Select All Occurrences").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.SelectAllMatches) })
+		}
+		sub.Separator()
+		if sub.Item("Add Cursor Above").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.AddCursorAbove) })
+		}
+		if sub.Item("Add Cursor Below").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.AddCursorBelow) })
+		}
+		if sub.Item("Split Selection into Lines").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.SplitSelectionIntoLines) })
+		}
+		sub.Separator()
+		if sub.Item("Expand Selection").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.SelectLarger) })
+		}
+		if sub.Item("Shrink Selection").Chosen() {
+			a.later(func() { a.runEditorCommand(editor.SelectSmaller) })
+		}
+	})
 	m.Submenu("Folding", func(sub *ui.Menu) {
 		if sub.Item("Fold").Chosen() {
 			a.later(func() { a.editorFold() })
