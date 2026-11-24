@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.6
+
+- Quick Open & Command Palette upgrade: adds boundary/contiguous/prefix fuzzy scoring and
+  per-workspace MRU ranking (`internal/app/fuzzy.go`, `workspace.mru`), inline matched-character
+  highlighting via `ui.RichText`, `:line[:col]` jump syntax (including `:line` in the focused
+  editor), prefix mode switching (`>` Command Palette, `@` Go to Symbol, `#` Workspace Symbols),
+  and `⌘Enter` split-open from Quick Open, Command Palette, empty panes, and project search.
+- Non-blocking remote file & asset loading: moves remote `ReadNoteContext` and `FetchAssetContext`
+  off the UI thread with per-pane `loadSeq`/`loadCancel`, non-blocking Loading/Cancel/Retry pane
+  states, and deferred cursor/selection application once loaded.
+- Layout cursor & scroll persistence and smarter Search: saves and restores editor `line`, `col`,
+  and `scrollY` per pane in `layouts/<hash>.json`; auto-seeds single-line editor selections when
+  opening Project Search (`⇧⌘F`) and adds `Alt+Up`/`Alt+Down` query history cycling.
+- Lightweight auto-dismiss Toast & searchable branch menus: adds a quiet Liquid Glass bottom toast
+  for explicit saves, formatting, LSP restarts, terminal reference sends, branch switches, and Git
+  mutations; adds `Filter branches…` search with `Up`/`Down`/`Enter` navigation to both the
+  title-bar and Git-page branch menus.
+
 ## 0.7.5
 
 - Flattened Settings & separated Status Bar: removes the collapsible status-bar group that
