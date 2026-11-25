@@ -93,3 +93,15 @@ func TestSamplerLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestSamplerConsecutiveCPU(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		return
+	}
+	for i := range 8 {
+		snap := NewSampler().Sample(context.Background(), Options{CPU: true})
+		if !snap.HasCPU {
+			t.Fatalf("iteration %d: expected HasCPU on %s", i, runtime.GOOS)
+		}
+	}
+}

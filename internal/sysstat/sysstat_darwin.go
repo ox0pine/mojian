@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	machProcessorCPULoadInfo int32  = 2
 	machHostCPULoadInfo      int32  = 3
 	machHostVMInfo64         int32  = 4
 	machHostCPULoadInfoCount uint32 = 4
@@ -62,8 +63,12 @@ type darwinAPIs struct {
 	machOK   bool
 	iokitOK  bool
 
-	machHostSelf     func() uint32
-	hostStatistics64 func(host uint32, flavor int32, info unsafe.Pointer, count *uint32) int32
+	machHostSelf      func() uint32
+	taskSelfTrap      func() uint32
+	hostStatistics    func(host uint32, flavor int32, info unsafe.Pointer, count *uint32) int32
+	hostStatistics64  func(host uint32, flavor int32, info unsafe.Pointer, count *uint32) int32
+	hostProcessorInfo func(host uint32, flavor int32, outCPUCount *uint32, outInfo unsafe.Pointer, outInfoCnt *uint32) int32
+	vmDeallocate      func(task uint32, address uintptr, size uintptr) int32
 
 	ioServiceMatching               func(name string) uintptr
 	ioServiceGetMatchingServices    func(mainPort uint32, matching uintptr, existing *uint32) int32
@@ -91,7 +96,11 @@ func initDarwinAPIs() *darwinAPIs {
 	darwinLib.initOnce.Do(func() {
 		if sysLib, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_LAZY); err == nil {
 			purego.RegisterLibFunc(&darwinLib.machHostSelf, sysLib, "mach_host_self")
+			purego.RegisterLibFunc(&darwinLib.taskSelfTrap, sysLib, "task_self_trap")
+			purego.RegisterLibFunc(&darwinLib.hostStatistics, sysLib, "host_statistics")
 			purego.RegisterLibFunc(&darwinLib.hostStatistics64, sysLib, "host_statistics64")
+			purego.RegisterLibFunc(&darwinLib.hostProcessorInfo, sysLib, "host_processor_info")
+			purego.RegisterLibFunc(&darwinLib.vmDeallocate, sysLib, "vm_deallocate")
 			darwinLib.machOK = true
 		}
 
@@ -171,9 +180,34 @@ func readMachCPULoad() (total, idle uint64, ok bool) {
 	if host == 0 {
 		return 0, 0, false
 	}
+
+	// Prefer host_processor_info over host_statistics/host_statistics64 because
+	// XNU rate-limits host_statistics(HOST_CPU_LOAD_INFO) and returns stale ticks.
+	var cpuCount uint32
+	var info *uint32
+	var infoCount uint32
+	if kr := apis.hostProcessorInfo(host, machProcessorCPULoadInfo, &cpuCount, unsafe.Pointer(&info), &infoCount); kr == 0 && info != nil {
+		if task := apis.taskSelfTrap(); task != 0 && infoCount > 0 {
+			defer apis.vmDeallocate(task, uintptr(unsafe.Pointer(info)), uintptr(infoCount)*unsafe.Sizeof(uint32(0)))
+		}
+		needed := int(cpuCount) * int(machHostCPULoadInfoCount)
+		if cpuCount > 0 && int(infoCount) >= needed {
+			slice := unsafe.Slice(info, int(infoCount))
+			for i := 0; i < needed; i += int(machHostCPULoadInfoCount) {
+				user := uint64(slice[i])
+				sys := uint64(slice[i+1])
+				idleT := uint64(slice[i+2])
+				nice := uint64(slice[i+3])
+				total += user + sys + idleT + nice
+				idle += idleT
+			}
+			return total, idle, true
+		}
+	}
+
 	var ticks [4]uint32
 	count := machHostCPULoadInfoCount
-	if kr := apis.hostStatistics64(host, machHostCPULoadInfo, unsafe.Pointer(&ticks[0]), &count); kr != 0 {
+	if kr := apis.hostStatistics(host, machHostCPULoadInfo, unsafe.Pointer(&ticks[0]), &count); kr != 0 {
 		return 0, 0, false
 	}
 	user := uint64(ticks[0])
@@ -181,6 +215,17 @@ func readMachCPULoad() (total, idle uint64, ok bool) {
 	idleT := uint64(ticks[2])
 	nice := uint64(ticks[3])
 	return user + sys + idleT + nice, idleT, true
+}
+
+func waitSamplerDelay(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (s *Sampler) sampleCPU(ctx context.Context) (float64, bool) {
@@ -194,12 +239,8 @@ func (s *Sampler) sampleCPU(ctx context.Context) (float64, bool) {
 		if !ok {
 			return 0, false
 		}
-		timer := time.NewTimer(80 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		if !waitSamplerDelay(ctx, 80*time.Millisecond) {
 			return 0, false
-		case <-timer.C:
 		}
 		prevTot, prevIdle = t0, i0
 	}
@@ -207,6 +248,18 @@ func (s *Sampler) sampleCPU(ctx context.Context) (float64, bool) {
 	t1, i1, ok := readMachCPULoad()
 	if !ok {
 		return 0, false
+	}
+
+	if !hasPrev {
+		for attempt := 0; attempt < 2 && t1 <= prevTot; attempt++ {
+			if !waitSamplerDelay(ctx, 80*time.Millisecond) {
+				return 0, false
+			}
+			t1, i1, ok = readMachCPULoad()
+			if !ok {
+				return 0, false
+			}
+		}
 	}
 
 	s.mu.Lock()
