@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"mojian/internal/fs"
+	"mojian/internal/project"
 	"mojian/internal/testutil"
 
 	"github.com/egoist/mygo"
@@ -311,5 +315,111 @@ func TestStatusBarAndVimToggle(t *testing.T) {
 	p := a.focusPane()
 	if p == nil || p.state == nil || !p.state.NoInputMethod {
 		t.Fatalf("expected NoInputMethod=true in Vim Normal mode")
+	}
+}
+
+func TestInvalidateDiffBasesPreservesBufferUntilReloaded(t *testing.T) {
+	registerFonts()
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"note.go": "package x\n\nvar a = 1\n"})
+	testutil.InitRepo(t, dir)
+
+	a := &app{workspace: &workspace{treeOpen: false}}
+	s, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.store = s
+	a.focusFirstNote()
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	tt.Frame()
+	tt.Frame()
+
+	p := a.focusPane()
+	if p == nil || p.state == nil || p.state.DiffBase == nil {
+		t.Fatalf("expected initial DiffBase loaded, got %+v", p)
+	}
+	initialBuf := p.state.DiffBase
+
+	// Invalidate DiffBases while HEAD has not changed: the pane must keep
+	// initialBuf non-nil on the very next frame and reuse the exact same buffer
+	// pointer after revalidation finishes.
+	a.invalidateDiffBases()
+	tt.Frame()
+	if p.state.DiffBase != initialBuf {
+		t.Fatalf("DiffBase dropped or replaced prematurely during revalidation: got=%p want=%p", p.state.DiffBase, initialBuf)
+	}
+	tt.Frame()
+	tt.Frame()
+	if p.state.DiffBase != initialBuf {
+		t.Fatalf("DiffBase buffer replaced even though HEAD was unchanged: got=%p want=%p", p.state.DiffBase, initialBuf)
+	}
+
+	// Commit a new HEAD version and revalidate: DiffBase must stay non-nil on
+	// the invalidated frame, then update to the new HEAD text once reloaded.
+	if err := os.WriteFile(filepath.Join(dir, "note.go"), []byte("package x\n\nvar a = 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", "note.go"},
+		{"commit", "-qm", "update"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	a.invalidateDiffBases()
+	tt.Frame()
+	if p.state.DiffBase != initialBuf {
+		t.Fatalf("DiffBase collapsed to nil before commit reload: got=%p want=%p", p.state.DiffBase, initialBuf)
+	}
+	tt.Frame()
+	tt.Frame()
+	if p.state.DiffBase == nil || p.state.DiffBase.String() != "package x\n\nvar a = 2\n" {
+		t.Fatalf("DiffBase after commit = %v, want updated HEAD content", p.state.DiffBase)
+	}
+}
+
+type failingReadBackend struct {
+	*fs.Direct
+	reads int
+}
+
+func (b *failingReadBackend) Read(rel string) ([]byte, error) {
+	b.reads++
+	return nil, errors.New("sharing violation")
+}
+
+func TestLocalUnloadedNoteReadFailureDoesNotLoop(t *testing.T) {
+	registerFonts()
+	dir := t.TempDir()
+	backend := &failingReadBackend{Direct: fs.NewDirect(dir)}
+	s := project.New(backend)
+	n := &note{Rel: "broken.md", Path: filepath.Join(dir, "broken.md"), Title: "broken.md"}
+	s.Add(n)
+
+	a := &app{workspace: &workspace{store: s}}
+	p := newPane(n)
+	tb := &tab{ID: nextID("t"), Root: &node{Pane: p}, Focus: p}
+	a.tabs = []*tab{tb}
+	a.active = 0
+
+	tt := ui.NewTester(a.view, 1100, 700)
+	for range 6 {
+		tt.Frame()
+	}
+
+	if backend.reads != 1 {
+		t.Fatalf("Read calls = %d, want 1 (unloaded local note failure must not re-queue every frame)", backend.reads)
+	}
+	if p.loadErr == "" {
+		t.Fatalf("expected p.loadErr to be populated after local read failure")
+	}
+	if !tt.HasText("Could not load file") {
+		t.Fatalf("expected load error state in pane, texts=%v", tt.Texts())
 	}
 }

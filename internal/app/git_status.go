@@ -1,6 +1,7 @@
 package app
 
 import (
+	"maps"
 	"path"
 	"path/filepath"
 
@@ -47,13 +48,15 @@ func (a *app) applyGitStatusData(ws *workspace, seq int, st gitpage.StatusData) 
 		return
 	}
 	ws.gitStatusLoading = false
+	prevFiles := ws.gitFileStatus
+	prevDirs := ws.gitDirDirty
 	if st.Root == "" || st.Err != "" {
 		ws.gitFileStatus = nil
 		ws.gitDirDirty = nil
 	} else {
 		applyGitChanges(ws, st.Changes)
 	}
-	if a.workspace == ws {
+	if a.workspace == ws && (!maps.Equal(prevFiles, ws.gitFileStatus) || !maps.Equal(prevDirs, ws.gitDirDirty)) {
 		a.invalidate()
 	}
 }

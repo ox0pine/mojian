@@ -13,7 +13,7 @@ import (
 var drop = map[string]bool{
 	"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_INDEX_FILE": true,
 	"GIT_OBJECT_DIRECTORY": true, "GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
-	"GIT_COMMON_DIR": true, "GIT_CONFIG_COUNT": true,
+	"GIT_COMMON_DIR": true, "GIT_CONFIG_COUNT": true, "GIT_OPTIONAL_LOCKS": true,
 }
 
 // Env returns the inherited environment without Git's redirect variables,

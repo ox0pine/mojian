@@ -120,8 +120,11 @@ branches and reloads open notes after a checkout.
   the target file. Regular files keep the existing size and binary limits. A text file without a
   trailing newline gets Git's `\ No newline at end of file` marker instead of an invented newline.
 - `gitenv.Env` removes the variables that redirect Git at another repository, including
-  `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` pairs, so a hook or parent
-  process cannot change what the page reads.
+  `GIT_CONFIG_COUNT`, its `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` pairs, and `GIT_OPTIONAL_LOCKS`,
+  so a hook or parent process cannot change what the page reads or re-enable opportunistic index
+  locks. `LocalRunner` (`runGitStdin`) and `serverGitRunner` run with `GIT_OPTIONAL_LOCKS=0`, and
+  `ReadStatus` passes `--no-optional-locks`, so background status checks never write `.git/index.lock`
+  or trigger Windows `ReadDirectoryChangesW` watcher loops.
 - Local Git output is bounded, but an overflow is an explicit error rather than a silently truncated
   status or patch. Remote `pwd -P` removes only its record newline, preserving a project root's
   trailing spaces and reporting a failed `pwd` instead of treating its output as a path.
@@ -165,11 +168,15 @@ branches and reloads open notes after a checkout.
 - Editor panes in a Git repository asynchronously read each open file's `HEAD` text through
   `git.ReadHeadFile` (`internal/git/base.go`, cached per workspace in `internal/app/git_bridge.go`)
   and pass it to `editor.State.DiffBase` for gutter change markers and hunk navigation (`NextHunk`,
-  `PreviousHunk`, `RevertHunk` commands in the palette and menu). When `prefs.EditorGitBlame` is
+  `PreviousHunk`, `RevertHunk` commands in the palette and menu). `invalidateDiffBases` keeps
+  previously loaded `DiffBase` buffers visible while revalidating `HEAD` asynchronously and skips
+  invalidation when `HEAD` content is unchanged, preventing gutter width jumps and pane flicker.
+  When `prefs.EditorGitBlame` is
   enabled, moving the cursor asynchronously queries `git.ReadLineBlame` and renders a trailing
   inlay (`editor.State.SetInlays`) for the current line. The Explorer also mirrors working-tree
   statuses asynchronously (`internal/app/git_status.go`) with compact single-letter badges on
-  changed files and quiet dirty markers on ancestor directories. Switching branches, saving, or
+  changed files and quiet dirty markers on ancestor directories, invalidating the view only when
+  statuses actually change. Switching branches, saving, or
   mutating Git invalidates and refreshes these caches.
 - `BranchData.Current` is the checked-out branch, or the short hash of a detached HEAD with
   `Detached` set; no branch is marked `Current` in that case. `Root` is empty outside a repository,

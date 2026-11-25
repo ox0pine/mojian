@@ -425,3 +425,32 @@ func TestSplitDiffPathContainingNewPrefix(t *testing.T) {
 		t.Fatalf("binary explanation: %q", files[0].Note)
 	}
 }
+
+func TestReadStatusPassesNoOptionalLocks(t *testing.T) {
+	var sawStatus bool
+	var sawNoOptionalLocks bool
+	runner := pageRunner(func(dir string, args ...string) (string, error) {
+		cmd := strings.Join(args, " ")
+		switch {
+		case cmd == "rev-parse --show-toplevel":
+			return dir + "\n", nil
+		case strings.Contains(cmd, "rev-parse --abbrev-ref HEAD"):
+			return "main\n", nil
+		case strings.Contains(cmd, "status --porcelain=v1"):
+			sawStatus = true
+			for _, a := range args {
+				if a == "--no-optional-locks" {
+					sawNoOptionalLocks = true
+					break
+				}
+			}
+			return "", nil
+		default:
+			return "", nil
+		}
+	})
+	st := ReadStatus(runner, "/repo")
+	if st.Err != "" || !sawStatus || !sawNoOptionalLocks {
+		t.Fatalf("sawStatus=%v sawNoOptionalLocks=%v st=%+v", sawStatus, sawNoOptionalLocks, st)
+	}
+}

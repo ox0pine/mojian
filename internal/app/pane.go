@@ -227,8 +227,18 @@ func (a *app) paneCardMode(c *ui.Context, k *colors, t *tab, p *pane, mode paneC
 					if a.isAsyncRemote() {
 						a.later(func() { a.startLoadNote(p, p.Note) })
 					} else {
+						noteRef := p.Note
 						a.later(func() {
-							_ = a.loadNote(p.Note)
+							if p.Note != noteRef || noteRef.Loaded || a.store == nil {
+								return
+							}
+							if err := a.store.LoadNote(noteRef); err != nil {
+								p.loadErr = err.Error()
+								a.fail(fmt.Errorf("reading %s: %w", noteRef.Rel, err))
+							} else {
+								p.loadErr = ""
+								a.applyPendingPanePos(p)
+							}
 							a.invalidate()
 						})
 					}

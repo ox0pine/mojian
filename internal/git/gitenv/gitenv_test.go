@@ -10,6 +10,7 @@ func TestEnvDropsGitConfigRedirects(t *testing.T) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "core.worktree")
 	t.Setenv("GIT_CONFIG_VALUE_0", "/tmp/elsewhere")
+	t.Setenv("GIT_OPTIONAL_LOCKS", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 
@@ -20,7 +21,7 @@ func TestEnvDropsGitConfigRedirects(t *testing.T) {
 			values[key] = value
 		}
 	}
-	for _, key := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"} {
+	for _, key := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_OPTIONAL_LOCKS"} {
 		if value, ok := values[key]; ok {
 			t.Errorf("%s survived as %q", key, value)
 		}
@@ -37,6 +38,7 @@ func TestDropEnvIsCaseInsensitiveOnWindows(t *testing.T) {
 		"git_config_count",
 		"Git_Config_Key_0",
 		"git_config_value_0",
+		"git_optional_locks",
 	} {
 		if !dropEnvForOS(key, "windows") {
 			t.Errorf("%s was not dropped on Windows", key)

@@ -65,7 +65,7 @@ func ReadStatus(r Runner, project string) StatusData {
 	if d.Prefix != "" {
 		pathspec = d.Prefix
 	}
-	status, err := r.Run(d.Root, "--literal-pathspecs", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", pathspec)
+	status, err := r.Run(d.Root, "--no-optional-locks", "--literal-pathspecs", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", pathspec)
 	if err != nil {
 		d.Err = err.Error()
 		return d
@@ -273,7 +273,7 @@ func runGitStdin(dir, stdin string, args ...string) (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	platform.HideConsole(cmd)
-	cmd.Env = append(gitEnv(), "GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
+	cmd.Env = append(gitEnv(), "GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}

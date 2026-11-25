@@ -87,9 +87,15 @@ func (a *app) startLoadNote(p *pane, n *note) {
 		return
 	}
 	if !a.isAsyncRemote() {
-		if a.loadNote(n) {
-			a.applyPendingPanePos(p)
+		if err := a.store.LoadNote(n); err != nil {
+			p.loadErr = err.Error()
+			a.fail(fmt.Errorf("reading %s: %w", n.Rel, err))
+			a.invalidate()
+			return
 		}
+		p.loadErr = ""
+		a.applyPendingPanePos(p)
+		a.invalidate()
 		return
 	}
 	p.cancelLoad()

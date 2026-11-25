@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"mojian/internal/git"
 	"mojian/internal/testutil"
@@ -317,5 +318,38 @@ func TestRepoRootPreservesTrailingSpace(t *testing.T) {
 	branches := git.ReadBranches(git.LocalRunner{}, dir)
 	if branches.Err != "" || branches.Root != status.Root || !strings.HasSuffix(branches.Root, "repo ") {
 		t.Fatalf("branches from spaced root: %+v", branches)
+	}
+}
+
+func TestReadStatusDoesNotRewriteIndexOnRacyStat(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteVault(t, dir, map[string]string{"a.md": "hello\n"})
+	testutil.InitRepo(t, dir)
+
+	indexPath := filepath.Join(dir, ".git", "index")
+	beforeInfo, err := os.Stat(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make the working-tree file's mtime newer than the index entry without
+	// changing its content so git status would normally refresh the index.
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(filepath.Join(dir, "a.md"), future, future); err != nil {
+		t.Fatal(err)
+	}
+	// Force GIT_OPTIONAL_LOCKS=1 in the parent env to verify gitenv strips it
+	// and LocalRunner / ReadStatus still avoids writing .git/index.
+	t.Setenv("GIT_OPTIONAL_LOCKS", "1")
+	st := git.ReadStatus(git.LocalRunner{}, dir)
+	if st.Err != "" || len(st.Changes) != 0 {
+		t.Fatalf("unexpected status: %+v", st)
+	}
+	afterInfo, err := os.Stat(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !afterInfo.ModTime().Equal(beforeInfo.ModTime()) || afterInfo.Size() != beforeInfo.Size() {
+		t.Fatalf(".git/index changed during ReadStatus: before=(%v, %d) after=(%v, %d)",
+			beforeInfo.ModTime(), beforeInfo.Size(), afterInfo.ModTime(), afterInfo.Size())
 	}
 }

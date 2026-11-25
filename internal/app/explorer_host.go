@@ -301,6 +301,13 @@ func (a *app) afterRefresh() {
 		_, ok := a.store.Assets[f.Rel]
 		return !ok
 	})
+	if a.workspace != nil {
+		for rel := range a.workspace.diffBases {
+			if a.store.ByRel[rel] == nil {
+				delete(a.workspace.diffBases, rel)
+			}
+		}
+	}
 }
 
 func (a *app) resetRenamedStates(notes []*note, before map[*note]string) {

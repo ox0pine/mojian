@@ -84,7 +84,7 @@ func (r serverGitRunner) RunWithStdin(dir, stdin string, args ...string) (string
 		return "", errors.New("remote server disconnected")
 	}
 	cmd := append([]string{"git", "-C", dir}, args...)
-	env := []string{"GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
+	env := []string{"GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C"}
 	res, err := r.client.ExecStdin(dir, cmd, env, stdin, 20*time.Second)
 	if err != nil {
 		return res.Stdout, err
@@ -223,13 +223,17 @@ func (a *app) branchReady(root string) error {
 
 // diffBaseEntry caches a file's HEAD buffer for editor gutter diff bars.
 type diffBaseEntry struct {
-	gen     int
-	loading bool
-	buf     *editor.Buffer
+	gen        int
+	loaded     bool
+	loadingGen int // 1-based generation (gen+1) currently in flight, or 0
+	ok         bool
+	text       string
+	buf        *editor.Buffer
 }
 
 // noteDiffBase returns the cached HEAD buffer for n's gutter diff bars,
-// queueing an asynchronous read on first access or after invalidation.
+// queueing an asynchronous read on first access or after invalidation while
+// preserving any previously loaded buffer until revalidation completes.
 func (a *app) noteDiffBase(n *note) *editor.Buffer {
 	if n == nil || a.store == nil || a.store.IsMemory() {
 		return nil
@@ -242,15 +246,16 @@ func (a *app) noteDiffBase(n *note) *editor.Buffer {
 		ws.diffBases = map[string]*diffBaseEntry{}
 	}
 	e := ws.diffBases[n.Rel]
-	if e != nil && e.gen == ws.diffBaseGen {
+	if e != nil && e.loaded && e.gen == ws.diffBaseGen {
 		return e.buf
 	}
 	if e == nil {
 		e = &diffBaseEntry{}
 		ws.diffBases[n.Rel] = e
 	}
-	if !e.loading {
-		e.loading = true
+	wantLoad := ws.diffBaseGen + 1
+	if e.loadingGen != wantLoad {
+		e.loadingGen = wantLoad
 		gen := ws.diffBaseGen
 		rel := n.Rel
 		a.later(func() { a.loadNoteDiffBase(ws, rel, gen) })
@@ -277,11 +282,16 @@ func (a *app) loadNoteDiffBase(ws *workspace, rel string, gen int) {
 		if ws.diffBases == nil {
 			ws.diffBases = map[string]*diffBaseEntry{}
 		}
+		if prev := ws.diffBases[rel]; prev != nil && prev.loaded && prev.ok == ok && prev.text == text {
+			prev.gen = gen
+			prev.loadingGen = 0
+			return
+		}
 		var buf *editor.Buffer
 		if ok {
 			buf = editor.NewBuffer(text)
 		}
-		ws.diffBases[rel] = &diffBaseEntry{gen: gen, buf: buf}
+		ws.diffBases[rel] = &diffBaseEntry{gen: gen, loaded: true, ok: ok, text: text, buf: buf}
 		if a.workspace == ws {
 			a.invalidate()
 		}
@@ -304,13 +314,14 @@ func (a *app) loadNoteDiffBase(ws *workspace, rel string, gen int) {
 	}()
 }
 
-// invalidateDiffBases drops cached HEAD buffers for the active workspace
-// so open editors re-read their gutter diff bases on the next frame.
+// invalidateDiffBases marks cached HEAD buffers stale so open editors
+// revalidate them asynchronously while keeping the previous buffer visible.
 func (a *app) invalidateDiffBases() {
 	if a.workspace == nil {
 		return
 	}
 	a.workspace.diffBaseGen++
-	a.workspace.diffBases = nil
-	a.invalidate()
+	if len(a.workspace.diffBases) > 0 {
+		a.invalidate()
+	}
 }

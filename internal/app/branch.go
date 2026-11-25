@@ -421,7 +421,6 @@ func (a *app) runBranchChange(what string, fn func(gitpage.Runner) error) {
 		// own store even if activation invalidated the visible callback.
 		reloadErr := store.Reload()
 		ws.diffBaseGen++
-		ws.diffBases = nil
 		if seq != ws.branch.seq {
 			return
 		}
