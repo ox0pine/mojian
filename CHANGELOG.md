@@ -1,18 +1,5 @@
 # Changelog
 
-## 0.7.7
-
-- Fix Windows file-pane flickering caused by background Git status checks and diff-base resets:
-  pass `--no-optional-locks` in `ReadStatus` and `GIT_OPTIONAL_LOCKS=0` across local and server
-  Git runners (stripping inherited `GIT_OPTIONAL_LOCKS` in `gitenv`) so `git status` does not
-  rewrite `.git/index` and re-trigger Windows directory watch events in a loop.
-- Stale-while-revalidate editor Git gutter diff bases (`editor.State.DiffBase`): keep the previous
-  HEAD buffer visible while reloading after file changes or branch switches, skip reallocation and
-  redraws when HEAD content is unchanged, and prune deleted files on workspace refresh.
-- Skip redundant UI invalidations in `applyGitStatusData` when Git file/directory status maps are
-  unchanged, and record local unloaded-note read failures in `pane.loadErr` instead of re-queueing
-  a reload every frame.
-
 ## 0.7.6
 
 - Quick Open & Command Palette upgrade: adds boundary/contiguous/prefix fuzzy scoring and
@@ -30,6 +17,15 @@
   for explicit saves, formatting, LSP restarts, terminal reference sends, branch switches, and Git
   mutations; adds `Filter branches…` search with `Up`/`Down`/`Enter` navigation to both the
   title-bar and Git-page branch menus.
+- Windows file-pane flicker fix: disables Git optional locks (`--no-optional-locks` /
+  `GIT_OPTIONAL_LOCKS=0`, stripping inherited `GIT_OPTIONAL_LOCKS` in `gitenv`) so background
+  Git status checks do not rewrite `.git/index` and loop Windows directory watchers; keeps editor
+  Git gutter `DiffBase` buffers stale-while-revalidating without redrawing on unchanged HEAD
+  content; skips redundant `applyGitStatusData` invalidations; and records local unloaded-note
+  read errors in `pane.loadErr` instead of re-queueing reloads every frame.
+- Reliable macOS CPU telemetry: switches `internal/sysstat` on macOS from rate-limited
+  `host_statistics64(HOST_CPU_LOAD_INFO)` to `host_processor_info(PROCESSOR_CPU_LOAD_INFO)`,
+  preventing `HasCPU` dropouts and `TestSamplerLocal` failures on macOS.
 
 ## 0.7.5
 
