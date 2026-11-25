@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.7
+
+- Fix Windows file-pane flickering caused by background Git status checks and diff-base resets:
+  pass `--no-optional-locks` in `ReadStatus` and `GIT_OPTIONAL_LOCKS=0` across local and server
+  Git runners (stripping inherited `GIT_OPTIONAL_LOCKS` in `gitenv`) so `git status` does not
+  rewrite `.git/index` and re-trigger Windows directory watch events in a loop.
+- Stale-while-revalidate editor Git gutter diff bases (`editor.State.DiffBase`): keep the previous
+  HEAD buffer visible while reloading after file changes or branch switches, skip reallocation and
+  redraws when HEAD content is unchanged, and prune deleted files on workspace refresh.
+- Skip redundant UI invalidations in `applyGitStatusData` when Git file/directory status maps are
+  unchanged, and record local unloaded-note read failures in `pane.loadErr` instead of re-queueing
+  a reload every frame.
+
 ## 0.7.6
 
 - Quick Open & Command Palette upgrade: adds boundary/contiguous/prefix fuzzy scoring and
